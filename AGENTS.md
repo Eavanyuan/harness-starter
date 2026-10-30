@@ -6,16 +6,15 @@
 ## 这是什么仓库
 
 一套 AI 编码流水线脚手架：11 个 agent 分工、状态机、门禁、证据链。
-`agents/*.agent.md` 是**唯一事实源**，`.claude/agents`、`.zcode/agents`、`prompts/` 都是生成物。
+`agents/*.agent.md` 是 **agent 的唯一事实源**；`hooks/hooks.manifest.json` 是 **hook 接线的唯一源**。`.claude/`、`.zcode/`、`prompts/` 全是生成物。
 
 ## 硬规则（每次都要生效）
 
 1. 验证纪律见 `.ai/rules/verification.md`，五条不裁剪。
 2. 进度只认 `.ai/tasks/<slug>/state.json`，不认会话记忆。一个任务一份，并行任务不要合并。
-3. 改代码前必须加载 `applies_to` 命中的 `.skills/*/SKILL.md`，其 `## Stage 0` 未完成不得动手。
-   skill 是运行时加载物，不是背景读物——读不完就等于没有。
+3. 改代码前必须加载 `applies_to` 命中的 `.skills/*/SKILL.md`，其 `## Stage 0` 未完成不得动手（读不完等于没有）。
 4. 只读 agent 不许调 `Edit` / `Bash` 改源码——要改就抛 blocker。
-5. 改 `agents/*.agent.md` 后必须跑 `npm run build:agents`，否则产物与源漂移，CI 会挂。
+5. 改 `agents/*.agent.md` 或 `hooks/hooks.manifest.json` 后必须跑 `build:agents` / `build:hooks`，否则 CI 挂。
 
 ## 找 skill
 
@@ -31,8 +30,6 @@ node scripts/resolve-skills.mjs --diff      # 本次改动该读哪些，别靠�
 | `hooks/`、`scripts/`、`agents/`、`templates/`、`harness.config.json` | `.skills/harness/SKILL.md` |
 | 新栈 | 复制 `.skills/SKILL.template.md`，见 `.skills/README.md` |
 
-自检：`npm run check:skills`（结构 / 断链 / 行数 / 级联 / required_skills 可解析）。
-
 ## 找 agent
 
 | 场景 | Claude / ZCode | DeepSeek（无 subagent） |
@@ -42,21 +39,23 @@ node scripts/resolve-skills.mjs --diff      # 本次改动该读哪些，别靠�
 | 编码 / 测试 / 审查 | `/impl` `/test` `/cr` | `prompts/agents/coder.md` |
 | 全量索引 | `.claude/agents/` | `prompts/INDEX.md` |
 
-DeepSeek 走 Anthropic 兼容端点时，直接用 `.claude/agents/`，不需要 `prompts/`。
-
 ## 当前任务在哪
 
 ```bash
 ls .ai/tasks/          # 每个目录是一个任务
-npm run verify:state   # 证据链是否成立
+npm run verify:state   # 证据链是否成立（CI 口径）
 ```
 
 接手别人的任务：先读 state，校验 `artifacts` 路径存在，再从当前 stage 续跑。**不要凭 git log 推断进度。**
 
 ## 不许做
 
-- 不许绕过门禁：删 `verify` 字段、改 `status` 枚举、把 `ooda_stage` 填 `act` 都会在 hook 处被拦。
-- 不许 `git push --force`、`rm -rf`、读 `.env`——hook 硬拦；写进 `hooks/allowlist.txt` 需注明原因与到期日。
+- 不许绕过门禁：删 `verify` 字段、改 `status` 枚举、`ooda_stage` 填 `act` —— 写 state.json 时被
+  `guard_state` 拦，CI 再判一次。`files: []` 的统一验证项照样要有日志。
+- 不许 `git push --force`（含 `+main:main` 这类 refspec）、`rm -rf /`、读 `.env`（`.env.example` 例外）、
+  管道执行远程脚本（`curl … | sh` / `wget … | bash`）。
+- **硬门禁不是处处都有**：Claude / 已信任工作区 hook 的 ZCode 会拦；DeepSeek 独立调用、
+  未信任的 ZCode、以及人手动 commit 都只有 CI 兜底。别把"有门禁"当默认前提。
 - 不许手改生成物（`.claude/`、`.zcode/`、`prompts/`）：`guard_write` 直接拒。
 - 不许改考卷区（`hooks/`、`templates/`、`agents/`、`harness.config.json`）：确需改，由人往
   `hooks/write-allowlist.txt` 加一行带到期日的放行条，并同批补测试。

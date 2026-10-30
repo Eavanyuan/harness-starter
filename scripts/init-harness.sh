@@ -2,14 +2,26 @@
 # 初始化一个新任务的状态文件。
 #
 # 用法：bash scripts/init-harness.sh <slug> [flow-tier]
-#   flow-tier: S | M | L | XL，默认 M
+#   flow-tier: S | M | L | XL，缺省取 harness.config.json 的 project.defaultFlowTier
 #
 # 一个任务一个 state 文件，是并行协作不冲突的前提。
 # 不要退回到"全仓库一个 pipeline-state.json"，两个人同时开工就会撞。
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+# 缺省档与初始信任级别取自配置，不在这里再抄一遍常量：
+# 抄一遍的后果是配置改了没人发现，而这正是"配置项空转"最常见的形态。
+cfg() {
+  node -e 'try{const c=require("./harness.config.json");console.log(String((c.project||{})[process.argv[1]]))}catch{console.log("")}' "$1"
+}
+
 SLUG="${1:?用法: bash scripts/init-harness.sh <slug> [S|M|L|XL]}"
-TIER="${2:-M}"
+TIER="${2:-$(cfg defaultFlowTier)}"
+TIER="${TIER:-M}"
+TRUST="$(cfg trustLevel)"
+TRUST="${TRUST:-L1}"
 DIR=".ai/tasks/${SLUG}"
 
 case "$TIER" in
@@ -35,7 +47,7 @@ cat >"${DIR}/state.json" <<JSON
     "flow_tier": "${TIER}",
     "risk_tier": "MEDIUM",
     "ui_scope": "NONE",
-    "trust_level": "L1"
+    "trust_level": "${TRUST}"
   },
   "stage": "intake",
   "stage_history": [],

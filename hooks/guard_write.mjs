@@ -102,9 +102,16 @@ function hit(list) {
   return (list || []).find((g) => globToRe(g).test(rel));
 }
 
-const sensitive = hit(guards.sensitive);
+// 示例文件必须先判：否则 deny 提示"改写 .env.example"，而它自己又被 sensitive 拦住，
+// 门禁就把自己给出的唯一出路堵死了（这是上一版真实存在的死循环）。
+const exempt = hit(guards.sensitiveExempt);
+const sensitive = exempt ? null : hit(guards.sensitive);
 if (sensitive) {
-  deny(`写入凭据类文件 ${rel}`, '凭据不进仓库。确需生成示例，写 .env.example 且不含真实值');
+  const example = (guards.sensitiveExempt || [])[0] || '.env.example';
+  deny(
+    `写入凭据类文件 ${rel}`,
+    `凭据不进仓库。确需示例，写 ${example.replace('**/', '')}（只放字段名与假值，不放真实凭据）`
+  );
 }
 
 const generated = hit(guards.generated);

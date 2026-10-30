@@ -1,0 +1,25 @@
+{
+  "note": "hook 接线的唯一事实源。改这里，然后 npm run build:hooks。matcher 用 Claude 的写法，ZCode 侧由生成器包成 ^(...)$ 正则。timeout 单位：秒。",
+  "timeoutMs": 60000,
+  "maxOutputBytes": 32768,
+  "events": {
+    "SessionStart": [
+      {
+        "hooks": [{ "script": "hooks/session_start.mjs", "timeout": 10 }]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          { "script": "hooks/guard_state.mjs", "timeout": 10 },
+          { "script": "hooks/guard_write.mjs", "timeout": 5 }
+        ]
+      },
+      {
+        "matcher": "Bash|Read",
+        "hooks": [{ "script": "hooks/guard_command.mjs", "timeout": 5 }]
+      }
+    ]
+  }
+}

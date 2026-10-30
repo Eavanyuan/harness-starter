@@ -1,0 +1,63 @@
+{
+  "hooks": {
+    "enabled": true,
+    "timeoutMs": 60000,
+    "maxOutputBytes": 32768,
+    "events": {
+      "SessionStart": [
+        {
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "hooks/session_start.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 10000
+            }
+          ]
+        }
+      ],
+      "PreToolUse": [
+        {
+          "matcher": "^(Write|Edit|MultiEdit|NotebookEdit)$",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "hooks/guard_state.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 10000
+            },
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "hooks/guard_write.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 5000
+            }
+          ]
+        },
+        {
+          "matcher": "^(Bash|Read)$",
+          "hooks": [
+            {
+              "type": "process",
+              "command": "node",
+              "args": [
+                "hooks/guard_command.mjs"
+              ],
+              "enabled": true,
+              "timeoutMs": 5000
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

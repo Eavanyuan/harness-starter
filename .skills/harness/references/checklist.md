@@ -1,7 +1,9 @@
 # 门禁失效点自查
 
-这 8 条全部来自本仓库与同类项目的真实故障，不是设想。
+这 14 条全部来自本仓库与同类项目的真实故障，不是设想。
 写新 hook、改判定条件、加规则之前逐条对一遍。
+
+前 8 条是"判据坏了"，后 6 条是"门禁根本没到场"——后者更危险，因为它通常还配着绿灯。
 
 ## 1. 根路径多退/少退一层
 
@@ -14,7 +16,8 @@ hook 在 `hooks/` 下，`resolve(dirname, '..')` 是仓库根；写成 `'../..'`
 
 `git diff HEAD` 在新仓库（无首个提交）会 fatal，若用 `cmd1; cmd2` 拼接，错误被吞掉，
 函数返回空数组，调用方理解为「没有改动」→ 门禁静默通过。
-本仓库的 `check-rules.py --diff` 与 `resolve-skills.mjs --diff` 都踩过。
+本仓库的 `resolve-skills.mjs --diff` 踩过：早期版本用 `git diff HEAD`，新仓库无首个提交时 fatal，
+错误被 `;` 吞掉，函数返回空数组。
 
 自查：在**没有提交**的仓库里跑一次依赖 git 的检查，看它是报错还是返回空。
 失败必须报错，不许退化成「通过」。
@@ -60,6 +63,65 @@ hook 校一套、CI 校另一套，CI 更松 → 「本地被拦、提交却能�
 
 自查：问一句「这条规则违反时的后果，是不是可以接受一次？」不能接受就必须阻断；
 实在无法可靠判定，就降级成建议并**从硬规则表里删掉**，不要留着占位。
+
+## 9. 拿非持久事实当证据（mtime 进 CI）
+
+`git` 不保存 mtime。CI 全新 checkout 后，所有文件 mtime 都是检出时刻，按路径顺序略有先后。
+于是「日志晚于源码」这条规则在 CI 上由检出顺序决定：`files: []` 的统一验证项直接
+「找不到任何已改动的源码文件」，声明了 files 的则时红时绿。
+**表现是合规 PR 被判红**——这比门禁失灵更快让人整体关掉它。
+
+自查：问「这个判据在 `git clone` 出来的目录里还成立吗」。不成立的，只能留在本地 hook，
+CI 侧换 git 可复现的事实（文件是否存在、是否入库、退出码）。本仓库的 `verify.mjs` 用
+`mode: 'local' | 'ci'` 显式区分，不靠猜。
+
+## 10. 依赖工具载荷里不存在的字段
+
+PreToolUse 的载荷由 CLI 的工具 schema 决定。TodoWrite 的入参是
+`{content, status, priority}` 且 schema **strict**：我们想要的 `id` / `audit` / `verify`
+既传不进来，模型也不会凭空生成。上一版的 `validate_todo` 就是这样：正则永远不命中，
+hook 恒放行，只在自造 payload 的测试里"有效"。
+
+自查：把门禁挂到**你自己拥有的数据**上（本仓库是 `state.json`），不要挂在第三方工具的
+输入结构上；写测试时必须用真实 schema 的样例，不能用自己编的字段。
+
+## 11. 只给一个 CLI 接线，体检还报绿
+
+hook 只写进 `.claude/settings.json`，`.zcode/` 下什么都没有，而 ZCode 不读 Claude 的 settings。
+结果 ZCode 会话里三道门全不存在，`AGENTS.md` 却写着「hook 硬拦」，`doctor` 还显示
+「✓ hook 已注册 4 个」——因为它只查了一个文件。
+
+自查：接线本身也要单一源 + 生成 + 漂移检测（本仓库：`hooks/hooks.manifest.json` →
+`build-hooks.mjs`）；`doctor` 按 CLI 逐个查，不是查到一个就算。
+还要注意各家开关不同：ZCode 必须 `hooks.enabled: true`，工作区 hook 还需人工信任。
+
+## 12. 配置键没有消费者
+
+`modelTiers`、`requireVerifyLog`、`verifyFreshnessHours`、`trustLevel`、`defaultFlowTier`、
+`srcGlob` 曾经全是空转：文档拿它们当承诺，代码里没有任何引用。
+这比"没有这个功能"更糟——它让人以为已经配了。
+
+自查：`doctor` 里有「配置键均有消费者」一项，键名必须出现在 `hooks/` 或 `scripts/` 的源码里。
+新增配置键时同时给出消费者，否则不要写进配置。
+
+## 13. 门禁堵死自己给的出路
+
+`guard_command` 拦住 `.env` 并提示「改用 `.env.example`」，而 `guard_write` 的
+`**/.env.*` 又把 `.env.example` 一起拦了。两道门互相打脸，用户按提示操作永远过不去。
+同类问题：自救提示里写了不存在的路径（`.claude/hooks/allowlist.txt`，真实路径是
+`hooks/allowlist.txt`）。
+
+自查：每条 deny 提示里的"该怎么做"，必须有对应**正向测试**证明它真的能过。
+提示文案里的路径要能被 `grep` 验证存在。
+
+## 14. 用黑名单挡命令，只挡了教科书写法
+
+`rm -rf /` 被拦，`rm -fr /`、`rm -r -f /` 放行；`git push --force` 被拦，
+`git push origin +main:main` 放行；`curl … | sh` 被拦，`wget -qO- … | bash` 放行。
+黑名单的失效方式是把"等价写法"漏在外面。
+
+自查：每条规则写完后，先自己想三种等价变形（反序、分离、别名）各测一遍；
+`test/hooks.test.sh` 里每个绕过形态一条用例。
 
 ---
 

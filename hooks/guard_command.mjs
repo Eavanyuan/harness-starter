@@ -77,7 +77,7 @@ if (tool === 'Bash') {
     if (re.test(cmd)) {
       deny(
         `命中高危命令规则 /${pattern}/`,
-        '改用 --force-with-lease 之类的可回滚形式；确需执行请写入 .claude/hooks/allowlist.txt 并注明原因与到期日'
+        '改用 --force-with-lease 之类的可回滚形式；确需执行请写入 hooks/allowlist.txt（<命令前缀> | <原因> | <YYYY-MM-DD>），到期自动失效'
       );
     }
   }

@@ -10,6 +10,7 @@ applies_to:
   - "templates/**"
   - "harness.config.json"
   - ".claude/settings.json"
+  - ".zcode/config.json"
   - ".github/workflows/**"
 references:
   - references/checklist.md
@@ -25,16 +26,17 @@ references:
 
 | # | 读什么 | 为什么非读不可 |
 |---|---|---|
-| 0.1 | `references/checklist.md` | 我们自己在门禁上踩过的 8 个失效点，其中 3 个曾让它静默放行 |
-| 0.2 | 本次要改的 hook/脚本全文 + 调它的地方（`settings.json` / `package.json` / CI） | 门禁的通路只有"被注册"这一条，改完没注册等于没改 |
+| 0.1 | `references/checklist.md` | 我们自己在门禁上踩过的 14 个失效点，其中 6 个是"门禁根本没到场" |
+| 0.2 | 本次要改的 hook/脚本全文 + 调它的地方（`hooks/hooks.manifest.json` / `package.json` / CI） | 门禁的通路只有"被接线"这一条，改完没接线等于没改 |
 | 0.3 | `test/` 下对应测试文件 | 先看现有用例覆盖了哪条路径，避免只加"拦得住"不加"不误拦" |
 
 前置自检（全 ✅ 才允许 Edit / Write）：
 
 - [ ] 能说出本次改动会让哪一类行为从「放行」变成「拦截」，或反之
-- [ ] 已确认注册点：hook 在 `.claude/settings.json`、脚本在 `package.json` 与 CI
+- [ ] 已确认接线点：hook 进 `hooks/hooks.manifest.json`（再由 `build:hooks` 生成两套 CLI 配置），脚本进 `package.json` 与 CI
 - [ ] 知道要新增哪几个测试场景，其中至少一个**正向**（必须放行）用例
 - [ ] 改的是判定逻辑还是阈值？阈值优先改 `harness.config.json`，不要改代码
+- [ ] 新增的判定依赖的事实，在 `git clone` 出来的目录里还成立吗？不成立就只能留在本地口径
 
 ## 分流
 
@@ -50,11 +52,13 @@ references:
 | # | 规则 | 怎么查 |
 |---|---|---|
 | H1 | 改 `hooks/**` 或 `scripts/**` 必须同批新增测试场景，没有测试的门禁改动一律不合 | `git diff --name-only HEAD \| rg '^(hooks\|scripts)/'` 非空时，`git diff --name-only HEAD \| rg -c '^test/'` 必须 > 0 |
-| H2 | 生成物禁止手改，只能改源 + 重建 | `npm run check:agents`（漂移即失败） |
+| H2 | 生成物禁止手改，只能改源 + 重建 | `npm run check:agents && npm run check:hooks`（漂移即失败） |
 | H3 | 解析失败必须 fail-closed，不许 `return 0` 伪装放行 | `rg -n "=== null" hooks/*.mjs` 逐处确认后面跟的是 `deny` 而不是 `exit(0)` |
 | H4 | 黑名单/白名单/受保护区只写在 `harness.config.json`，代码里不出现字面量 | `rg -n "'rm -rf\|--no-verify\|\.claude/agents/\*\*" hooks/*.mjs` 应无输出 |
 | H5 | 每个 skill 的 Stage 0 ≤ 5 项、单文件 ≤ 200 行、深度 ≤ 2 层 | `npm run check:skills` |
 | H6 | 新增拦截规则时，同一批必须给出「如何合法绕过」，否则第一次误报就会被整体关掉 | 看 PR 描述里有没有写 allowlist 用法 |
+| H7 | 新增 hook 必须同时接进两个 CLI（ZCode 需 `hooks.enabled: true`），只接一个按"没接"计 | `bash test/wiring.test.sh` |
+| H8 | 配置里新增的功能键必须有消费者，否则 doctor 报红 | `npm run doctor` 的「配置键均有消费者」一项 |
 
 ## 交付
 

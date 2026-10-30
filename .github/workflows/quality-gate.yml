@@ -18,8 +18,16 @@ jobs:
           node-version: 20
 
       # 先确认门禁本身没坏，再让门禁去判别人。
-      - name: 门禁自测（证据链 / 高危命令）
+      - name: 门禁自测（state 写入门禁 / 高危命令 / 敏感文件）
         run: bash test/hooks.test.sh
+
+      # 回归：干净检出 + 合规证据必须通过。CI 上判 mtime 会误杀合规 PR。
+      - name: 门禁自测（证据链 CI 口径）
+        run: bash test/evidence.test.sh
+
+      # 回归：hook 必须真的接在两个 CLI 上，不是"看起来注册了"。
+      - name: 门禁自测（hook 接线）
+        run: bash test/wiring.test.sh
 
       - name: 门禁自测（写入边界）
         run: bash test/writes.test.sh
@@ -36,6 +44,11 @@ jobs:
       - name: Agent 定义与生成物一致
         run: node scripts/build-agents.mjs --check
 
+      - name: hook 接线与 manifest 一致
+        run: node scripts/build-hooks.mjs --check
+
+      # CI 口径：只认 git 里可复现的事实（日志入库、exit_code=0、声明文件存在）。
+      # 新鲜度是本地 hook 的事 —— git 不保存 mtime，在这里判只会误杀。
       - name: 状态与证据链校验
         run: node scripts/ci-verify.mjs
 
@@ -52,7 +65,8 @@ jobs:
             exit 0
           fi
           echo "$FILES"
-          if echo "$FILES" | xargs grep -nE 'rm -rf /[^a-zA-Z]|git push (--force|-f)\b|--no-verify|curl[^|]*\| *(ba)?sh'; then
+          if echo "$FILES" | xargs grep -nE \
+            'rm[[:space:]]+-[A-Za-z]*(rf|fr)[A-Za-z]*[[:space:]]+/[^a-zA-Z]|git push (--force|-f)\b|git push[^|]*[[:space:]]\+[^[:space:]]+|--no-verify|(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh'; then
             echo "::error::检测到可疑命令，请人工确认后改用可回滚形式"
             exit 1
           fi

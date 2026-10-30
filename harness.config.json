@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "project": {
     "name": "harness-starter",
     "defaultFlowTier": "M",
@@ -66,27 +66,36 @@
       "enabled": true,
       "mode": "subagent",
       "agentsDir": ".claude/agents",
-      "commandsDir": ".claude/commands"
+      "commandsDir": ".claude/commands",
+      "hooksFile": ".claude/settings.json",
+      "hooksNote": "Claude Code 读 .claude/settings.json，格式 {hooks:{事件:[{matcher,hooks:[{type:'command',command,timeout}]}]}}"
     },
     "zcode": {
       "enabled": true,
       "mode": "subagent",
       "agentsDir": ".zcode/agents",
-      "commandsDir": ".zcode/commands"
+      "commandsDir": ".zcode/commands",
+      "hooksFile": ".zcode/config.json",
+      "hooksNote": "ZCode 读 <项目>/.zcode/config.json 或 ~/.zcode/cli/config.json，必须 hooks.enabled=true；事件在 hooks.events 下，钩子形态为 {type:'process',command,args}。工作区 hook 属于会执行本地代码的配置，首次运行需在 ZCode 里确认信任，未确认前只有 CI 兜底。"
     },
     "deepseek": {
       "enabled": true,
       "mode": "prompt-only",
       "agentsDir": "prompts/agents",
       "commandsDir": "prompts/commands",
-      "notes": "DeepSeek 无 subagent 能力，降级为可复制的独立 prompt。接法二选一：① ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic claude，此时直接复用 claude 产物；② 独立 CLI/纯 API，用 prompts/ 下文件人工或脚本拼进上下文。"
+      "hooksFile": null,
+      "notes": "DeepSeek 无 subagent 能力，降级为可复制的独立 prompt。接法二选一：① ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic claude，此时直接复用 claude 产物（含 hook）；② 独立 CLI/纯 API，用 prompts/ 下文件人工或脚本拼进上下文——此路径**没有任何 hook**，只有 CI 兜底。"
     }
+  },
+  "hooks": {
+    "manifest": "hooks/hooks.manifest.json",
+    "note": "hook 接线只有这一份源，build-hooks.mjs 生成各 CLI 的配置文件。手改 .claude/settings.json / .zcode/config.json 会在下次 build 被覆盖（guard_write 直接拒）。"
   },
   "modelTiers": [
     {
       "id": "strong",
       "label": "高能力模型",
-      "agents": ["claude-*", "deepseek-v4*"],
+      "agents": ["claude-*", "deepseek-v4*", "glm-4.6*"],
       "scaffold": "light",
       "note": "豁免流程脚手架（逐 TODO 提醒、分级提示），但技能加载与 verify 证据链不豁免"
     },
@@ -102,19 +111,22 @@
     "requireVerifyLog": true,
     "verifyFreshnessHours": 72,
     "blockedCommands": [
-      "rm\\s+-rf\\s+/(?!\\w)",
-      "rm\\s+-rf\\s+~",
+      "rm\\s+-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
+      "rm\\s+-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
+      "rm\\s+(-[A-Za-z]+\\s+){2,}(/|~|\\$HOME)(?!\\w)",
+      "git\\s+push(?!\\s+--force-with-lease)[^|;&]*?\\s\\+\\S+",
       "git\\s+push\\s+--force(?!-with-lease)",
       "git\\s+push\\s+-f\\b",
       "--no-verify",
+      "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:ba|z|da)?sh\\b",
+      "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:python|perl|node)\\b",
       "DROP\\s+(TABLE|DATABASE)",
       "TRUNCATE\\s+",
-      "kubectl\\s+delete",
-      "curl\\s+[^|]*\\|\\s*(ba)?sh"
+      "kubectl\\s+delete"
     ],
     "sensitiveRead": [
       "\\.env$",
-      "\\.env\\.",
+      "\\.env\\.(?!example$)",
       "\\.pem$",
       "\\.key$",
       "id_rsa",
@@ -122,12 +134,14 @@
       "\\.p12$"
     ],
     "writeGuards": {
-      "note": "三类写入拦截，判据是路径而非 agent 身份——CLI 的 PreToolUse 载荷里没有 agent 名，硬做身份校验只会变成自欺。generated 手改必被覆盖；protected 是考卷区，改它需人工放行；sensitive 一律拒。",
+      "note": "三类写入拦截，判据是路径而非 agent 身份——CLI 的 PreToolUse 载荷里没有 agent 名，硬做身份校验只会变成自欺。generated 手改必被覆盖；protected 是考卷区，改它需人工放行；sensitive 一律拒（Exempt 里的示例文件除外，否则门禁会把唯一合法的出路也堵死）。",
       "generated": [
         ".claude/agents/**",
         ".claude/commands/**",
+        ".claude/settings.json",
         ".zcode/agents/**",
         ".zcode/commands/**",
+        ".zcode/config.json",
         "prompts/agents/**",
         "prompts/commands/**",
         "prompts/INDEX.md",
@@ -140,8 +154,7 @@
         "templates/**",
         ".github/**",
         ".git/**",
-        "package.json",
-        ".claude/settings.json"
+        "package.json"
       ],
       "sensitive": [
         "**/.env",
@@ -150,7 +163,8 @@
         "**/*.key",
         "**/id_rsa*",
         "**/credentials*"
-      ]
+      ],
+      "sensitiveExempt": ["**/.env.example", "**/.env.sample", "**/.env.template"]
     }
   }
 }

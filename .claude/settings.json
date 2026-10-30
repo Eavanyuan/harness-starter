@@ -3,27 +3,38 @@
     "SessionStart": [
       {
         "hooks": [
-          { "type": "command", "command": "node hooks/session_start.mjs", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "node hooks/session_start.mjs",
+            "timeout": 10
+          }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "TodoWrite",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "node hooks/validate_todo.mjs", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "node hooks/guard_state.mjs",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node hooks/guard_write.mjs",
+            "timeout": 5
+          }
         ]
       },
       {
         "matcher": "Bash|Read",
         "hooks": [
-          { "type": "command", "command": "node hooks/guard_command.mjs", "timeout": 5 }
-        ]
-      },
-      {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
-        "hooks": [
-          { "type": "command", "command": "node hooks/guard_write.mjs", "timeout": 5 }
+          {
+            "type": "command",
+            "command": "node hooks/guard_command.mjs",
+            "timeout": 5
+          }
         ]
       }
     ]

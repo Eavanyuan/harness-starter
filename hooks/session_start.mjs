@@ -3,16 +3,47 @@
  * SessionStart 提醒 —— fail-open。
  *
  * 上下文压缩或换人接手后，最容易丢的不是代码，而是"现在推进到哪了"。
- * 这里只输出一行摘要，不阻塞、不报错。没有 state 就直接静默退出。
+ * 这里输出两行摘要，不阻塞、不报错：
+ *   1. 当前模型落在哪个 scaffold 档（modelTiers 的真实消费者）
+ *   2. 进行中的任务与卡点数
+ *
+ * 为什么要打印 scaffold 档：modelTiers 长期没有任何代码读它，文档却在宣传"定义分层"。
+ * 配置不生效比配置不存在更糟——它让"强模型豁免脚手架"变成一句口头承诺。
+ * 现在每次会话把档位摆出来，模型和人看到的是同一句话。
  */
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { REPO_ROOT, loadConfig } from './lib/verify.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const TASKS = join(ROOT, '.ai/tasks');
+const TASKS = join(REPO_ROOT, '.ai/tasks');
+
+/** `claude-*` 这类前缀通配，够用即可，不引入 glob 库。 */
+function matches(pattern, value) {
+  if (!pattern || !value) return false;
+  const re = new RegExp('^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$');
+  return re.test(value);
+}
+
+function scaffoldLine() {
+  const config = loadConfig(REPO_ROOT);
+  if (!config) return null;
+  const model = process.env.HARNESS_MODEL || process.env.ZCODE_MODEL || process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL || '';
+  const tiers = config.modelTiers || [];
+  if (!tiers.length) return null;
+
+  const tier = tiers.find((t) => (t.agents || []).some((p) => matches(p, model)));
+  if (!model) {
+    const fallback = tiers.find((t) => t.scaffold === 'full') || tiers[0];
+    return `[harness] 未识别模型（设 HARNESS_MODEL 可判档）→ scaffold=${fallback.scaffold}`;
+  }
+  if (!tier) return `[harness] 模型 ${model} 不在任何 modelTiers 里 → 按常规档 scaffold=full`;
+  return `[harness] 模型 ${model} → scaffold=${tier.scaffold}（${tier.label || tier.id}）`;
+}
 
 try {
+  const line = scaffoldLine();
+  if (line) console.log(line);
+
   if (!existsSync(TASKS)) process.exit(0);
 
   const states = [];

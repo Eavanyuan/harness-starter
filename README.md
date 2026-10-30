@@ -10,15 +10,17 @@
 ## 5 分钟上手
 
 ```bash
-npm run doctor              # 先体检：首次运行会报 "stacks.*.dir 不存在"，那是要你改的占位值
+npm run doctor              # 先体检：模板态下会提示 stacks.*.dir 是占位值（不阻塞，退出码 0）
 npm run build:agents        # 从 agents/ 生成三套 CLI 产物
+npm run build:hooks         # 从 hooks/hooks.manifest.json 生成两套 CLI 的 hook 接线
 npm run check:skills        # 确认 .skills/ 结构完整、引用不断
-npm run gate                # 门禁 + 三套自测（hooks / 写入边界 / 产物契约）
+npm run gate                # 门禁 + 六套自测
 bash scripts/init-harness.sh my-feature M   # 建一个任务状态文件
 ```
 
-`doctor` 报红是预期行为——它检查的是"配了没有"，`gate` 检查的是"配好之后对不对"。
-改完 `harness.config.json` 的 `stacks` 再看它变绿。
+`doctor` 在模板态只提醒不报红（`project.name` 还是 `harness-starter` 时算模板态）；
+把它改成真实项目名、`stacks` 指向真实目录之后，占位值就会变成阻塞问题。
+`gate` 检查的是"配好之后对不对"——那是必须全绿的。
 
 然后任选一个入口：
 
@@ -32,14 +34,23 @@ DeepSeek 或无 subagent 的 CLI：打开 `prompts/agents/orchestrator.md` 贴�
 
 ## 三种 CLI 怎么接
 
-| CLI | 形态 | 入口 | 是否需要额外动作 |
-|---|---|---|---|
-| Claude Code | subagent | `.claude/agents/*.md`、`.claude/commands/*.md` | 无，clone 即用 |
-| ZCode | subagent | `.zcode/agents/*.md` | 无，格式与 Claude Code 相同 |
-| DeepSeek（Anthropic 兼容端点） | subagent | 同上（复用 `.claude/`） | `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` |
-| DeepSeek（独立 CLI / 纯 API） | prompt-only | `prompts/agents/*.md` + `AGENTS.md` | 无 subagent，按 INDEX 手工取用 |
+| CLI | 形态 | Agent 入口 | Hook 接线 | 还需要做什么 |
+|---|---|---|---|---|
+| Claude Code | subagent | `.claude/agents/*.md`、`.claude/commands/*.md` | `.claude/settings.json`（生成） | 无，clone 即用 |
+| ZCode | subagent | `.zcode/agents/*.md` | `.zcode/config.json`（生成，`hooks.enabled: true`） | 首次运行需在 ZCode 里**确认信任工作区 hook**；未确认前门禁不生效 |
+| DeepSeek（Anthropic 兼容端点） | subagent | 同上（复用 `.claude/`） | 复用 `.claude/settings.json` | `ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic` |
+| DeepSeek（独立 CLI / 纯 API） | prompt-only | `prompts/agents/*.md` + `AGENTS.md` | **无**（该形态没有 hook 机制） | 只有 CI 兜底，本地没有任何硬门禁 |
 
-关键点：**以上四行不需要维护四份内容。** 全部从 `agents/*.agent.md` 生成，改一处，四处同步。
+关键点：**以上四行不需要维护四份内容。** Agent 从 `agents/*.agent.md` 生成，hook 接线从
+`hooks/hooks.manifest.json` 生成，改一处，各处同步；`--check` 进 CI 防漂移。
+
+两处必须知道的差异（不知道就会误以为有门禁）：
+
+- ZCode 执行工作区 hook 属于"执行本地代码"，默认不信任。先在 ZCode 设置里确认，否则 hook 静默不跑；
+  这种状态下只有 CI 兜底，`npm run doctor` 能看出接线是否存在，但看不出"人有没有点信任"。
+- DeepSeek 独立调用那条路径**没有任何 hook**。所以 `.ai/rules/verification.md` 的纪律靠 CI + 人审兜底，
+  不要在文档里写"hook 硬拦"——那是只有 Claude / ZCode 且已信任时才成立的事实。
+
 
 ---
 
@@ -54,25 +65,30 @@ AGENTS.md                ← 常驻规则（所有 CLI 都读）
   backend/SKILL.md       ←   Java：Stage 0 / 分流 / 8 条硬规则 / 交付
   frontend/SKILL.md      ←   Vue：7 条硬规则
   e2e/SKILL.md           ←   Playwright：6 条硬规则
-  harness/SKILL.md       ←   门禁与生成器自身：6 条硬规则 + 8 个已知失效点
+  harness/SKILL.md       ←   门禁与生成器自身：8 条硬规则 + 14 个已知失效点
   SKILL.template.md      ←   加新栈时复制它
   references/            ←   长表（反例、检测命令、场景），SKILL.md ≤ 200 行，超了就拆到这里
 
 .claude/  .zcode/  prompts/     ← 生成物，不要手改
-scripts/build-agents.mjs        ← 生成器；`--check` 即漂移检测，`--prune` 清理孤儿文件
-scripts/doctor.mjs              ← 配置体检：占位值、未注册的 hook、僵尸任务
+scripts/build-agents.mjs        ← Agent 生成器；`--check` 即漂移检测，`--prune` 清理孤儿文件
+scripts/build-hooks.mjs         ← Hook 接线生成器：一份 manifest → .claude/settings.json + .zcode/config.json
+scripts/doctor.mjs              ← 配置体检：占位值、接线缺口、空转的配置键、僵尸任务
 
 hooks/
-  lib/verify.mjs         ← 校验核心，hook 与 CI 共用同一份
-  validate_todo.mjs      ← 拦住"没证据就宣布完成"
+  hooks.manifest.json    ← hook 接线的唯一源（哪个事件、匹配什么、跑哪个脚本）
+  lib/verify.mjs         ← 校验核心，hook 与 CI 共用；按 local / ci 两种口径判
+  guard_state.mjs        ← 拦住"把 state.json 写成没证据的完成态"
   guard_command.mjs      ← 拦住高危命令与敏感文件读取
   guard_write.mjs        ← 拦住手改生成物、改考卷区、写凭据
-  session_start.mjs      ← 换人接手时注入当前进度
+  session_start.mjs      ← 换人接手时注入当前进度 + 当前模型档位
   allowlist.txt          ← 命令例外（带到期日）
   write-allowlist.txt    ← 写入受保护区的例外（带到期日）
-test/hooks.test.sh       ← 证据链 / 高危命令自测，10 个场景
-test/writes.test.sh      ← 写入边界自测，12 个场景
-test/agents.test.sh      ← 产物契约自测，14 个断言
+test/hooks.test.sh       ← state 门禁 / 高危命令 / 敏感文件，25 个场景
+test/evidence.test.sh    ← 证据链口径，9 个场景（含"干净检出不得误杀"回归）
+test/wiring.test.sh      ← hook 接线，12 个断言（含"ZCode 侧必须有接线"）
+test/writes.test.sh      ← 写入边界，15 个场景
+test/agents.test.sh      ← 产物契约，14 个断言
+test/skills.test.sh      ← skill 校验器能否拦住，17 个断言
 
 .ai/
   rules/verification.md  ← L0 规则，永不裁剪
@@ -105,22 +121,32 @@ docs/                    ← 工件（需求、规格、ADR）
 每个箭头处的门禁**要么是文件检查、要么是命令退出码、要么是 mtime 比较**，
 没有一条是"模型说它做完了"。
 
+mtime 只在**本地 hook** 里比：开发者工作树里它是真事实。CI 跑在全新 checkout 上，
+git 不保存 mtime，检出后所有文件同一时刻——所以 CI 只判 git 里可复现的事实
+（日志是否入库、exit_code 是否 0、声明文件是否存在）。假装 CI 也能判新鲜度，
+结果就是把合规 PR 判红，然后整套门禁被人关掉。
+
 ---
 
 ## 常用命令
 
 ```bash
-npm run doctor           # 配置体检：占位值 / 未注册 hook / 僵尸任务
-npm run build:agents     # 生成三套产物
+npm run doctor           # 配置体检：占位值 / 接线缺口 / 空转配置键 / 僵尸任务
+npm run build:agents     # 生成三套 Agent 产物
+npm run build:hooks      # 生成两套 hook 接线
 npm run check:agents     # 校验产物与源一致（CI 同款）
+npm run check:hooks      # 校验接线与 manifest 一致（CI 同款）
 npm run check:skills     # 校验 .skills 结构 / 断链 / 行数 / 级联
 npm run resolve:skills -- --diff   # 本次改动该加载哪些 skill
-npm run verify:state     # 校验所有 state 的证据链
-npm run test:hooks       # 证据链 / 高危命令自测
-npm run test:writes      # 写入边界自测
-npm run test:agents      # 产物契约自测
+npm run verify:state     # 证据链（CI 口径：入库 + exit_code + 声明文件存在）
+npm run verify:state:local # 证据链（本地口径：额外判新鲜度与 72h 时效）
+npm run test:hooks       # state 门禁 / 高危命令 / 敏感文件
+npm run test:evidence    # 证据链口径（含干净检出回归）
+npm run test:wiring      # hook 接线（两个 CLI 都要有）
+npm run test:writes      # 写入边界
+npm run test:agents      # 产物契约
 npm run test:skills      # 校验器自测（确认它真能拦住）
-npm run gate             # 上面七个检查一起跑
+npm run gate             # 上面全部一起跑
 
 bash scripts/verify-run.sh T1 -- mvn -q test -Dtest=FooTest
 bash scripts/init-harness.sh <slug> [S|M|L|XL]
@@ -128,7 +154,7 @@ bash scripts/init-harness.sh <slug> [S|M|L|XL]
 
 ---
 
-## 五条设计取舍
+## 六条设计取舍
 
 **1. 单一源 + 生成，而不是三份手写。**
 3 个 CLI × 11 个 agent = 33 份文件。手写的结局是三个月后三套行为不一致，
@@ -156,6 +182,14 @@ bash scripts/init-harness.sh <slug> [S|M|L|XL]
 
 真正能收紧某个 agent 权限的只有一条：改 `capabilities`，让工具集里干脆没有那个工具。
 文字禁令在压力下必然失效，裁剪能力不会。
+
+**6. 判不了的就不假装判得了（本地口径 ≠ CI 口径）。**
+上一版在 CI 侧也用 mtime 判证据新鲜度。git 不保存 mtime，全新 checkout 上所有文件同一时刻，
+于是一份完全合规的证据（真日志、exit_code=0、审计四项齐备）在 PR 里必然判红——
+门禁把好人拦在门外，比不设门禁更快被人整体关掉。
+现在两边共用同一份校验库，但**口径分开**：本地判"日志晚于源码 + 72h 内"，
+CI 只判 git 里可复现的事实（日志入库、exit_code=0、声明文件存在）。
+判不了的东西写进文档让人审兜底，而不是编一条只在本地成立的规则，然后在 CI 上爆炸。
 
 ---
 
