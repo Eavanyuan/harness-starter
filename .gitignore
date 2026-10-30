@@ -1,0 +1,11 @@
+# 机器本地状态，提交即冲突
+.ai/locks/
+
+# 一次性线框，评审结论已进 FS
+prototypes/*.html
+
+node_modules/
+.DS_Store
+
+# 本地临时验证输出（正式证据在 .ai/verify，要入库）
+.ai/verify/*.tmp

@@ -1,0 +1,24 @@
+{
+  "name": "harness-starter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI Coding Harness 脚手架：单一源生成 claude / zcode / deepseek 三套 Agent 产物",
+  "scripts": {
+    "setup": "bash scripts/init-harness.sh",
+    "build:agents": "node scripts/build-agents.mjs",
+    "check:agents": "node scripts/build-agents.mjs --check",
+    "check:skills": "node scripts/check-skills.mjs",
+    "resolve:skills": "node scripts/resolve-skills.mjs",
+    "verify:state": "node scripts/ci-verify.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "test:hooks": "bash test/hooks.test.sh",
+    "test:writes": "bash test/writes.test.sh",
+    "test:agents": "bash test/agents.test.sh",
+    "test:skills": "bash test/skills.test.sh",
+    "gate": "npm run check:skills && npm run check:agents && npm run verify:state && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

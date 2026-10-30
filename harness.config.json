@@ -1,0 +1,156 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "harness-starter",
+    "defaultFlowTier": "M",
+    "trustLevel": "L1"
+  },
+  "stacks": {
+    "backend": {
+      "dir": "backend",
+      "srcGlob": "**/*.java",
+      "lint": "mvn -q -DskipTests compile",
+      "test": "mvn -q test",
+      "testOne": "mvn -q test -Dtest=<name>"
+    },
+    "frontend": {
+      "dir": "frontend",
+      "srcGlob": "**/*.{ts,vue}",
+      "lint": "pnpm run lint",
+      "test": "pnpm run test:unit",
+      "testOne": "pnpm vitest run <file>"
+    }
+  },
+  "skills": {
+    "dir": ".skills",
+    "maxLines": 200,
+    "requiredKeys": ["name", "stack", "version", "stage0"],
+    "requiredSections": ["## Stage 0", "## 硬规则", "## 交付"],
+    "extraStacks": ["harness"],
+    "note": "skill 按 applies_to 的文件 glob 选择，不是按 stack 一对一：同一 stack 可以有多份（如 frontend 与 e2e 都服务 frontend）。命中多份则全部加载。extraStacks 是技术栈之外的受管区域（harness = 门禁与生成器自身），不算 stacks。"
+  },
+  "capabilityMap": {
+    "fs.read": {
+      "claude": ["Read"],
+      "zcode": ["Read"],
+      "deepseek": []
+    },
+    "fs.search": {
+      "claude": ["Grep", "Glob"],
+      "zcode": ["Grep", "Glob"],
+      "deepseek": []
+    },
+    "fs.write": {
+      "claude": ["Write"],
+      "zcode": ["Write"],
+      "deepseek": []
+    },
+    "fs.edit": {
+      "claude": ["Edit"],
+      "zcode": ["Edit"],
+      "deepseek": []
+    },
+    "shell.exec": {
+      "claude": ["Bash"],
+      "zcode": ["Bash"],
+      "deepseek": []
+    },
+    "agent.spawn": {
+      "claude": ["Agent"],
+      "zcode": ["Agent"],
+      "deepseek": []
+    }
+  },
+  "targets": {
+    "claude": {
+      "enabled": true,
+      "mode": "subagent",
+      "agentsDir": ".claude/agents",
+      "commandsDir": ".claude/commands"
+    },
+    "zcode": {
+      "enabled": true,
+      "mode": "subagent",
+      "agentsDir": ".zcode/agents",
+      "commandsDir": ".zcode/commands"
+    },
+    "deepseek": {
+      "enabled": true,
+      "mode": "prompt-only",
+      "agentsDir": "prompts/agents",
+      "commandsDir": "prompts/commands",
+      "notes": "DeepSeek 无 subagent 能力，降级为可复制的独立 prompt。接法二选一：① ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic claude，此时直接复用 claude 产物；② 独立 CLI/纯 API，用 prompts/ 下文件人工或脚本拼进上下文。"
+    }
+  },
+  "modelTiers": [
+    {
+      "id": "strong",
+      "label": "高能力模型",
+      "agents": ["claude-*", "deepseek-v4*"],
+      "scaffold": "light",
+      "note": "豁免流程脚手架（逐 TODO 提醒、分级提示），但技能加载与 verify 证据链不豁免"
+    },
+    {
+      "id": "standard",
+      "label": "常规模型",
+      "agents": ["*"],
+      "scaffold": "full",
+      "note": "全量脚手架"
+    }
+  ],
+  "gates": {
+    "requireVerifyLog": true,
+    "verifyFreshnessHours": 72,
+    "blockedCommands": [
+      "rm\\s+-rf\\s+/(?!\\w)",
+      "rm\\s+-rf\\s+~",
+      "git\\s+push\\s+--force(?!-with-lease)",
+      "git\\s+push\\s+-f\\b",
+      "--no-verify",
+      "DROP\\s+(TABLE|DATABASE)",
+      "TRUNCATE\\s+",
+      "kubectl\\s+delete",
+      "curl\\s+[^|]*\\|\\s*(ba)?sh"
+    ],
+    "sensitiveRead": [
+      "\\.env$",
+      "\\.env\\.",
+      "\\.pem$",
+      "\\.key$",
+      "id_rsa",
+      "credentials",
+      "\\.p12$"
+    ],
+    "writeGuards": {
+      "note": "三类写入拦截，判据是路径而非 agent 身份——CLI 的 PreToolUse 载荷里没有 agent 名，硬做身份校验只会变成自欺。generated 手改必被覆盖；protected 是考卷区，改它需人工放行；sensitive 一律拒。",
+      "generated": [
+        ".claude/agents/**",
+        ".claude/commands/**",
+        ".zcode/agents/**",
+        ".zcode/commands/**",
+        "prompts/agents/**",
+        "prompts/commands/**",
+        "prompts/INDEX.md",
+        ".ai/writes.json"
+      ],
+      "protected": [
+        "hooks/**",
+        "harness.config.json",
+        "agents/**",
+        "templates/**",
+        ".github/**",
+        ".git/**",
+        "package.json",
+        ".claude/settings.json"
+      ],
+      "sensitive": [
+        "**/.env",
+        "**/.env.*",
+        "**/*.pem",
+        "**/*.key",
+        "**/id_rsa*",
+        "**/credentials*"
+      ]
+    }
+  }
+}

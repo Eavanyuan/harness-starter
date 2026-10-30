@@ -1,0 +1,167 @@
+{
+  "note": "由 scripts/build-agents.mjs 从 agents/*.agent.md 的 writes 字段生成，勿手改。写 agents/ 后跑 npm run build:agents。",
+  "agents": {
+    "code-reviewer": {
+      "title": "代码审查",
+      "writes": [
+        "docs/04-testing/**",
+        ".ai/review/**"
+      ],
+      "stops": [
+        "approve 权在人"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "shell.exec",
+        "fs.write"
+      ]
+    },
+    "coder": {
+      "title": "编码",
+      "writes": [
+        "backend/**",
+        "frontend/**",
+        ".ai/verify/**"
+      ],
+      "stops": [
+        "三例外",
+        "契约冲突"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.edit",
+        "fs.write",
+        "shell.exec"
+      ]
+    },
+    "feature-decomposer": {
+      "title": "功能拆分",
+      "writes": [
+        "docs/02-features/**",
+        ".ai/tasks/**"
+      ],
+      "stops": [],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "interaction-prototyper": {
+      "title": "交互原型",
+      "writes": [
+        "prototypes/**",
+        "docs/02-features/**"
+      ],
+      "stops": [
+        "HIGH 级矩阵确认"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "orchestrator": {
+      "title": "编排器",
+      "writes": [
+        ".ai/tasks/**"
+      ],
+      "stops": [
+        "blocker 路由"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.write",
+        "fs.search",
+        "agent.spawn"
+      ]
+    },
+    "requirement-analyst": {
+      "title": "需求分析",
+      "writes": [
+        "docs/01-requirements/**"
+      ],
+      "stops": [
+        "业务取舍"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "retro-ledger": {
+      "title": "复盘沉淀",
+      "writes": [
+        "retro/**"
+      ],
+      "stops": [
+        "沉淀确认"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.write",
+        "fs.search"
+      ]
+    },
+    "spec-reviewer": {
+      "title": "规格审核",
+      "writes": [
+        "docs/02-features/**"
+      ],
+      "stops": [],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "spec-writer": {
+      "title": "规格撰写",
+      "writes": [
+        "docs/02-features/**"
+      ],
+      "stops": [
+        "破坏性变更"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "tech-selector": {
+      "title": "技术选型 / ADR",
+      "writes": [
+        "docs/06-reference/adr/**"
+      ],
+      "stops": [
+        "架构级 / 破坏兼容 / 数据迁移"
+      ],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.write"
+      ]
+    },
+    "test-engineer": {
+      "title": "测试工程",
+      "writes": [
+        "**/*.spec.*",
+        "**/*Test.java",
+        ".ai/verify/**"
+      ],
+      "stops": [],
+      "capabilities": [
+        "fs.read",
+        "fs.search",
+        "fs.edit",
+        "fs.write",
+        "shell.exec"
+      ]
+    }
+  }
+}
