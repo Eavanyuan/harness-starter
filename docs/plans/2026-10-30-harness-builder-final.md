@@ -459,6 +459,6 @@ evidence 组 1 条红（旧链 history 被拦）。再改判据，两组全绿�
   全部接入 gate；按 H1 每个新判据同批补用例
 - **文档**：README（支持范围、运行时前提、license、只读声明、release 约定、三个明确不做）、
   `guides/` 随模板安装（引用它的 orchestrator / skills 才不会是死链）
-- **失效点自查**：每个新判据对一遍 `checklist.md`（现 34 条）。本方案已预对——
+- **失效点自查**：每个新判据对一遍 `checklist.md`（现 36 条，§35 阶段次序 / §36 判据的洞表现为绿灯）。本方案已预对——
   flows 词表（§15 枚举闭合）、agent 清单（§15）、writes 声明（§16）、
   生成物归属（§18：靠声明不靠扫描）、ledger 写入失败不影响判定（fail-open 边界，与 hook 主体 fail-closed 区分）
