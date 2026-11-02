@@ -184,7 +184,7 @@
     {
       "id": "V1",
       "stack": "harness",
-      "status": "doing",
+      "status": "completed",
       "ooda_stage": "audit",
       "text": "统一验证：仓内全量门禁（npm run gate）",
       "files": [
