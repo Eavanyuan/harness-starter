@@ -6,6 +6,8 @@
  * 没有抓手，最后只能凭印象点批准。于是定稿看起来发生了，缺的东西照样缺。
  *
  * 这里只做**机器可判**的部分，判据都是"文档内部的客观事实"：
+ *   0. 登记的位置能读成路径、且文件真的在（中文/空格文件名照样检；读不出路径判红，
+ *      不静默放行——放行一份没打开过的文档，等于替它担保）
  *   1. 模板占位符残留（`<一句话描述>` 还在，就是这一段没填）—— 占位符集合从 templates/
  *      反推，不写死清单：改模板即改判据，不需要同步第二处。
  *   2. 模板章节齐全且非空（表格类章节「只有表头」= 没填）
@@ -289,9 +291,29 @@ function declaredPath(arts, d) {
   return null;
 }
 
-/** `docs/x/y.md` 这类才当路径；整句说明文字（含空格/中文）由 artifactIndex 单独提示。 */
-function looksLikePath(p) {
-  return !/\s/.test(p) && !/[\u4e00-\u9fa5]/.test(p);
+/**
+ * 从 artifacts 的声明值里取出真正的文件路径（取不出就返回 null）。
+ *
+ * 曾经的判据是「不含空格、不含中文」（`!/\s/.test(p) && !/[\u4e00-\u9fa5]/.test(p)`），
+ * 命中就直接 `continue`。问题是**中文与空格都是合法文件名**，于是
+ * `docs/01-requirements/RS-需求 规格.md` 被当成"一句说明"跳过——声明了却不存在的
+ * 路径一声不响地通过，完备性检查对一个字节都没读的文档报"通过"（P1-1）。
+ * 这比不检查更糟：它给出的是一份看起来检查过的结论。
+ *
+ * 现在的口径：
+ *   · 整个值就是路径 → 用它；
+ *   · 路径后面多写一句说明（`docs/x/FS-订单.md（初稿）`）→ 非贪婪停在扩展名，仍按路径检；
+ *   · 确实读不出路径（"见飞书文档"）→ 返回 null，由调用方**判红**而不是放行：
+ *     登不掉位置的产物等于没登记，静默放行等于替它担保。
+ */
+export function declaredFile(raw) {
+  const s = String(raw).trim().replace(/^[`'"]+/, '').trim();
+  if (!s) return null;
+  // 锚在开头：登记值必须以路径开头。允许路径里带空格与中文（合法文件名字符），
+  // 但不接受"前面先写一段说明"——从说明里抠路径只能靠猜，猜错了比判红更糟。
+  // 末尾多写一句说明（`docs/x/FS-订单.md（初稿）`）不影响：非贪婪匹配停在扩展名处。
+  const m = /^[^<>|"'`]+?\.(?:md|markdown|mdx|txt)\b/i.exec(s);
+  return m ? m[0].trim() : null;
 }
 
 function fmtList(arr, max = 3) {
@@ -321,20 +343,29 @@ export function checkCompleteness(state, repo, opts = {}) {
 
     const raw = declaredPath(arts, d);
     if (!raw) continue; // 未声明：由 missingDeclarations 负责提示，不在这里判死
-    if (!looksLikePath(raw)) continue;
 
-    const abs = resolve(repo, raw);
+    const rel = declaredFile(raw);
+    if (!rel) {
+      failures.push({
+        id: d.label,
+        rule: 'path',
+        reason: `artifacts 里 ${d.label} 登记的是 ${JSON.stringify(raw.slice(0, 40))}，读不出文件路径 —— 登记必须是路径（中文与空格都不影响），写一句说明等于没登记：检查覆盖不到的文件，结论不能算数`,
+      });
+      continue;
+    }
+
+    const abs = resolve(repo, rel);
     if (!existsSync(abs)) {
       failures.push({
         id: d.label,
         rule: 'path',
-        reason: `artifacts 声明了 ${d.label} 在 ${raw}，但文件不存在 —— 声明与事实不符。先落盘，或把它改成 null（未产出）`,
+        reason: `artifacts 声明了 ${d.label} 在 ${rel}，但文件不存在 —— 声明与事实不符。先落盘，或把它改成 null（未产出）`,
       });
       continue;
     }
     const text = readText(abs);
     if (text === null) continue;
-    docs.set(d.key, { path: raw, text });
+    docs.set(d.key, { path: rel, text });
 
     // 1. 占位符残留
     const left = leftoverPlaceholders(text, placeholders);

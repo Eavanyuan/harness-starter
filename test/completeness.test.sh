@@ -287,6 +287,30 @@ sed -i.bak 's|"rs": "docs/rs.md"|"rs": "docs/nope.md"|' .ai/tasks/demo/state.jso
 check "声明与事实不符判红" 1 "$(ci)"
 check "报错说明文件不存在" yes "$(has '文件不存在')"
 
+# P1-1（实测：中文/空格文件名让整条检查静默放行）。判据曾是
+# `!/\s/.test(p) && !/[\u4e00-\u9fa5]/.test(p)`——命中就 continue，于是
+# `docs/需求 规格.md` 这份根本没被打开过的文档，结论是"完备性通过"。
+echo "== 8b. 中文/空格文件名 → 必须真检（不许静默跳过） =="
+reset
+mv docs/rs.md "docs/需求 规格.md"
+sed -i.bak 's|"rs": "docs/rs.md"|"rs": "docs/需求 规格.md"|' .ai/tasks/demo/state.json
+check "中文+空格路径指向存在的文件 → 放行（不误杀）" 0 "$(ci)"
+sed -i.bak 's|"rs": "docs/需求 规格.md"|"rs": "docs/需求 规格-不存在.md"|' .ai/tasks/demo/state.json
+check "同一路径指向不存在的文件 → 判红" 1 "$(ci)"
+check "报错点名那份不存在的文件" yes "$(has '需求 规格-不存在.md')"
+
+echo "== 8c. 登记写成了说明文字 → 判红（不是提示，不再放行） =="
+reset
+sed -i.bak 's|"rs": "docs/rs.md"|"rs": "见飞书文档（未落盘）"|' .ai/tasks/demo/state.json
+check "读不出路径的登记判红" 1 "$(ci)"
+check "报错说清为什么算没登记" yes "$(has '读不出文件路径')"
+
+echo "== 8d. 路径后面跟说明 → 抠出路径照检 =="
+reset
+mv docs/rs.md "docs/需求 规格.md"
+sed -i.bak 's|"rs": "docs/rs.md"|"rs": "docs/需求 规格.md（初稿）"|' .ai/tasks/demo/state.json
+check "带后缀说明的登记仍按路径检（存在则放行）" 0 "$(ci)"
+
 echo "== 9. 阶段没越过产出阶段 → 不判（写到一半是常态） =="
 reset fs_review
 printf '\n- <模块/流程>\n' >> docs/fs.md

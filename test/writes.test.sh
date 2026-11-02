@@ -13,6 +13,11 @@ BACKUP="$(mktemp)"
 cp "$ALLOWLIST" "$BACKUP"
 trap 'cp "$BACKUP" "$ALLOWLIST"; rm -f "$BACKUP"; rm -rf "$TMP"' EXIT
 
+# 自授权行的计数必须在覆盖 allowlist 之前取：`hooks/write-allowlist.txt | …` 这一行
+# 让放行条给自己发通行证——加一行就能改任何受保护区，之后所有 writeGuards 都不设防。
+# 2026-11-02 删掉了这样一条（评审三次点名），这里钉住"不许再长回来"。
+SELF_AUTH="$(grep -c '^hooks/write-allowlist\.txt[[:space:]]*|' "$ALLOWLIST" || true)"
+
 # 基线必须是"只有注释的干净 allowlist"：本测试断言的是 guard_write 的**默认拒绝**语义，
 # 不能被仓库里当期有效的放行条影响——那些条目有自己的生命周期（到期自动失效），
 # 快照活文件会让"保护区必拦"用例在有人合法登记放行条时随机变红。
@@ -53,6 +58,9 @@ run_write() {
 payload() {
   printf '{"tool_name":"%s","tool_input":{"file_path":"%s"}}' "$1" "$2" > "$TMP/payload.json"
 }
+
+echo "== 0. 放行条不许给自己发通行证 =="
+check "仓库里的放行条没有自授权行" 0 "$SELF_AUTH"
 
 echo "== 1. 写业务源码 → 应放行 =="
 payload Write "backend/src/main/java/demo/Foo.java"

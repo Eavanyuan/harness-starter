@@ -31,6 +31,7 @@ import {
   missingDeclarations as missingDocDeclarations,
   docKinds,
   declaredPathOf,
+  declaredFile,
 } from './doc_completeness.mjs';
 
 /** 仓库根：以库文件位置为准，不依赖 cwd（hook 可能被从任意目录唤起）。 */
@@ -468,6 +469,36 @@ export const STAGE_NEXT = Object.fromEntries(STAGE_CHAIN.slice(0, -1).map((s, i)
 /** 阶段序号：用来判"是否已越过某阶段"，而不是拼字符串比大小。 */
 export const STAGE_INDEX = Object.fromEntries(STAGE_CHAIN.map((s, i) => [s, i]));
 
+/**
+ * 已退休的阶段链序 —— 判"是否相邻"时一并认。
+ *
+ * 为什么要它：2026-11-02 把 `wbs` 从 `fs_review` 之前挪到了之后。存量 state 的
+ * `stage_history` 是按当时**确实是正式链**的次序记的（见 TDC 真实数据
+ * `rs → wbs → adr → fs_review → impl`），拿新链去判相邻，必然把合规的历史记成
+ * "跳阶且没记名"。一次判据变更把过去判红，人只有两条路：改历史，或把跳阶检查关掉——
+ * 两条都比保留旧链更糟（改历史=伪造，关检查=永久失明）。
+ *
+ * 边界（它不是"什么顺序都放行"的开关）：
+ *   · 只登记**曾经当过正式链**的次序，一条一行，带退休日期与原因；
+ *   · 只认前进方向（与现行链同律），旧链里 `fs_review → wbs` 这种逆序照样判跳阶；
+ *   · 任何一条链上都不相邻的，仍然要求 `waived_by` 记名。
+ * 所以这里补的是"这一对当时不是跳阶"这个事实，不是给跳阶开后门。
+ */
+export const RETIRED_STAGE_CHAINS = [
+  {
+    id: 'v1',
+    chain: ['rs', 'wbs', 'adr', 'fs_review', 'impl', 'review', 'ci', 'retro', 'done'],
+    retired_on: '2026-11-02',
+    why: 'wbs 早于 adr/fs_review：拆任务时 FS 还没评审，叶子验收标准只能凭想象，且拆完不回头',
+  },
+];
+
+/** 某一对相邻阶段是否属于某条链的前进方向。 */
+function isForwardStep(chain, from, to) {
+  const i = chain.indexOf(from);
+  return i >= 0 && chain[i + 1] === to;
+}
+
 /** 档位枚举（S/M/L/XL）。档位本身不改变判据强度，只记录"这套流程被裁剪过"。 */
 export const FLOW_TIERS = ['S', 'M', 'L', 'XL'];
 export const RISK_TIERS = ['LOW', 'MEDIUM', 'HIGH'];
@@ -508,17 +539,20 @@ export function checkStage(state) {
   }
 
   const hist = Array.isArray(state.stage_history) ? state.stage_history : [];
+  const retired = RETIRED_STAGE_CHAINS.map((c) => c.id).join('/');
   for (let i = 1; i < hist.length; i++) {
     const from = hist[i - 1] && hist[i - 1].stage;
     const to = hist[i] && hist[i].stage;
     if (!STAGE_CHAIN.includes(to) || from === to) continue;
-    if (STAGE_NEXT[from] === to) continue;
+    if (isForwardStep(STAGE_CHAIN, from, to)) continue;
+    // 旧链上相邻 = 当时不是跳阶，是事实（链序改过一次，见 RETIRED_STAGE_CHAINS）
+    if (RETIRED_STAGE_CHAINS.some((c) => isForwardStep(c.chain, from, to))) continue;
     const who = hist[i] && hist[i].waived_by;
     if (typeof who !== 'string' || !who.trim()) {
       failures.push({
         id: '(task)',
         rule: 'skip',
-        reason: `stage_history 里 ${JSON.stringify(from)} → ${JSON.stringify(to)} 不是相邻阶段，且未记名豁免（waived_by 为空）—— 跳阶可以，但要有人签字`,
+        reason: `stage_history 里 ${JSON.stringify(from)} → ${JSON.stringify(to)} 不是相邻阶段，且未记名豁免（waived_by 为空）—— 现行链与退休链 ${retired} 都比对过仍不相邻，跳阶可以，但要有人签字`,
       });
     }
   }
@@ -653,7 +687,9 @@ export function artifactIndex(state, repo = REPO_ROOT) {
   // 只想把"显然不是路径的东西"分出来展示（含空格的句子、中文说明），**不据此判任何东西**：
   // 这是展示分类，不是判据。真实存量里 artifacts 已经混进过整段说明（TDC 的 promotion_note），
   // 把它算成"产物缺失"会制造假告警，把人训练成无视这一节。
-  const looksLikePath = (s) => !/\s/.test(s) && !/[\u4e00-\u9fa5]/.test(s);
+  //
+  // 解析规则与完备性检查共用 declaredFile（单源）：两套"怎么算路径"必然分叉，
+  // 然后出现"索引说文件在、完备性说读不出路径"。中文/空格文件名在两边都算路径。
   for (const [key, val] of Object.entries(raw)) {
     if (val === null) {
       entries.push({ key, path: null, exists: null });
@@ -668,11 +704,12 @@ export function artifactIndex(state, repo = REPO_ROOT) {
       odd.push({ key, type: 'empty' });
       continue;
     }
-    if (!looksLikePath(p)) {
+    const file = declaredFile(p);
+    if (!file) {
       odd.push({ key, type: 'text' });
       continue;
     }
-    entries.push({ key, path: p, exists: existsSync(resolve(repo, p)) });
+    entries.push({ key, path: file, exists: existsSync(resolve(repo, file)) });
   }
   return { entries, odd };
 }

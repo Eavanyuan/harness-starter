@@ -289,6 +289,25 @@ cat > .ai/tasks/demo/state.json <<'EOF'
 EOF
 git add -A
 check "跳阶记了名 → 放行（可以跳，但要有人签字）" 0 "$(ci)"
+
+# P1-2（实测：TDC 真实 history 是 `rs → wbs → adr → fs_review → impl`）：链序在
+# 2026-11-02 改过一次（wbs 挪到 fs_review 之后）。存量 history 记的是当时的正式次序，
+# 用新链判相邻会把合规的历史判成"跳阶且没记名"——于是人只剩两条路：改历史或关掉检查。
+# 退休链必须认，否则这次判据变更的净效果是让人伪造记录。
+cat > .ai/tasks/demo/state.json <<'EOF'
+{ "meta": { "task": "demo" }, "stage": "impl", "stage_history": [ { "stage": "rs" }, { "stage": "wbs" }, { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "impl" } ], "todos": [] }
+EOF
+git add -A
+check "退休链序 rs→wbs→adr→fs_review→impl → 放行（当时不是跳阶）" 0 "$(ci)"
+
+# 豁免只补"旧链相邻"这个事实，不是给跳阶开后门：逆序在两个链上都不相邻，仍要记名
+cat > .ai/tasks/demo/state.json <<'EOF'
+{ "meta": { "task": "demo" }, "stage": "adr", "stage_history": [ { "stage": "rs" }, { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "adr" } ], "todos": [] }
+EOF
+git add -A
+check "倒退回上一阶段（新旧链都不相邻）→ 仍拦" 1 "$(ci)"
+grep -q "相邻阶段" "$TMP/err" && r=0 || r=1
+check "报错仍说清是跳阶" 0 "$r"
 git checkout -q HEAD -- .ai/tasks/demo/state.json 2>/dev/null || true
 
 # 本组用例自带干净基线：前面用例的恢复链不可依赖（实测教训：叠加用例必须自带基线，

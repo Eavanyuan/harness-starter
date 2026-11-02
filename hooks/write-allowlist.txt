@@ -8,6 +8,11 @@
 # hooks/guard_state.mjs | 新增"证据日志必须含命令原文"校验 | 2026-11-30
 # templates/FS-功能规格.md | 补边界条件必填小节 | 2026-11-15
 #
+# 一条永久禁令：**不要给本文件自身加行**（`hooks/write-allowlist.txt | ...`）。
+# 那等于把"谁能改考卷"交给被考的人：加一行就能给自己发通行证，之后所有受保护区都不设防。
+# 本文件只由人改，agent 改它就该被 guard_write 拦住。
+# 2026-11-02 已删掉一条这样的自授权行（登记于是日，评审三次点名）。
+#
 # 2026-10-30 harness-builder v1 落地批次（docs/plans/2026-10-30-harness-builder-final.md，
 # 用户在会话中直接授权；同批测试见 test/harness-cli.test.sh）：
 hooks/lib/ledger.mjs | 新增 deny ledger 观测（方案 §10），纯追加不参与判定 | 2026-11-13
@@ -16,5 +21,4 @@ hooks/guard_command.mjs | deny() 挂载 ledger 记录点（方案 §10） | 2026
 hooks/guard_write.mjs | deny() 挂载 ledger 记录点（方案 §10） | 2026-11-13
 hooks/guard_state.mjs | block() 挂载 ledger + 校验前走 migrate（方案 §9/§10） | 2026-11-13
 harness.config.json | 新增 agents.enabled 键（方案 §5.2，四周节奏的机械基础） | 2026-11-13
-hooks/write-allowlist.txt | 放行条自身的登记通道（人工编辑等价操作） | 2026-11-13
 hooks/session_start.mjs | #22 session 心跳入账 events.jsonl（用户授权的本批改进） | 2026-11-13

@@ -1,0 +1,248 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "harness-doc-gate",
+    "task_type": "feature",
+    "created_at": "2026-11-02T08:10:00Z",
+    "flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "note": "两件事合成一个任务：① 把 a2f5b0c 的文档完备性判据补上三个 P1（中文/空格路径静默放行、链序变更误判存量 history、判据自身没被 dogfood 过）；② 用这个任务本身当 dogfood 样本——RS/FS/WBS 全部真写、走完 rs 到 impl 的阶段历史、证据日志入库。判据如果不能先在自己的改动上跑通，就没有资格拦住别人的改动。"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-02T08:10:00Z",
+      "exited_at": "2026-11-02T08:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "requirement-analyst"
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-02T08:20:00Z",
+      "exited_at": "2026-11-02T08:22:00Z",
+      "gate": "deferred",
+      "waived_by": "user(本变更无多方案技术决策点：判据形态由模板反推，无选型空间)",
+      "agent": "tech-selector"
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-02T08:22:00Z",
+      "exited_at": "2026-11-02T08:35:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "spec-reviewer"
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-02T08:35:00Z",
+      "exited_at": "2026-11-02T08:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "feature-decomposer"
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-02T08:40:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder"
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-harness-文档完备性.md",
+    "fs": "docs/02-features/harness/FS-文档完备性与阶段链.md",
+    "wbs": "docs/02-features/harness/FS-文档完备性与阶段链.wbs.md",
+    "adr": null
+  },
+  "todos": [
+    {
+      "id": "T1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "占位符残留与空章节判据（含中文/空格文件名的可读性）",
+      "files": [
+        "hooks/lib/doc_completeness.mjs",
+        "test/completeness.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过（ESM 语法自检）",
+        "tests": "completeness 组 34 条断言全绿，其中 6 条是本次新增",
+        "feature_complete": "占位符集合从模板反推、空章节按「无正文行且表格无数据行」判定",
+        "quality_clean": "未引入新依赖，未改动对外导出名"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-T1.log",
+        "command": "bash test/completeness.test.sh"
+      }
+    },
+    {
+      "id": "T2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "RS 到 FS 的追溯覆盖率",
+      "files": [
+        "hooks/lib/doc_completeness.mjs",
+        "test/completeness.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "同上，同一模块",
+        "tests": "「追溯表漏条目 → 拦截」用例覆盖",
+        "feature_complete": "缺条目点名 US 编号；追溯表缺失单独报一条，不逐条刷覆盖率",
+        "quality_clean": "读取失败时不猜内容，只报一处"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-T2.log",
+        "command": "bash test/completeness.test.sh"
+      }
+    },
+    {
+      "id": "T3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "WBS 与 FS 小节双向覆盖",
+      "files": [
+        "hooks/lib/doc_completeness.mjs",
+        "test/completeness.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "同上，同一模块",
+        "tests": "悬空 spec_ref、漏做小节、缺列三组用例",
+        "feature_complete": "缺列时停在该层，不产生逐行噪音；spec_ref 前 24 字回显",
+        "quality_clean": "判据只比集合，不解析 Markdown 以外的格式"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-T3.log",
+        "command": "bash test/completeness.test.sh"
+      }
+    },
+    {
+      "id": "T4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "阶段链修正与退休链登记（P1-2）",
+      "files": [
+        "hooks/lib/verify.mjs",
+        "test/evidence.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "evidence 组 56 条断言全绿，新增 3 条（旧链放行、逆序仍拦、报错点名）",
+        "feature_complete": "退休链只认前进方向；两条链都不相邻才要求记名",
+        "quality_clean": "链定义仍单源，未新增第二份次序表"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-T4.log",
+        "command": "bash test/evidence.test.sh"
+      }
+    },
+    {
+      "id": "T5",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "artifacts 路径解析（P1-1）",
+      "files": [
+        "hooks/lib/doc_completeness.mjs",
+        "hooks/lib/verify.mjs",
+        "test/completeness.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "8b/8c/8d 三组用例：存在则放行、不存在判红、读不出判红、带说明仍按路径检",
+        "feature_complete": "artifactIndex 与完备性检查共用同一解析函数，避免两套找法分叉",
+        "quality_clean": "旧代码跑新用例复现 4 条红灯，新代码全绿"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-T5.log",
+        "command": "bash test/completeness.test.sh"
+      }
+    },
+    {
+      "id": "V1",
+      "stack": "harness",
+      "status": "doing",
+      "ooda_stage": "audit",
+      "text": "统一验证：仓内全量门禁（npm run gate）",
+      "files": [
+        "hooks/lib/doc_completeness.mjs",
+        "hooks/lib/verify.mjs",
+        "test/completeness.test.sh",
+        "test/evidence.test.sh",
+        "test/writes.test.sh",
+        "hooks/write-allowlist.txt",
+        "docs/plans/2026-10-30-harness-builder-final.md",
+        "docs/01-requirements/RS-harness-文档完备性.md",
+        "docs/02-features/harness/FS-文档完备性与阶段链.md",
+        "docs/02-features/harness/FS-文档完备性与阶段链.wbs.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "全量门禁含 check:agents / check:hooks 漂移检查",
+        "tests": "11 组测试文件全绿",
+        "feature_complete": "本任务三份文档自身通过完备性检查（dogfood）",
+        "quality_clean": "doctor 无阻塞项"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DOCGATE-V1.log",
+        "command": "npm run gate"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "RS/FS/WBS 在实现之后补写（先有 a2f5b0c 的判据，后有这三份文档）",
+      "why": "本任务的第二重目的是 dogfood：判据必须先在自身改动上跑通。补写是为了让判据有真实输入，不是为了过门禁才编文档",
+      "disposition": "acknowledged",
+      "by": "user(2026-11-02 审核建议：新判据未在自身任务上 dogfood)"
+    }
+  ],
+  "gate_result": {
+    "stage": "impl",
+    "last_check": "2026-11-02T08:40:00Z",
+    "checks": [
+      {
+        "name": "compile",
+        "pass": true
+      },
+      {
+        "name": "tests",
+        "pass": true
+      },
+      {
+        "name": "feature_complete",
+        "pass": true
+      },
+      {
+        "name": "quality_clean",
+        "pass": true
+      }
+    ]
+  }
+}
