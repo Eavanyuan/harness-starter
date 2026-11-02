@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "harness-builder-hardening",
+    "task_type": "feature",
+    "created_at": "2026-11-01T08:33:20Z",
+    "flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "note": "对账补登记（非新任务）：2026-10-30 起的 change/bugfix 双入口流、harness-builder v1 流、三轮评审修复的真实产出，当时未走本仓任务流程。files 在此声明归属以满足 #18 基建比对；正式收口在 retro 阶段统一处置。"
+  },
+  "stage": "impl",
+  "stage_history": [],
+  "artifacts": {},
+  "todos": [
+    {
+      "id": "T1",
+      "stack": "harness",
+      "status": "pending",
+      "ooda_stage": "observe",
+      "text": "已完成的 harness 双流改进（对账登记；retro 时按 deviations 处置）",
+      "files": [
+        ".ai/rules/verification.md",
+        ".ai/state.example.json",
+        ".ai/writes.json",
+        ".claude/agents/orchestrator.md",
+        ".github/workflows/quality-gate.yml",
+        ".gitignore",
+        ".skills/harness/SKILL.md",
+        ".skills/harness/references/checklist.md",
+        ".zcode/agents/orchestrator.md",
+        "AGENTS.md",
+        "README.md",
+        "agents/orchestrator.agent.md",
+        "harness.config.json",
+        "hooks/guard_command.mjs",
+        "hooks/guard_state.mjs",
+        "hooks/guard_write.mjs",
+        "hooks/lib/verify.mjs",
+        "hooks/session_start.mjs",
+        "hooks/write-allowlist.txt",
+        "package.json",
+        "prompts/INDEX.md",
+        "prompts/agents/orchestrator.md",
+        "scripts/build-agents.mjs",
+        "scripts/build-hooks.mjs",
+        "scripts/ci-verify.mjs",
+        "scripts/doctor.mjs",
+        "scripts/init-harness.sh",
+        "scripts/verify-run.sh",
+        "test/agents.test.sh",
+        "test/evidence.test.sh",
+        "test/hooks.test.sh",
+        "test/wiring.test.sh",
+        "test/writes.test.sh",
+        ".ai/verify/",
+        "docs/",
+        "guides/需求变更与Bug修复.md",
+        "hooks/lib/ledger.mjs",
+        "hooks/lib/write_tools.mjs",
+        "scripts/harness-cli.mjs",
+        "scripts/ledger-report.mjs",
+        "scripts/lib/",
+        "templates/TRACE-追溯与影响清单.md",
+        "test/fixtures/",
+        "test/harness-cli.test.sh",
+        "test/init.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {},
+      "verify": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "本仓自身改动未走任务流程（门禁对自家失明）",
+      "why": "两条并行流在任务机制就绪前开工",
+      "disposition": "acknowledged",
+      "by": "user(2026-11-01 对账授权)"
+    }
+  ],
+  "gate_result": {
+    "stage": "impl",
+    "last_check": null,
+    "checks": []
+  }
+}

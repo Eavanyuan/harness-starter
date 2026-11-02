@@ -6,7 +6,7 @@
 
 | 别名 | 入口 | agent | 何时使用 | 写什么 |
 |---|---|---|---|---|
-| /task | `prompts/agents/orchestrator.md` | 编排器 | 全流程编排状态机。任务启动时使用，驱动至 retro 完成。 | .ai/tasks/** |
+| /task | `prompts/agents/orchestrator.md` | 编排器 | 全流程编排状态机。任务启动时使用，驱动至 retro 完成。 | .ai/tasks/**<br>docs/plans/** |
 | /rs | `prompts/agents/requirement-analyst.md` | 需求分析 | 把原始需求结构化为 RS 草稿与开放问题清单。收到新需求/工单时使用。 | docs/01-requirements/** |
 | /wbs | `prompts/agents/feature-decomposer.md` | 功能拆分 | 将 RS 拆解为带依赖与风险级的 WBS/TODO 骨架。需求评审通过后使用。 | docs/02-features/**<br>.ai/tasks/** |
 | /adr | `prompts/agents/tech-selector.md` | 技术选型 / ADR | 对多方案决策点产出 ADR 草稿（候选对比 + 项目内先例证据）。涉及技术选型时使用。 | docs/06-reference/adr/** |

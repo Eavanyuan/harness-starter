@@ -46,7 +46,8 @@ ls .ai/tasks/          # 每个目录是一个任务
 npm run verify:state   # 证据链是否成立（CI 口径）
 ```
 
-接手别人的任务：先读 state，校验 `artifacts` 路径存在，再从当前 stage 续跑。**不要凭 git log 推断进度。**
+接手别人的任务：先读 state 确认 stage（必须在 rs→adr→fs_review→wbs→impl→review→ci→retro→done 链上），
+按 `artifacts` 索引定位产物（它只说"在哪"，够不够看阶段门禁），再从当前 stage 续跑。**不要凭 git log 推断进度。**
 
 ## 不许做
 

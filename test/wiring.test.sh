@@ -15,7 +15,8 @@ cd "$HERE"
 TMP="$(mktemp -d)"
 cp .claude/settings.json "$TMP/claude.bak"
 cp .zcode/config.json "$TMP/zcode.bak" 2>/dev/null || true
-trap 'cp "$TMP/claude.bak" .claude/settings.json; [ -f "$TMP/zcode.bak" ] && cp "$TMP/zcode.bak" .zcode/config.json; rm -rf "$TMP"' EXIT
+cp harness.config.json "$TMP/harness.config.bak"
+trap 'cp "$TMP/claude.bak" .claude/settings.json; [ -f "$TMP/zcode.bak" ] && cp "$TMP/zcode.bak" .zcode/config.json; cp "$TMP/harness.config.bak" harness.config.json; rm -rf "$TMP"' EXIT
 
 pass=0
 fail=0
@@ -85,6 +86,14 @@ node scripts/doctor.mjs >/dev/null 2>&1
 code=$?
 cp "$TMP/zcode.bak" .zcode/config.json
 check "关闭 hook 被体检拦住" 1 "$code"
+
+echo "== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 =="
+node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync("harness.config.json","utf8"));c.stacks.backend.lint="mvn -q -DskipTests compile";fs.writeFileSync("harness.config.json",JSON.stringify(c,null,2))'
+node scripts/doctor.mjs >"$TMP/doctor-flag.out" 2>&1
+code=$?
+cp "$TMP/harness.config.bak" harness.config.json
+check "配置命令违反纪律被体检拦住" 1 "$code"
+verify "grep -q 'skipTests' \"$TMP/doctor-flag.out\"" "体检输出点名了违规 flag"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

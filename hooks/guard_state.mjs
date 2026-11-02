@@ -20,7 +20,17 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateTodos, formatFailures, readStdinJson } from './lib/verify.mjs';
+import {
+  validateTodos,
+  formatFailures,
+  checkStageExit,
+  checkTaskTraceability,
+  checkStage,
+  migrate,
+  readStdinJson,
+} from './lib/verify.mjs';
+import { WRITE_TOOLS, writeTarget, prospectiveContent } from './lib/write_tools.mjs';
+import { recordDeny } from './lib/ledger.mjs';
 
 // HARNESS_ROOT 只给自测与 vendored 安装用：hook 跑在 CLI 起的进程里，
 // agent 无法通过自己执行的命令改它（Bash 改不了父进程环境）。
@@ -28,42 +38,16 @@ import { validateTodos, formatFailures, readStdinJson } from './lib/verify.mjs';
 const ROOT = process.env.HARNESS_ROOT
   ? resolve(process.env.HARNESS_ROOT)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'create_file']);
+
 const STATE_RE = /^\.ai\/tasks\/[^/]+\/state\.json$/;
 
+/** 拦截对象（state 文件相对路径）——ledger 靠它算误拦率，不能只记规则名。 */
+let SUBJECT = null;
+
 function block(msg) {
+  recordDeny('guard_state', 'block', msg, { root: ROOT, target: SUBJECT });
   console.error(`[guard_state] BLOCK\n${msg}`);
   process.exit(2);
-}
-
-/** 从工具入参推出"写完之后文件长什么样"。推不出来就返回 null。 */
-function prospectiveContent(tool, input, abs) {
-  if (typeof input.content === 'string' && tool === 'Write') return input.content;
-
-  const current = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
-
-  if (tool === 'Edit') {
-    if (current === null) return null;
-    const oldStr = String(input.old_string ?? '');
-    const newStr = String(input.new_string ?? '');
-    if (!oldStr || !current.includes(oldStr)) return null;
-    return input.replace_all
-      ? current.split(oldStr).join(newStr)
-      : current.replace(oldStr, newStr);
-  }
-
-  if (tool === 'MultiEdit') {
-    if (current === null) return null;
-    let text = current;
-    for (const e of input.edits || []) {
-      const oldStr = String(e.old_string ?? '');
-      if (!oldStr || !text.includes(oldStr)) return null;
-      text = e.replace_all ? text.split(oldStr).join(String(e.new_string ?? '')) : text.replace(oldStr, String(e.new_string ?? ''));
-    }
-    return text;
-  }
-
-  return null;
 }
 
 const payload = readStdinJson();
@@ -73,18 +57,19 @@ const tool = payload.tool_name || '';
 if (!WRITE_TOOLS.has(tool)) process.exit(0);
 
 const input = payload.tool_input || {};
-const target = String(input.file_path || input.path || '');
+const target = writeTarget(input);
 if (!target) process.exit(0);
 
 const abs = isAbsolute(target) ? target : resolve(ROOT, target);
 const rel = relative(ROOT, abs).split('\\').join('/');
 if (!STATE_RE.test(rel)) process.exit(0);
+SUBJECT = rel;
 
-const text = prospectiveContent(tool, input, abs);
+const text = prospectiveContent(tool, input, abs, (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null));
 if (text === null) {
   block(
-    `无法从这次 ${tool} 推出 ${rel} 的写入结果（old_string 没命中，或文件不存在）。\n` +
-      'state.json 是进度唯一事实源，改不动就别声称改过了：重新读取当前内容后再编辑。'
+    `无法从这次 ${tool} 推出 ${rel} 的写入结果（old_string 没命中、文件不存在，或该命令不带可推导的结果）。\n` +
+      'state.json 是进度唯一事实源，改不动就别声称改过了：重新读取当前内容后再编辑（Write / Edit / MultiEdit 都可）。'
   );
 }
 
@@ -93,6 +78,14 @@ try {
   state = JSON.parse(text);
 } catch (err) {
   block(`${rel} 写完之后不是合法 JSON：${err.message}\nJSON 坏了，接手的下一个人（或 agent）会直接读不到进度。`);
+}
+
+// schema 迁移只产出校验视图，不改写落盘内容（方案 §9）；
+// 未知版本显式拦下，不给"未来格式的 state"绕过校验的口子（失效点 15）。
+try {
+  ({ state } = migrate(state));
+} catch (err) {
+  block(`${rel} ${err.message}`);
 }
 
 const todos = state.todos;
@@ -112,7 +105,17 @@ if (dup.length) block(`${rel} 里 id 重复：${[...new Set(dup)].join(', ')}（
 
 let failures;
 try {
-  failures = validateTodos(todos || [], ROOT, { mode: 'local' });
+  // checkStage：阶段名/档位必须在枚举内，跳阶必须记名（不在链上的 stage 会让所有按阶段的判据静默跳过）。
+  // checkStageExit：stage=done 却留未收尾的 TODO，与"没证据的完成态"同罪，落盘前拦下。
+  // checkTaskTraceability：change/bugfix 的追溯字段（同一判据库，失效点 7）。
+  //
+  // 注意**不**包含"impl 阶段 TODO 必须全收尾"：那是**退出**条件，不是写入条件。
+  // impl 进行中当然有 pending/doing，写一次进度就被拦，等于让人不敢记状态。
+  // 退出条件只在 resume 推进时判（checkStageTodoClosure）。
+  failures = checkStage(state)
+    .concat(validateTodos(todos || [], ROOT, { mode: 'local' }))
+    .concat(checkStageExit(state))
+    .concat(checkTaskTraceability(state, ROOT));
 } catch (err) {
   block(`校验过程异常：${err.message}\n按 fail-closed 处理，请修 hook 或 state 后重试。`);
 }

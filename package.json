@@ -4,6 +4,25 @@
   "private": true,
   "type": "module",
   "description": "AI Coding Harness 脚手架：单一源生成 claude / zcode / deepseek 三套 Agent 产物与 hook 接线",
+  "bin": {
+    "harness": "scripts/harness-cli.mjs"
+  },
+  "files": [
+    "scripts/",
+    "hooks/",
+    "agents/",
+    "templates/",
+    "guides/",
+    ".skills/",
+    "test/",
+    ".ai/rules/",
+    ".ai/state.example.json",
+    ".github/workflows/",
+    "harness.config.json",
+    "AGENTS.md",
+    ".gitignore",
+    "README.md"
+  ],
   "scripts": {
     "setup": "bash scripts/init-harness.sh",
     "build:agents": "node scripts/build-agents.mjs",
@@ -21,7 +40,14 @@
     "test:skills": "bash test/skills.test.sh",
     "test:evidence": "bash test/evidence.test.sh",
     "test:wiring": "bash test/wiring.test.sh",
-    "gate": "npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:evidence && npm run test:wiring"
+    "test:init": "bash test/init.test.sh",
+    "harness": "node scripts/harness-cli.mjs",
+    "test:harness-cli": "bash test/harness-cli.test.sh",
+    "gate": "npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring",
+    "ledger:report": "node scripts/ledger-report.mjs",
+    "test:verify-run": "bash test/verify-run.test.sh",
+    "test:ledger": "bash test/ledger.test.sh",
+    "test:completeness": "bash test/completeness.test.sh"
   },
   "engines": {
     "node": ">=18"

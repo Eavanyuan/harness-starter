@@ -17,6 +17,11 @@ jobs:
         with:
           node-version: 20
 
+      # 配置体检放在最前：占位值没改、hook 没接线、配置键没人读——这些失败长得不像红灯，
+      # 长得像"一切正常但门禁不生效"。留在本地手动跑，等于要求人记得跑。
+      - name: 配置体检（占位值 / hook 接线 / 空转配置键）
+        run: node scripts/doctor.mjs
+
       # 先确认门禁本身没坏，再让门禁去判别人。
       - name: 门禁自测（state 写入门禁 / 高危命令 / 敏感文件）
         run: bash test/hooks.test.sh
@@ -57,8 +62,21 @@ jobs:
       - name: 高危命令扫描
         run: |
           set -uo pipefail
-          BASE="origin/${{ github.base_ref || 'main' }}"
-          FILES=$(git diff --name-only "$BASE"...HEAD -- \
+          # 基线怎么取：PR 用 base 分支，push 用上一个提交。
+          # 原来一律取 origin/${github.base_ref || 'main'}——push 到 main 时 base_ref 是空的，
+          # BASE 落到 origin/main，而 HEAD 就是 origin/main，diff 恒为空 → 整步 skip。
+          # 也就是"直接推 main"这条最需要兜底的路，兜底一直是空转。
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+          else
+            BASE="${{ github.event.before }}"
+            # before 为空 / 全零（新分支首推）/ 已被 force push 抹掉 → 退到上一个提交，再退到根提交
+            if [ -z "$BASE" ] || printf '%s' "$BASE" | grep -qE '^0+$' || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+              BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -1)"
+            fi
+          fi
+          echo "比较基线：$BASE … HEAD"
+          FILES=$(git diff --name-only "$BASE"..HEAD -- \
             '*.sh' '*.bash' '*.mjs' '*.cjs' '*.js' '*.py' '*.yml' '*.yaml' 'Makefile' 'package.json' || true)
           if [ -z "$FILES" ]; then
             echo "本次改动没有脚本类文件，跳过"

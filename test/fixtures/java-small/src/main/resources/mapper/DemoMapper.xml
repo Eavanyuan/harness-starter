@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<mapper namespace="com.demo.B">
+  <select id="findAll">select * from td_demo join td_app on td_demo.app_id = td_app.id</select>
+</mapper>

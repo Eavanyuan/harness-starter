@@ -1,0 +1,10 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.demo</groupId>
+  <artifactId>reactor</artifactId>
+  <packaging>pom</packaging>
+  <modules>
+    <module>app</module>
+    <module>lib</module>
+  </modules>
+</project>

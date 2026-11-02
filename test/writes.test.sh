@@ -11,10 +11,23 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 ALLOWLIST="$HERE/hooks/write-allowlist.txt"
 BACKUP="$(mktemp)"
 cp "$ALLOWLIST" "$BACKUP"
-trap 'cp "$BACKUP" "$ALLOWLIST"; rm -f "$BACKUP"' EXIT
+trap 'cp "$BACKUP" "$ALLOWLIST"; rm -f "$BACKUP"; rm -rf "$TMP"' EXIT
+
+# 基线必须是"只有注释的干净 allowlist"：本测试断言的是 guard_write 的**默认拒绝**语义，
+# 不能被仓库里当期有效的放行条影响——那些条目有自己的生命周期（到期自动失效），
+# 快照活文件会让"保护区必拦"用例在有人合法登记放行条时随机变红。
+cat > "$ALLOWLIST" <<'EOF'
+# 写入受保护区的临时放行条 —— guard_write.mjs 读取。
+#
+# 格式：<路径 glob> | <为什么必须改> | <YYYY-MM-DD>
+EOF
 
 TMP="$(mktemp -d)"
-trap 'cp "$BACKUP" "$ALLOWLIST"; rm -rf "$TMP"' EXIT
+# ledger 隔离：guard_write 每次拒绝都会落账，而 ledger 默认落 REPO_ROOT/.ai/ledger
+# （HARNESS_ROOT 不影响它）。不隔离的话，跑一次自测就往真实账本灌几十条探测，
+# 账本作为"误拦率基线"就废了（TDC 项目装完第一天的现场）。
+export HARNESS_LEDGER_DIR="$TMP/ledger"
+export HARNESS_LEDGER_SOURCE=selftest
 
 pass=0
 fail=0
@@ -94,7 +107,11 @@ payload Edit "hooks/guard_state.mjs"
 check "allowlist 生效" 0 "$(run_write)"
 
 echo "== 10. 放行条过期 → 应恢复拦截 =="
-cp "$BACKUP" "$ALLOWLIST"
+# 回到干净基线（不是 $BACKUP——那是当期真实文件，可能带着其他合法放行条），
+# 只留一条过期的：断言"过期 = 失效"这一条语义本身。
+cat > "$ALLOWLIST" <<'EOF'
+# 写入受保护区的临时放行条 —— guard_write.mjs 读取。
+EOF
 echo "hooks/guard_state.mjs | 已过期 | 2020-01-01" >> "$ALLOWLIST"
 payload Edit "hooks/guard_state.mjs"
 check "过期放行条件失效" 2 "$(run_write)"

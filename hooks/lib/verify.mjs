@@ -26,6 +26,12 @@ import { existsSync, statSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  checkCompleteness as checkDocCompleteness,
+  missingDeclarations as missingDocDeclarations,
+  docKinds,
+  declaredPathOf,
+} from './doc_completeness.mjs';
 
 /** 仓库根：以库文件位置为准，不依赖 cwd（hook 可能被从任意目录唤起）。 */
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -33,18 +39,108 @@ export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..
 export const AUDIT_KEYS = ['compile', 'tests', 'feature_complete', 'quality_clean'];
 export const OODA_STAGES = ['observe', 'orient', 'decide', 'act', 'audit'];
 
+/**
+ * state schema 版本化（方案 §9）：趁 .ai/tasks 还没有存量做，成本≈0。
+ * 迁移链按版本号逐步升级；不可识别的版本显式报错而非静默跳过（失效点 15：
+ * 枚举不闭合的"版本"会让未知形态的 state 绕过所有校验）。
+ * 注意：migrate 只产出"校验视图"，hook 不改写落盘内容——缺 schema_version 的
+ * 存量 state 按链首（0）升级后校验，磁盘上一个字节都不动。
+ */
+export const SCHEMA_VERSION = 1;
+
+const MIGRATIONS = {
+  // 0 → 1：任务类型与追溯字段（change/bugfix 双入口）。只补默认值，不删既有字段。
+  0: (s) => {
+    s.meta = s.meta || {};
+    if (s.meta.task_type === undefined || s.meta.task_type === null) s.meta.task_type = 'feature';
+    return s;
+  },
+};
+
+export function migrate(state) {
+  if (!state || typeof state !== 'object') {
+    throw new Error('state 不是对象，无法迁移');
+  }
+  state.meta = state.meta || {};
+  let v = state.meta.schema_version;
+  if (v === undefined || v === null) v = 0;
+  if (!Number.isInteger(v) || v < 0) {
+    throw new Error(`meta.schema_version 非法：${JSON.stringify(v)}（必须是整数）`);
+  }
+  if (v > SCHEMA_VERSION) {
+    throw new Error(`state schema v${v} 高于本工具已知版本 v${SCHEMA_VERSION}——升级 harness 后再校验这份 state`);
+  }
+  const from = v;
+  while (v < SCHEMA_VERSION) {
+    MIGRATIONS[v](state);
+    v += 1;
+    state.meta.schema_version = v;
+  }
+  return { state, from, to: SCHEMA_VERSION };
+}
+
+/**
+ * TODO 状态枚举必须闭合（失效点 15）：校验器只挑 completed/done 处理时，
+ * 拼错的 status（complted / Complete / 已完成）会被当成"未完成"静默跳过——
+ * TODO 就从证据链里蒸发了，CI 照样绿灯。done 是 completed 的历史别名，保留兼容。
+ */
+export const TODO_STATUSES = ['pending', 'doing', 'completed', 'done'];
+
+/**
+ * 任务类型与追溯字段（变更/修复流程的机器可判子集）。
+ * change/bugfix 的完整流程裁剪表在 guides/需求变更与Bug修复.md，
+ * 这里只判"有没有"，不判"对不对"——影响分析质量归 CR 人审。
+ * 缺省 feature：老 state 没有该字段时零影响，不制造一次全量迁移。
+ */
+export const TASK_TYPES = ['feature', 'change', 'bugfix'];
+export const CHANGE_TIERS = [1, 2, 3];
+
+/** 基线只接受 git commit hash（7-40 位十六进制）。RS 修订号这类形态机器验证不了，不收。 */
+export const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/;
+
 /** 日志头长度上限。只看头部，避免大日志拖慢 hook。 */
 const LOG_HEAD_BYTES = 4000;
+
+/**
+ * #16（实测：裸构建输出被当证据）：标准头必须是**结构化前几行**，不是"文件里任何位置"。
+ * `# cmd` / `# exit_code:` 必须出现在前 5 行——把别处贴来的 BUILD SUCCESS 补个头混进来，
+ * 机器分不出来；窗口限死之后，非 verify-run.sh 产的日志一概不算证据。
+ */
+const LOG_HEADER_LINES = 5;
 
 export function readHead(absPath, bytes = LOG_HEAD_BYTES) {
   const buf = readFileSync(absPath);
   return buf.subarray(0, bytes).toString('utf8');
 }
 
-/** 解析 verify 日志头里的 exit_code。格式见 scripts/verify-run.sh。 */
+/** 解析 verify 日志头里的 exit_code（只认前 LOG_HEADER_LINES 行）。格式见 scripts/verify-run.sh。 */
 export function parseExitCode(head) {
-  const m = head.match(/^#\s*exit_code:\s*(-?\d+)\s*$/m);
-  return m ? Number(m[1]) : null;
+  for (const line of head.split('\n').slice(0, LOG_HEADER_LINES)) {
+    const m = line.match(/^#\s*exit_code:\s*(-?\d+)\s*$/);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/**
+ * #17（实测：同一事实三个版本 27/6/16，谁也无法对账）：
+ * audit.tests 写了 N/M 形态时，日志头的 `# tests: total=T` 必须能对上（M === T）。
+ * 旧日志没有计数行则跳过（不追溯存量）；新日志由 verify-run.sh 从 surefire-reports
+ * 提取计数写进头部——`mvn -q` 会把 Tests run 从 stdout 吞掉，成功证据里必须另给数字。
+ */
+export function checkAuditTestsMatch(todo, repo) {
+  const tests = todo.audit && todo.audit.tests;
+  if (typeof tests !== 'string') return { ok: true };
+  const m = tests.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!m || !todo.verify || !todo.verify.log_path) return { ok: true };
+  const abs = resolve(repo, todo.verify.log_path);
+  if (!existsSync(abs)) return { ok: true };
+  const t = readHead(abs).match(/^#\s*tests:.*total=(\d+)/m);
+  if (!t) return { ok: true };
+  if (Number(m[2]) !== Number(t[1])) {
+    return { ok: false, reason: `audit.tests 写 ${m[1]}/${m[2]}，日志头是 total=${t[1]}——手工摘要与日志对不上，以日志为准改 audit` };
+  }
+  return { ok: true };
 }
 
 /** 读 harness.config.json；缺失或损坏时返回 null，由调用方决定默认值。 */
@@ -58,11 +154,17 @@ export function loadConfig(repo = REPO_ROOT) {
 
 function git(repo, args) {
   try {
+    // 只去**尾部**空白，绝不整体 trim()。
+    // 原因（实测）：`git status --porcelain` 的每条目以 2 位状态位开头，工作区改动
+    // 是 " M path"——前导空格是数据的一部分。整体 trim() 会吃掉**第一条**的前导空格，
+    // 之后固定 slice(3) 就多切一个字符：" M pom.xml" → "om.xml"。
+    // 而 git 按路径字母序输出，Maven 仓库里 pom.xml 几乎总是第一条，于是"最该被抓到的
+    // 那个基建文件"恰好被切坏：INFRA_RE 匹配不上它，未声明改动判据整条漏判。
     return execFileSync('git', args, {
       cwd: repo,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    }).replace(/\s+$/, '');
   } catch {
     return null;
   }
@@ -72,14 +174,40 @@ export function isGitRepo(repo) {
   return git(repo, ['rev-parse', '--is-inside-work-tree']) === 'true';
 }
 
-export function gitChangedFiles(repo) {
-  const out = git(repo, ['status', '--porcelain']);
+/**
+ * 改动条目（含 git 状态符）。`gitChangedFiles()` 只给路径，这里给路径 + 状态。
+ *
+ * 为什么需要状态：未跟踪（`??`）和"改了已跟踪的文件"是两种完全不同的事。
+ * 未跟踪只说明仓库里有东西没入库（可能是别人留下的半成品、构建产物、整片新目录），
+ * 拿它当"改动了构建基建"的证据，会让一个本来很准的判据在大仓库里天天报红。
+ * 判据只对 git 已经知道的东西发火（M/A/D/R），未跟踪的只提示。
+ */
+export function gitStatusEntries(repo) {
+  // -uall：未跟踪目录要展开成文件。
+  // 默认（-unormal）会把新增目录压成一行 "?? .github/"，于是新目录**里面**的
+  // 基建文件（.github/workflows/*.yml、新模块的 pom.xml）永远拿不到具体路径，
+  // INFRA_RE 也就永远匹配不上——"新增一个 CI 配置目录"正好从这条缝里过去。
+  const out = git(repo, ['status', '--porcelain', '-uall']);
   if (!out) return [];
-  return out
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => l.slice(3).trim())
-    .filter((p) => p && !p.startsWith('.ai/'));
+  const entries = [];
+  for (const line of out.split('\n')) {
+    if (!line) continue;
+    // 状态位固定 2 字符 + 1 空格，之后是路径。**不能**先 trim：
+    // 未跟踪是 "?? path"、工作区修改是 " M path"，前导空格是状态位的一部分。
+    const code = line.slice(0, 2).trim();
+    const p = line.slice(3);
+    // 重命名/复制条目是 "old -> new"（porcelain v1 不用 -z 时的形态）。
+    // 直接拿去 resolve 会得到一个不存在的路径，候选集里那个真实改动就被漏掉了。
+    const arrow = p.indexOf(' -> ');
+    const path = (arrow >= 0 ? p.slice(arrow + 4) : p).replace(/^"(.*)"$/, '$1');
+    if (!path || path.startsWith('.ai/')) continue;
+    entries.push({ path, status: code });
+  }
+  return entries;
+}
+
+export function gitChangedFiles(repo) {
+  return gitStatusEntries(repo).map((e) => e.path);
 }
 
 /**
@@ -115,12 +243,42 @@ function globToRe(glob) {
   return new RegExp('^' + s + '$');
 }
 
-/** 各栈声明的源码 glob。用来把"栈内源码改动"也算进新鲜度判断，而不只看 TODO 自报的 files。 */
+/** 各栈声明的源码 glob（v2 projects 数组 + v1 stacks 对象统一提取）。 */
 export function stackSourceGlobs(config) {
-  return Object.values((config && config.stacks) || {})
+  const projects = Array.isArray(config && config.projects)
+    ? config.projects
+    : Object.values((config && config.stacks) || {});
+  return projects
     .map((s) => s && s.srcGlob)
     .filter(Boolean);
 }
+
+/**
+ * 高危命令规则的规范形态。
+ *
+ * 两种写法都收（失效点教训：改格式不能把存量配置一次性打死）：
+ *   "正则"                      —— 建议文案留空，由调用方给通用文案
+ *   { "pattern": "...", "hint": "..." } —— 每条规则给**自己的**修复建议
+ *
+ * 为什么必须有 hint：15 条规则共用一段"强推类改用 --force-with-lease"的文案，
+ * 拦到 -DskipTests 时给出的建议与实际问题无关——被拦的人照着提示修，修不好。
+ * 文案错位不算安全漏洞，但它让门禁从"教人改对"退化成"挡路"。
+ */
+export function blockedRules(gates) {
+  const out = [];
+  for (const item of (gates && gates.blockedCommands) || []) {
+    if (typeof item === 'string') {
+      out.push({ pattern: item, hint: null });
+    } else if (item && typeof item.pattern === 'string') {
+      out.push({ pattern: item.pattern, hint: typeof item.hint === 'string' ? item.hint : null });
+    }
+  }
+  return out;
+}
+
+/** 规则的通用兜底文案：不知道具体是哪类时，只给出唯一确定正确的出路。 */
+export const GENERIC_RULE_HINT =
+  '这条规则没有等价的安全写法；确实需要例外时写入 hooks/allowlist.txt（<命令前缀> | <原因> | <YYYY-MM-DD>），到期自动失效';
 
 /**
  * 证据链校验。mode 决定判据强度，默认 local（hook 侧）。
@@ -244,13 +402,34 @@ export function checkOoda(todo) {
 
 /**
  * 对一份 todos 做完整校验，返回所有失败项。
- * 只在 status 已是 completed 时校验——in_progress 也校验会把会话卡死。
+ * pending / doing 不做证据校验——会话还没走到那一步，校了会把会话卡死。
+ * 但 status 必须先过枚举：非法值直接判失败，不给"拼错状态 = 免检"留口子。
  */
 export function validateTodos(todos, repo, opts = {}) {
   const failures = [];
   for (const todo of todos || []) {
-    if (todo.status !== 'completed' && todo.status !== 'done') continue;
     const id = todo.id || '(无 id)';
+
+    if (!TODO_STATUSES.includes(todo.status)) {
+      failures.push({
+        id,
+        rule: 'status',
+        reason: `status 非法：${JSON.stringify(todo.status)}（合法值：${TODO_STATUSES.join(' / ')}）。非法状态不触发证据校验，等于把 TODO 藏出门禁`,
+      });
+      continue;
+    }
+
+    if (todo.status !== 'completed' && todo.status !== 'done') continue;
+
+    // 决策型工作包（#12，两次实测暴露）：T0 这类"人裁决决策包"没有可跑的命令，
+    // verify 日志形态根本不存在——它的证据就是 blockers 数组本身（是否全 resolved，
+    // 在 checkTaskTraceability 里按 state 级校验）。这里只保留 ooda 检查，
+    // 免审计四项与 verify 日志，否则决策包永远无法合法完成。
+    if (todo.kind === 'decision') {
+      const oodaD = checkOoda(todo);
+      if (!oodaD.ok) failures.push({ id, rule: 'ooda', reason: oodaD.reason });
+      continue;
+    }
 
     const audit = checkAudit(todo);
     if (!audit.ok) failures.push({ id, rule: 'audit', reason: audit.reason });
@@ -260,8 +439,405 @@ export function validateTodos(todos, repo, opts = {}) {
 
     const verify = checkVerify(todo, repo, opts);
     if (!verify.ok) failures.push({ id, rule: 'verify', reason: verify.reason });
+
+    // #17：verify 过了才对账 audit 数字（verify 没过的场景它自己的报错更重要）
+    const tm = checkAuditTestsMatch(todo, repo);
+    if (!tm.ok) failures.push({ id, rule: 'audit', reason: tm.reason });
   }
   return failures;
+}
+
+/**
+ * 阶段链只有一份。
+ *
+ * 此前 STAGE_NEXT 长在 scripts/harness-cli.mjs 里，而 init-harness.sh 自己造了个
+ * `stage:"intake"`——一个不在任何链上的阶段名。于是新建的任务从第一天起就站在
+ * 状态机之外：resume 认不出"下一阶段是谁"，ci-verify 只判 todos 不判 stage，
+ * 拼错的 `fs-review`（连字符）照样绿。阶段名是判据，不是标签，必须单源 + 闭合。
+ *
+ * 次序依据（`wbs` 曾排在 `fs_review` 之前，已调整）：
+ *   RS 定稿 → ADR 选型（架构决策先于详细设计）→ FS 评审 → WBS 拆解 → 实现。
+ *
+ * 为什么 wbs 必须在 fs_review 之后：WBS 要求每个叶子有可验收标准，而验收标准只能来自
+ * FS 的行为定义。FS 没评审就拆任务，拆的是想象；等 FS 补齐后 WBS 又不回头，于是要么
+ * 出现悬空任务（做出来没人要），要么漏做（FS 小节没有对应任务）。**次序错了，
+ * 后面的门禁再严也补不回来**——门禁只能判"这一阶段做完了没有"，判不了"在错误的输入上做完"。
+ */
+export const STAGE_CHAIN = ['rs', 'adr', 'fs_review', 'wbs', 'impl', 'review', 'ci', 'retro', 'done'];
+export const STAGE_NEXT = Object.fromEntries(STAGE_CHAIN.slice(0, -1).map((s, i) => [s, STAGE_CHAIN[i + 1]]));
+/** 阶段序号：用来判"是否已越过某阶段"，而不是拼字符串比大小。 */
+export const STAGE_INDEX = Object.fromEntries(STAGE_CHAIN.map((s, i) => [s, i]));
+
+/** 档位枚举（S/M/L/XL）。档位本身不改变判据强度，只记录"这套流程被裁剪过"。 */
+export const FLOW_TIERS = ['S', 'M', 'L', 'XL'];
+export const RISK_TIERS = ['LOW', 'MEDIUM', 'HIGH'];
+
+/**
+ * 阶段名/档位/跳阶的机器可判子集。**只判"是不是链上的合法位置"，不判"该不该到这"**——
+ * "这个任务值不值得走 L 档"是人的判断，机器判不了。
+ *
+ * 跳阶（如 wbs → impl）不禁止，但必须记名：`waived_by` 为空按 fail 计。
+ * 这条是 P2-5 的落点——此前流程裁剪只写在文档里，state 里跳过三个阶段
+ * 和一个阶段都没跳长得一模一样。
+ */
+export function checkStage(state) {
+  if (!state || typeof state !== 'object') return [];
+  const failures = [];
+  const meta = state.meta || {};
+
+  if (!STAGE_CHAIN.includes(state.stage)) {
+    failures.push({
+      id: '(task)',
+      rule: 'stage',
+      reason: `stage 非法：${JSON.stringify(state.stage)} —— 合法值只有 ${STAGE_CHAIN.join(' → ')}（阶段名拼错=站在状态机之外，所有按阶段的门禁都会静默跳过）`,
+    });
+  }
+  if (meta.flow_tier !== undefined && meta.flow_tier !== null && !FLOW_TIERS.includes(meta.flow_tier)) {
+    failures.push({
+      id: '(task)',
+      rule: 'stage',
+      reason: `meta.flow_tier 非法：${JSON.stringify(meta.flow_tier)}（合法值：${FLOW_TIERS.join(' / ')}）`,
+    });
+  }
+  if (meta.risk_tier !== undefined && meta.risk_tier !== null && !RISK_TIERS.includes(meta.risk_tier)) {
+    failures.push({
+      id: '(task)',
+      rule: 'stage',
+      reason: `meta.risk_tier 非法：${JSON.stringify(meta.risk_tier)}（合法值：${RISK_TIERS.join(' / ')}）`,
+    });
+  }
+
+  const hist = Array.isArray(state.stage_history) ? state.stage_history : [];
+  for (let i = 1; i < hist.length; i++) {
+    const from = hist[i - 1] && hist[i - 1].stage;
+    const to = hist[i] && hist[i].stage;
+    if (!STAGE_CHAIN.includes(to) || from === to) continue;
+    if (STAGE_NEXT[from] === to) continue;
+    const who = hist[i] && hist[i].waived_by;
+    if (typeof who !== 'string' || !who.trim()) {
+      failures.push({
+        id: '(task)',
+        rule: 'skip',
+        reason: `stage_history 里 ${JSON.stringify(from)} → ${JSON.stringify(to)} 不是相邻阶段，且未记名豁免（waived_by 为空）—— 跳阶可以，但要有人签字`,
+      });
+    }
+  }
+  return failures;
+}
+
+/**
+ * 当前阶段的门禁是否**已评估且全 pass**。
+ *
+ * 起因（P1-1，已实测复现）：resume 曾把 gate `pass:false` + 2 个未完成 TODO 的 impl
+ * 直接推进 review，history 还记成 `impl/pass`——门禁的结论被推进动作改写了。
+ * 推进的前提是"这一阶段的门禁真的跑过且都过了"，而不是"没有 blocker 了"。
+ */
+export function stageGate(state) {
+  const g = (state && state.gate_result) || {};
+  const checks = Array.isArray(g.checks) ? g.checks : [];
+  if (!checks.length) {
+    return { evaluated: false, failed: [], reason: '本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果' };
+  }
+  // done 收尾时 gate_result 记的是 retro 的结论：推进阶段本身不改写上一阶段的记录
+  // （改了就等于伪造一次没跑过的检查），所以 done 认 retro 的那份。
+  const allowed = state.stage === 'done' ? ['done', 'retro'] : [state.stage];
+  if (g.stage && state.stage && !allowed.includes(g.stage)) {
+    return {
+      evaluated: false,
+      failed: [],
+      reason: `gate_result 记的是 ${g.stage} 阶段，当前在 ${state.stage} —— 换阶段后门禁必须重新评估，旧结论不能顺延`,
+    };
+  }
+  const failed = checks.filter((c) => !c || c.pass !== true);
+  return {
+    evaluated: true,
+    failed,
+    reason: failed.length ? `${failed.map((c) => (c && c.name) || '?').join('、')} 未通过` : null,
+    last: g.last_check || null,
+  };
+}
+
+/**
+ * impl 阶段的退出条件：TODO 必须收尾。
+ *
+ * 只对 impl 生效，不外推到 review/ci：那两阶段的门禁是"CR 阻断项清零""流水线绿"，
+ * 机器判不了，硬套 TODO 收尾会给出一种"看起来在把关"的假象。
+ * 空 todos 不报错（S 档琐碎任务可以不留 TODO），但"实现完了却留着 doing"必须拦。
+ */
+export function checkStageTodoClosure(state) {
+  if (!state || state.stage !== 'impl') return [];
+  const failures = [];
+  for (const todo of state.todos || []) {
+    if (todo.status !== 'completed' && todo.status !== 'done') {
+      failures.push({
+        id: todo.id || '(无 id)',
+        rule: 'stage',
+        reason: `stage=impl 但该 TODO 状态是 ${JSON.stringify(todo.status)} —— 实现阶段收尾前所有 TODO 必须完成（未做的移出本任务并写明去向，不要留着声明"做完了"）`,
+      });
+    }
+  }
+  return failures;
+}
+
+/**
+ * stage=done 的退出条件（orchestrator 的收尾定义）：所有 TODO 必须收尾。
+ * 空 todos 允许——S 档琐碎任务可以不留 TODO，但不允许留半个未完成的。
+ * 但"空 todos + done"必须留下一句为什么：否则删光 todos 就能把任何任务判成完工，
+ * 这是最便宜的一条全绿捷径。
+ * hook 与 CI 共用这条判据，两边口径一致（失效点 7）。
+ */
+export function checkStageExit(state) {
+  if (!state || state.stage !== 'done') return [];
+  const failures = [];
+  const todos = state.todos || [];
+  for (const todo of todos) {
+    if (todo.status !== 'completed' && todo.status !== 'done') {
+      failures.push({
+        id: todo.id || '(无 id)',
+        rule: 'exit',
+        reason: `stage=done 但该 TODO 状态是 ${JSON.stringify(todo.status)} —— 收尾前所有 TODO 必须完成`,
+      });
+    }
+  }
+  const meta = state.meta || {};
+  const noTodoReason = typeof meta.no_todo_reason === 'string' ? meta.no_todo_reason.trim() : '';
+  if (todos.length === 0 && !noTodoReason) {
+    failures.push({
+      id: '(task)',
+      rule: 'exit',
+      reason: 'stage=done 但 todos 为空且 meta.no_todo_reason 没写理由 —— 零 TODO 可以是合法的（S 档琐碎任务），但必须说清为什么，否则"删光 todos"就是最便宜的全绿捷径',
+    });
+  }
+
+  // #19（实测：@InternalApi 计划要求被静默省略）：deviations 从声明升为判据——
+  // 收口时每条偏离必须有处置结论（fixed / acknowledged+记名），"记了但没人看"不算闭环。
+  for (const d of state.deviations || []) {
+    if (!d || !d.disposition) {
+      failures.push({
+        id: '(task)',
+        rule: 'exit',
+        reason: `偏离未处置：${String((d && d.what) || JSON.stringify(d)).slice(0, 60)} —— done 前逐条给结论（disposition: fixed | acknowledged + by 记名）`,
+      });
+    }
+  }
+
+  // #21（实测：console 3 例红灯只活在 audit.tests 文本里，不可查询）：
+  // known_issues 必须逐条闭环——id/现象/根因/归属 TODO/结论，收口时 resolution 不能为空。
+  for (const k of state.known_issues || []) {
+    if (!k || !k.resolution) {
+      failures.push({
+        id: (k && k.id) || '(task)',
+        rule: 'exit',
+        reason: `known_issues 未闭环：${String((k && k.symptom) || '').slice(0, 50)} —— 收口前逐条写结论（resolution + owner_todo 收口）`,
+      });
+    }
+  }
+  return failures;
+}
+
+/**
+ * 产物索引 —— **提示性，不是门禁**。
+ *
+ * 设计取舍（P3-10 的结论）：`artifacts` 只负责"产物在哪"，不负责"产物够不够"。
+ *   · 做成门禁（路径必须存在且是 string）会把"声明"当"事实"：agent 写个空文件也能过，
+ *     而且真实存量里它已经长成了注释桶（TDC 那份 state 里混着 null 和一段说明文字），
+ *     严格校验会当场把合规任务判红；
+ *   · 直接删字段则会毁掉唯一能把产物串起来的索引，下次续跑只能 glob 猜（失效点 §18）。
+ * 所以：读出来、显示出来、缺了只提示，不参与 exit code。
+ * 产物合格与否归 stage gate（checkStageTodoClosure / checkStageExit / 人工 review）。
+ */
+export function artifactIndex(state, repo = REPO_ROOT) {
+  const raw = state && typeof state.artifacts === 'object' && state.artifacts !== null ? state.artifacts : {};
+  const entries = [];
+  const odd = [];
+  // 只想把"显然不是路径的东西"分出来展示（含空格的句子、中文说明），**不据此判任何东西**：
+  // 这是展示分类，不是判据。真实存量里 artifacts 已经混进过整段说明（TDC 的 promotion_note），
+  // 把它算成"产物缺失"会制造假告警，把人训练成无视这一节。
+  const looksLikePath = (s) => !/\s/.test(s) && !/[\u4e00-\u9fa5]/.test(s);
+  for (const [key, val] of Object.entries(raw)) {
+    if (val === null) {
+      entries.push({ key, path: null, exists: null });
+      continue;
+    }
+    if (typeof val !== 'string') {
+      odd.push({ key, type: Array.isArray(val) ? 'array' : typeof val });
+      continue;
+    }
+    const p = val.trim();
+    if (!p) {
+      odd.push({ key, type: 'empty' });
+      continue;
+    }
+    if (!looksLikePath(p)) {
+      odd.push({ key, type: 'text' });
+      continue;
+    }
+    entries.push({ key, path: p, exists: existsSync(resolve(repo, p)) });
+  }
+  return { entries, odd };
+}
+
+/**
+ * 文档完备性（RS / FS / WBS）—— 判据实现在 doc_completeness.mjs，
+ * 这里只做"把阶段链传进去"的转接：链是单源，判据库不自己存一份。
+ *
+ * 与 artifactIndex 的分工：索引回答"产物在哪"（提示性），完备性回答"写全了没有"
+ * （按阶段判死）。两者都不回答"内容对不对"——那是 SR 报告与人审。
+ */
+export function checkCompleteness(state, repo = REPO_ROOT) {
+  return checkDocCompleteness(state, repo, { stageChain: STAGE_CHAIN });
+}
+
+/**
+ * 已越过产出阶段、但 artifacts 里没登记的文档。**提示用，不判死**——
+ * 检查范围由声明决定，不声明就检不到；这个边界必须说出来，否则"完备性通过"
+ * 会被读成"文档没问题"。
+ */
+export function missingDeclarations(state) {
+  return missingDocDeclarations(state, STAGE_CHAIN);
+}
+
+/** RS/FS/WBS 的登记口径（key / label / 产出阶段），供 CLI 展示用。 */
+export { docKinds, declaredPathOf };
+
+/**
+ * change/bugfix 任务的追溯链校验（机器可判子集，hook 与 CI 共用）。
+ *
+ * 设计原则（对应 checklist §15 的教训——别把声明当门禁）：
+ *   - 只校验"字段存在且非空"这类可判定事实；
+ *   - 变更档位选 1/2/3 是否合理、affected_ids 是否列全，归 CR 人审；
+ *   - 归属类校验（related_task 必填、change 必须有 baseline）建任务时就该满足，
+ *     任何时候缺了都拦；完成态才校验追溯产出（affected_ids / 回归 TODO），
+ *     因为做到一半时它们天然还是空的。
+ *
+ * repo：工作树根。存在性与 git 事实（commit 在不在历史里、日志入没入库）相对它判定；
+ * 不是 git 仓库时跳过 git 类检查——判不了的不假装判，由 CI（必有 git）兜底。
+ */
+export function checkTaskTraceability(state, repo = REPO_ROOT) {
+  if (!state || typeof state !== 'object') return [];
+  const meta = state.meta || {};
+  const type = meta.task_type === undefined || meta.task_type === null ? 'feature' : meta.task_type;
+  const failures = [];
+
+  if (!TASK_TYPES.includes(type)) {
+    failures.push({
+      id: '(task)',
+      rule: 'task_type',
+      reason: `task_type 非法：${JSON.stringify(type)}（合法值：${TASK_TYPES.join(' / ')}）`,
+    });
+    return failures;
+  }
+
+  // #9（实测：单栈收编项目里 frontend TODO 无栈可依却静默通过）：
+  // todo.stack 必须是已注册栈（stacks ∪ skills.extraStacks ∪ harness），枚举闭合。
+  // 只在配置存在时生效——校验的目标是"TODO 与已收编配置的漂移"，没有配置就没有
+  // 漂移可言；且 ci-verify --file 要能独立校验任意 state（夹具/临时态没有配置）。
+  const cfg = loadConfig(repo);
+  if (cfg) {
+    const projectIds = Array.isArray(cfg.projects)
+      ? cfg.projects.map((p) => p.id)
+      : Object.keys(cfg.stacks || {});
+    const legalStacks = new Set([
+      ...projectIds,
+      ...(((cfg.skills || {}).extraStacks) || []),
+      'harness',
+    ]);
+    for (const t of state.todos || []) {
+      if (t.stack && !legalStacks.has(t.stack)) {
+        failures.push({
+          id: t.id || '(task)',
+          rule: 'trace',
+          reason: `todo.stack=${JSON.stringify(t.stack)} 不是已注册栈（合法值：${[...legalStacks].join(' / ')}）——要么在 harness.config.json 注册该栈，要么改 TODO 的 stack`,
+        });
+      }
+    }
+  }
+
+  // #12：决策型工作包的完成证据 = 全部 blocker 已 resolved（state 内自洽，机器可查）。
+  for (const t of state.todos || []) {
+    if (t.kind !== 'decision' || (t.status !== 'completed' && t.status !== 'done')) continue;
+    const unresolved = (state.blockers || []).filter((b) => !b.resolved);
+    if (unresolved.length) {
+      failures.push({
+        id: t.id || '(task)',
+        rule: 'trace',
+        reason: `决策工作包已标完成，但仍有 ${unresolved.length} 条 blocker 未决——决策没落全，完成态不成立`,
+      });
+    }
+  }
+
+  if (type === 'feature') return failures;
+
+  const related = meta.related_task;
+  if (!related || typeof related !== 'string') {
+    failures.push({ id: '(task)', rule: 'trace', reason: 'change/bugfix 任务缺 related_task（未关联原任务或发现来源，追溯链无从建立）' });
+  } else if (!existsSync(join(repo, '.ai/tasks', related, 'state.json'))) {
+    // init 建档时验证过一次，但 meta 之后可以被改写——每次落盘都复核，防关联被改断。
+    failures.push({ id: '(task)', rule: 'trace', reason: `关联任务不存在：${related}（related_task 被改错或原任务已删，追溯链断裂）` });
+  }
+
+  if (state.stage !== 'done') return failures;
+
+  const ids = meta.affected_ids;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.some((x) => typeof x !== 'string' || !x.trim())) {
+    failures.push({
+      id: '(task)',
+      rule: 'trace',
+      reason: '完成态的 change/bugfix 必须在 meta.affected_ids 列出受影响需求/模块 ID（空数组 = 影响分析没做）',
+    });
+  }
+
+  if (type === 'change') {
+    const baseline = meta.baseline;
+    if (!baseline || typeof baseline !== 'string') {
+      failures.push({ id: '(task)', rule: 'trace', reason: 'change 任务缺 baseline（需求基线必须是 commit hash，不锚定的关联会两头漂移）' });
+    } else if (!COMMIT_HASH_RE.test(baseline)) {
+      failures.push({ id: '(task)', rule: 'trace', reason: `baseline 必须是 7-40 位 commit hash（RS 是活文档，${JSON.stringify(baseline)} 这种形态机器验证不了，等于没锚）` });
+    } else if (isGitRepo(repo) && git(repo, ['cat-file', '-e', `${baseline}^{commit}`]) === null) {
+      failures.push({ id: '(task)', rule: 'trace', reason: `baseline ${baseline} 在仓库历史里不存在（commit 拼错或来自别的仓库）` });
+    }
+    if (!CHANGE_TIERS.includes(meta.change_tier)) {
+      failures.push({
+        id: '(task)',
+        rule: 'trace',
+        reason: `完成态的 change 必须在 meta.change_tier 标注影响档位（1=文案/展示 2=局部行为 3=契约/跨栈，合法值：${CHANGE_TIERS.join(' / ')}）`,
+      });
+    }
+  }
+
+  if (type === 'bugfix') {
+    const regressions = (state.todos || []).filter(
+      (t) => t && t.kind === 'regression' && (t.status === 'completed' || t.status === 'done')
+    );
+    if (regressions.length === 0) {
+      failures.push({
+        id: '(task)',
+        rule: 'trace',
+        reason: '完成态的 bugfix 必须有 kind="regression" 且已完成的复现测试 TODO（先复现再修复，缺它等于口头声称修好了）',
+      });
+    }
+    for (const t of regressions) {
+      const fail = checkRedLog(t, repo);
+      if (fail) failures.push({ id: t.id || '(无 id)', rule: 'trace', reason: fail });
+    }
+  }
+
+  return failures;
+}
+
+/** 红灯日志：修复前的失败运行记录。机器判存在性与形态，"是不是真跑出来的"归 CR。 */
+function checkRedLog(todo, repo) {
+  const p = todo.red_log_path;
+  if (!p || typeof p !== 'string') {
+    return '回归测试 TODO 缺 red_log_path（修复前必须留一次失败运行的红灯日志，格式同 verify-run.sh）';
+  }
+  const abs = resolve(repo, p);
+  if (!existsSync(abs)) return `红灯日志不存在：${p}`;
+  const code = parseExitCode(readHead(abs));
+  if (code === null) return `红灯日志缺少 exit_code 头：${p}（格式见 scripts/verify-run.sh）`;
+  if (code === 0) return `红灯日志 exit_code=0 —— 修复前的复现运行必须是失败（红灯），exit 0 说明这不是复现记录`;
+  if (gitTracked(repo, p) === false) return `红灯日志未入库：${p}（证据必须随代码提交）`;
+  return null;
 }
 
 export function formatFailures(failures) {

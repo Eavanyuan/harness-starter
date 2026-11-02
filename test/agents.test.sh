@@ -28,9 +28,16 @@ echo "== 2. 三套产物数量一致 =="
 C=$(ls .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 Z=$(ls .zcode/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
 P=$(ls prompts/agents/*.md 2>/dev/null | wc -l | tr -d ' ')
+# 期望值按 agents.enabled 派生（子集模式下源文件仍是全量 11 份，产物数=启用数，不是源数）
+EXPECTED=$(node -e '
+  const c = require("./harness.config.json");
+  const enabled = c.agents && c.agents.enabled;
+  if (Array.isArray(enabled)) { console.log(enabled.length); process.exit(0); }
+  const fs = require("fs");
+  console.log(fs.readdirSync("agents").filter((f) => f.endsWith(".agent.md")).length);')
 check "claude=zcode" "$C" "$Z"
 check "claude=deepseek" "$C" "$P"
-check "产物数=源数" "$C" "$(ls agents/*.agent.md | wc -l | tr -d ' ')"
+check "产物数=启用数（无 agents.enabled 时=源数）" "$C" "$EXPECTED"
 
 echo "== 3. name 与文件名一致、tools 非空 =="
 check "frontmatter 不合规数" 0 "$(node -e '
@@ -69,7 +76,7 @@ console.log(bad);')"
 echo "== 5. 写入范围进入产物（writes 不再只是源文件里的注释）=="
 check "缺写入范围的产物数" 0 "$(grep -L "> 写入范围：" .claude/agents/*.md 2>/dev/null | wc -l | tr -d ' ')"
 check "writes.json 存在" 0 "$([ -f .ai/writes.json ] && echo 0 || echo 1)"
-check "writes.json 的 agent 数" 11 "$(node -e 'console.log(Object.keys(require("./.ai/writes.json").agents).length)')"
+check "writes.json 的 agent 数=启用数" "$EXPECTED" "$(node -e 'console.log(Object.keys(require("./.ai/writes.json").agents).length)')"
 
 echo "== 6. writes 无占位符残留、无空值 =="
 check "占位符已替换" 0 "$(node -e '
@@ -80,7 +87,9 @@ const m=require("./.ai/writes.json").agents;
 console.log(Object.values(m).filter(v=>!v.writes.length).length);')"
 
 echo "== 7. 漂移检测真能拦住手改 =="
-echo "<!-- 手工塞一行 -->" >> .claude/agents/coder.md
+# 用 orchestrator（agents.enabled 保证恒在）——用 coder 会在只读子集下不存在，
+# 追加会"创建"一个产物清单之外的文件，check 反而发现不了（那正是 --prune 的职责）
+echo "<!-- 手工塞一行 -->" >> .claude/agents/orchestrator.md
 node scripts/build-agents.mjs --check >/dev/null 2>&1
 check "手改后 check 失败" 1 "$?"
 node scripts/build-agents.mjs >/dev/null 2>&1

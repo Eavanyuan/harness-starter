@@ -7,3 +7,14 @@
 # 例子（取消注释前想清楚：这几类文件本身就定义了"什么算合格"）：
 # hooks/guard_state.mjs | 新增"证据日志必须含命令原文"校验 | 2026-11-30
 # templates/FS-功能规格.md | 补边界条件必填小节 | 2026-11-15
+#
+# 2026-10-30 harness-builder v1 落地批次（docs/plans/2026-10-30-harness-builder-final.md，
+# 用户在会话中直接授权；同批测试见 test/harness-cli.test.sh）：
+hooks/lib/ledger.mjs | 新增 deny ledger 观测（方案 §10），纯追加不参与判定 | 2026-11-13
+hooks/lib/verify.mjs | 新增 SCHEMA_VERSION/migrate 迁移链（方案 §9） | 2026-11-13
+hooks/guard_command.mjs | deny() 挂载 ledger 记录点（方案 §10） | 2026-11-13
+hooks/guard_write.mjs | deny() 挂载 ledger 记录点（方案 §10） | 2026-11-13
+hooks/guard_state.mjs | block() 挂载 ledger + 校验前走 migrate（方案 §9/§10） | 2026-11-13
+harness.config.json | 新增 agents.enabled 键（方案 §5.2，四周节奏的机械基础） | 2026-11-13
+hooks/write-allowlist.txt | 放行条自身的登记通道（人工编辑等价操作） | 2026-11-13
+hooks/session_start.mjs | #22 session 心跳入账 events.jsonl（用户授权的本批改进） | 2026-11-13

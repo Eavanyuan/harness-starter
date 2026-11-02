@@ -8,6 +8,8 @@
 
 2. **禁止跳过测试求绿。** 不写 `-DskipTests`、`-Dmaven.test.skip=true`、`--passWithNoTests`、
    `@Disabled`、`--no-verify`。测试跑不过时，修实现或修测试，不许让测试消失。
+   配置（`harness.config.json` 的 `stacks.*`）同样受此约束：标准命令命中禁用 flag
+   会被 `doctor` 直接判红，运行时则由 `guard_command` 按 `blockedCommands` 硬拦。
 
 3. **禁止事后补过程。** TODO 状态只能前进，不能回填；文档不能写在代码之后来"追认"设计。
    允许设计晚于代码的探索，但必须在 retro 里显式说明，而不是伪造一份当时不存在的文档。

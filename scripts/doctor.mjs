@@ -17,6 +17,9 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// 规则清单的规范化与 guard_command 共用同一份实现：doctor 若自己解析一遍，
+// 两种写法（字符串 / {pattern,hint}）迟早有一边认错，体检就会对着空气报绿。
+import { blockedRules } from '../hooks/lib/verify.mjs';
 const errors = [];
 const warns = [];
 const ok = [];
@@ -46,24 +49,43 @@ const json = (p) => {
 const PLACEHOLDER_NAME = 'harness-starter';
 const templateMode = (config.project && config.project.name) === PLACEHOLDER_NAME;
 
-// 1. 技术栈目录
-const stacks = config.stacks || {};
-if (Object.keys(stacks).length === 0) err('stacks 为空 —— coder 不知道该改哪个目录');
+// 1. 技术栈目录（v2 projects 数组 + v1 stacks 对象统一消费——allStacks 是唯一入口）
+import { allStacks } from './lib/analyzer.mjs';
+const stacksArr = allStacks(config);
+if (stacksArr.length === 0) err('stacks/projects 为空 —— coder 不知道该改哪个目录');
 let stackMissing = 0;
-for (const [name, s] of Object.entries(stacks)) {
+for (const s of stacksArr) {
+  const name = s.id || 'unknown';
   const dir = join(ROOT, s.dir || name);
   if (!existsSync(dir)) {
     stackMissing++;
     if (templateMode) {
-      warn(`stacks.${name}.dir="${s.dir}" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失`);
+      warn(`projects[${name}].dir="${s.dir}" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失`);
     } else {
-      err(`stacks.${name}.dir="${s.dir}" 不存在 —— 占位值没改成项目真实目录，验证命令会跑空`);
+      err(`projects[${name}].dir="${s.dir}" 不存在 —— 占位值没改成项目真实目录，验证命令会跑空`);
     }
-  } else ok.push(`stacks.${name} → ${s.dir}`);
+  } else ok.push(`projects[${name}] → ${s.dir}`);
   for (const k of ['lint', 'test', 'testOne']) {
-    if (!s[k]) warn(`stacks.${name}.${k} 未配置，验证命令会靠模型猜`);
+    if (!s[k]) warn(`projects[${name}].${k} 未配置，验证命令会靠模型猜`);
   }
-  if (!s.srcGlob) warn(`stacks.${name}.srcGlob 未配置 —— 证据新鲜度判断会退化成"所有改动文件"`);
+  // 配置提供的标准流程自身不得命中禁用规则，否则要么运行时必被 guard_command 拦，
+  // 要么违反 .ai/rules/verification.md 的纪律——配置与规则打架比缺配置更糟。
+  const blocked = blockedRules(config.gates || {});
+  for (const k of ['lint', 'test', 'testOne']) {
+    const cmd = s[k];
+    if (!cmd) continue;
+    const hitCmd = blocked.find((r) => {
+      try {
+        return new RegExp(r.pattern).test(cmd);
+      } catch {
+        return false;
+      }
+    });
+    if (hitCmd) {
+      err(`projects[${name}].${k}="${cmd}" 命中 gates.blockedCommands 的 /${hitCmd.pattern}/ —— 配置自带的标准流程违反验证纪律，改命令或改规则`);
+    }
+  }
+  if (!s.srcGlob) warn(`projects[${name}].srcGlob 未配置 —— 证据新鲜度判断会退化成"所有改动文件"`);
 }
 
 // 2. hook 接线：按 CLI 逐个查，不是"某个 CLI 注册了就算"
@@ -143,6 +165,9 @@ const CONSUMED = [
   'capabilityMap',
   'hooksFile',
   'srcGlob',
+  'promotionDir',
+  'runtime',
+  'spawn_agents',
 ];
 const dead = CONSUMED.filter((k) => !code.includes(k));
 if (dead.length) err(`配置键没有任何代码消费（看起来是门禁，实际不生效）：${dead.join(', ')}`);
@@ -184,7 +209,7 @@ const skillsDir = join(ROOT, '.skills');
 const skillNames = existsSync(skillsDir)
   ? readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)
   : [];
-for (const name of Object.keys(stacks)) {
+for (const name of [...new Set(stacksArr.map((s) => s.id).filter(Boolean))]) {
   const covered = skillNames.some((d) => {
     const p = join(skillsDir, d, 'SKILL.md');
     if (!existsSync(p)) return false;
@@ -200,6 +225,22 @@ if (srcCount === 0) err('agents/ 下没有 *.agent.md');
 else ok.push(`agent 源 ${srcCount} 个`);
 if (!existsSync(join(ROOT, '.ai/writes.json'))) warn('.ai/writes.json 不存在 —— 先跑 npm run build:agents');
 
+// 8.5 agents.enabled：裁剪清单必须闭合（拼错名字 = 静默少生成一半 agent，体检必须报）
+const srcNames = existsSync(srcDir) ? readdirSync(srcDir).filter((f) => f.endsWith('.agent.md')).map((f) => f.replace(/\.agent\.md$/, '')) : [];
+const enabledCfg = config.agents && config.agents.enabled;
+if (enabledCfg !== undefined && enabledCfg !== null) {
+  if (!Array.isArray(enabledCfg) || enabledCfg.length === 0) {
+    err('agents.enabled 为空 —— 一个 agent 都不生成，等于没有 harness');
+  } else {
+    const unknown = enabledCfg.filter((n) => !srcNames.includes(n));
+    if (unknown.length) err(`agents.enabled 含未知 agent：${unknown.join(', ')}`);
+    if (!enabledCfg.includes('orchestrator')) err('agents.enabled 缺 orchestrator（唯一调度者，恒在）');
+    if (!unknown.length && enabledCfg.includes('orchestrator')) {
+      ok.push(`agents.enabled ${enabledCfg.length}/${srcNames.length} 个启用`);
+    }
+  }
+}
+
 // 9. 常驻规则长度：它每次会话都进上下文，越长越没人读
 const AGENTS_LIMIT = 70;
 const agentsMd = read('AGENTS.md');
@@ -211,6 +252,75 @@ if (agentsMd === null) {
     warn(`AGENTS.md ${n} 行，超过 ${AGENTS_LIMIT} —— 多出来的内容该挪进 skill，常驻规则越长越没人读`);
   } else {
     ok.push(`AGENTS.md ${n}/${AGENTS_LIMIT} 行`);
+  }
+}
+
+// 10. state 字段契约：文档标成"判据"的字段，必须真有代码读
+// 起因（P3-10）：artifacts / risk_tier / trust_level / ui_scope 长期只有写入、没有读者。
+// 字段在文档里写着"必填/有约束"，机器却从不看它——这比没有字段更糟：
+// 人以为有控制，实际没有。契约文档写清了三档（判据/索引/声明），这里只钉死"判据"那一档。
+const stateDoc = read('docs/06-reference/state-fields.md');
+if (stateDoc === null) {
+  warn('docs/06-reference/state-fields.md 不存在 —— state 字段没有契约说明，字段会继续变成注释桶');
+} else {
+  const gatedRows = stateDoc
+    .split('\n')
+    .filter((l) => l.startsWith('|') && /\|\s*判据/.test(l));
+  const names = new Set();
+  for (const row of gatedRows) {
+    const cell = row.split('|')[1] || '';
+    for (const m of cell.match(/`([a-z_]+)`/g) || []) names.add(m.replace(/`/g, ''));
+  }
+  const unread = [...names].filter((n) => !code.includes(n));
+  if (!names.size) err('state-fields.md 里没有一行标为"判据" —— 契约文档空转，字段等级无从判断');
+  else if (unread.length) err(`state-fields.md 标为判据但代码里没人读：${unread.join(', ')} —— 要么补读者，要么降级为"声明"`);
+  else ok.push(`state 字段契约：${names.size} 个判据字段均有读者`);
+
+  // 反向：代码读了的字段，契约里必须有。
+  // 上一轮只查了"文档→代码"这一个方向，于是长出了反向版本：
+  // checkStageExit 拿 deviations / known_issues 拦人，而契约文档写着 deviations 不是门禁输入、
+  // known_issues 连表里都没有——两个字段没人知道要写，收口判据默认空转，体检还全绿。
+  // 单方向体检比没体检更危险：它给出"已检查"的错觉。
+  const docFields = new Set();
+  for (const row of stateDoc.split('\n')) {
+    if (!row.startsWith('|')) continue;
+    const cell = row.split('|')[1] || '';
+    for (const m of cell.match(/`([a-z][a-z0-9_]*)`/g) || []) docFields.add(m.replace(/`/g, ''));
+    // 有些行把几个字段并列写在同一格（`related_task` / `baseline` / `affected_ids`），
+    // 反引号那一步已收；这里兜没加反引号的裸字段名。
+    for (const t of cell.match(/(?<![A-Za-z0-9_`])[a-z][a-z0-9_]{2,}(?![A-Za-z0-9_`])/g) || []) docFields.add(t);
+  }
+
+  // 只扫 hooks/lib/verify.mjs：判据的单一来源。
+  // 扫全仓会得到一堆假字段（build-agents 里的 `meta` 是 agent frontmatter，
+  // fs.stat 的 `st.isDirectory` 是另一个对象），而检查一旦开始报假阳性，
+  // 人就会给它加白名单，最后白名单比检查还长——那等于检查消失了。
+  // 代价：harness-cli / ci-verify 里另起的字段读取不在本检查范围内，
+  // 但它们是消费方，读的是同一份 state，字段名必须先在 verify.mjs 出现。
+  const verifySrc = read('hooks/lib/verify.mjs') || '';
+  const stripped = verifySrc
+    .replace(/import\.meta/g, '')
+    // 剥字符串 → 再剥注释：代码里存在单引号字符串内含反引号的写法，
+    // 先剥反引号会错配，把两个模板串之间的大段真实代码吞掉（实测过）。
+    .replace(/'[^'\n]*'/g, "''")
+    .replace(/"[^"\n]*"/g, '""')
+    .replace(/`[\s\S]*?`/g, '``')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const IGNORE = new Set(['meta']);
+  const readFields = new Set();
+  for (const m of stripped.matchAll(/\bstate\.([a-z_][a-z0-9_]*)/g)) {
+    if (!IGNORE.has(m[1])) readFields.add(m[1]);
+  }
+  // verify.mjs 里的 `meta` 只可能是 state.meta（migrate 就地赋值），所以 meta.X 也算。
+  for (const m of stripped.matchAll(/\bmeta\.([a-z_][a-z0-9_]*)/g)) readFields.add(m[1]);
+  const undocumented = [...readFields].filter((f) => !docFields.has(f));
+  if (!readFields.size) {
+    err('hooks/lib/verify.mjs 里读不到任何 state 字段 —— 扫描规则可能坏了，这条检查已空转');
+  } else if (undocumented.length) {
+    err(`代码读了但契约文档没写的 state 字段：${undocumented.join(', ')} —— 没人知道要写的字段等于空转的判据，补进 docs/06-reference/state-fields.md 并定档`);
+  } else {
+    ok.push(`state 字段契约：代码读取的 ${readFields.size} 个字段都在契约里（双向一致）`);
   }
 }
 

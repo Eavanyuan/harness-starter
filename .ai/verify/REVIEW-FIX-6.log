@@ -1,0 +1,205 @@
+# cmd: npm run gate
+# started: 2026-10-30T13:28:15Z
+# finished: 2026-10-30T13:29:36Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+> bash test/init.test.sh
+
+== 1. 合法 slug → 建档，state.json 可解析且字段原样 ==
+  [32m✓[0m 合法 slug 建档
+  [32m✓[0m state.json 合法且字段正确
+== 2. 重复初始化 → 不覆盖 ==
+  [32m✓[0m 已存在时 exit 0 不覆盖
+== 3. 路径逃逸 → 拒绝 ==
+  [32m✓[0m ../ 被拒（exit 64）
+  [32m✓[0m 任务目录外无落盘
+== 4. 非法字符 → 拒绝 ==
+  [32m✓[0m 引号 slug 被拒
+  [32m✓[0m 大写 slug 被拒
+  [32m✓[0m 连字符开头被拒（防选项注入）
+== 5. 非法 flow-tier → 仍拒绝 ==
+  [32m✓[0m tier 越界被拒
+== 6. 任务类型与追溯参数（change/bugfix 门槛）==
+  [32m✓[0m change 缺 --related 被拒
+  [32m✓[0m change 关联不存在的任务被拒
+  [32m✓[0m change 缺 --baseline 被拒
+  [32m✓[0m baseline 非 commit hash 被拒（修订号机器验证不了，不收）
+  [32m✓[0m baseline commit 不在历史里被拒
+  [32m✓[0m bugfix 缺 --related 被拒
+  [32m✓[0m bugfix 关联合法任务建档成功
+  [32m✓[0m bugfix state 追溯字段正确
+  [32m✓[0m change 全参数（真实 hash）建档成功
+  [32m✓[0m change state 基线与档位字段正确
+== 7. 类型与参数的其他拒绝路径 ==
+  [32m✓[0m 未知 --type 被拒
+  [32m✓[0m feature 带 --related 被拒（开关拼错早暴露）
+  [32m✓[0m --related 含路径逃逸被拒
+  [32m✓[0m 未知开关被拒（不静默吞掉）
+
+结果：23 通过，0 失败
+
+> harness-starter@1.1.0 test:harness-cli
+> bash test/harness-cli.test.sh
+
+== 1. detect：夹具命中 ==
+  [32m✓[0m java-small 命中 Java/Maven
+  [32m✓[0m vue-small JSON 含 frontend
+== 2. detect：多构建根 → 显式告警，不静默猜测 ==
+  [32m✓[0m 多构建根告警
+== 3. analyze：报告在项目外 + 目标只读 ==
+  [32m✓[0m analysis.json 生成
+  [32m✓[0m PROJECT-MAP.md 生成
+  [32m✓[0m 只读保证（前后 hash 一致）
+  [32m✓[0m --out 落在项目内被拒
+  [32m✓[0m 拒绝退出码非 0
+  [32m✓[0m vue-small 检出循环依赖
+== 4. init --dry-run：一个字节都不落 ==
+  [32m✓[0m dry-run 零落盘
+== 5. init：安装 + build 收口 ==
+  [32m✓[0m init exit 0
+  [32m✓[0m 安装产物齐全（14 项）
+  [32m✓[0m build 收口输出 doctor
+  [32m✓[0m 目标 package.json 带 build:agents
+  [32m✓[0m manifest 落成 complete（不是 pending）
+  [32m✓[0m manifest.generated 展开成文件清单（不是目录）
+== 6. init：冲突不覆盖 ==
+  [32m✓[0m 已存在的 AGENTS.md 原样保留
+  [32m✓[0m manifest 记录 conflict
+== 7. init --agents read-only：子集生效 ==
+  [32m✓[0m coder 未生成
+  [32m✓[0m spec-reviewer 已生成
+  [32m✓[0m writes.json 不含 coder
+== 8. agents.enabled 非法清单 → build 拒绝（不是静默少生成） ==
+  [32m✓[0m 缺 orchestrator 被拒
+  [32m✓[0m 退出码 1
+== 9. remove：先预览后执行，外来内容不动 ==
+  [32m✓[0m dry-run 后文件仍在
+  [32m✓[0m 模板文件已删
+  [32m✓[0m 生成物已删
+  [32m✓[0m 外来文件保留
+  [32m✓[0m .ai/tasks 保留（进度数据）
+== 10. deny ledger：拦截落账 + 故障不影响判定 ==
+  [32m✓[0m force push 仍被拦（exit 2）
+  [32m✓[0m ledger 落账
+  [32m✓[0m 账目含 hook 名
+  [32m✓[0m 账目含拦截对象（被拦的那条命令）
+  [32m✓[0m ledger 故障不改变判定（仍 exit 2）
+== 11. schema：未知版本两侧都显式报错 ==
+  [32m✓[0m ci-verify 拒未知 schema
+  [32m✓[0m 退出码 1
+  [32m✓[0m guard_state 拒未知 schema
+  [32m✓[0m guard_state 退出码 2
+  [32m✓[0m 新档写入 schema_version
+== 12. analyze --out：symlink 指向目标内部同样被拒 ==
+  [32m✓[0m symlink 指进项目内被拒
+  [32m✓[0m 拒绝退出码非 0
+  [32m✓[0m 目标项目内零写入
+== 13. 嵌套构建根：各自成根，不合并成 services ==
+  [32m✓[0m api 是独立构建根
+  [32m✓[0m web 是独立构建根
+  [32m✓[0m 同类型双根 → 要求选主栈
+  [32m✓[0m --stack-dir 落到 stacks.backend.dir
+== 14. 重跑 init：manifest 合并，remove 仍然干净 ==
+  [32m✓[0m 重跑仍执行 build（跳过只在 config 冲突时）
+  [32m✓[0m 重跑后 create 记录仍在（不是全变 skip）
+  [32m✓[0m 重跑后 remove 仍能删掉模板文件
+== 15. remove：不删 generated 目录里的用户文件；改过的文件要 --force ==
+  [32m✓[0m 用户自加的 .claude/agents/mine.md 保留
+  [32m✓[0m 被改过的 AGENTS.md 不删（先警告）
+  [32m✓[0m --force 后才删被改过的文件
+  [32m✓[0m 用户文件在 --force 下仍保留（不在 manifest）
+== 16. check：打印运行时前提 ==
+  [32m✓[0m 打印 node 版本
+  [32m✓[0m 打印 bash 状态
+  [32m✓[0m 前提齐备时 exit 0
+== 17. 不支持的栈：只识别，不发明命令 ==
+  [32m✓[0m Go 标 unsupported
+  [32m✓[0m config 里没有凭空生成的 Go 命令
+== 18. analysis.json 契约字段 ==
+  [32m✓[0m 含 schema_version / warnings / evidence / tool / edges / buildRoots
+== 19. init 用探测结果适配 config（不再是模板占位值） ==
+  [32m✓[0m project.name 与 stacks 按探测回填
+== 20. 未知 flag 直接 usage（不被当成 positional 吞掉） ==
+  [32m✓[0m 拼错的 --stackdir → exit 64
+== 21. init：已有 package.json 合并 scripts（否则 npm run gate 是纸面的） ==
+  [32m✓[0m dry 输出提到合并 scripts
+  [32m✓[0m 保留原有键并补上 gate/build:agents
+  [32m✓[0m merge 的 package.json 不被 remove 删除（不是我们建的）
+== 22. init：bash 缺失 → 拒绝安装（exit 69，零落盘） ==
+  [32m✓[0m 缺失 bash → exit 69
+  [32m✓[0m 拒绝时零落盘
+
+结果：65 通过，0 失败
+
+> harness-starter@1.1.0 test:evidence
+> bash test/evidence.test.sh
+
+== 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
+  [32m✓[0m CI 口径不误杀合规证据
+== 2. --file 只校验一份 state → 通过 ==
+  [32m✓[0m 单文件校验
+== 3. 日志 exit_code 非 0 → 拦截 ==
+  [32m✓[0m 失败命令不能入库成完成态
+== 4. 日志缺失 → 拦截 ==
+  [32m✓[0m 没有证据不算完成
+== 5. 日志未入库（只在本机）→ 拦截 ==
+  [32m✓[0m 未入库日志不算证据
+== 6. waived 没有记名 → 拦截 ==
+  [32m✓[0m 豁免必须记名
+== 6b. 拼错的 status → CI 拦截（枚举闭合，状态不能藏出门禁）==
+  [32m✓[0m 非法状态被 CI 拦住
+  [32m✓[0m CI 输出点名非法状态
+== 6c. stage=done 但 TODO 未收尾 → CI 拦截（退出条件）==
+  [32m✓[0m stage=done 退出条件不满足被拦
+== 6d. change 任务完成态缺追溯字段 → CI 拦截 ==
+  [32m✓[0m change 缺 baseline/affected_ids/change_tier 被拦
+  [32m✓[0m CI 输出点名缺基线
+  [32m✓[0m change 追溯字段齐备（真实 hash）→ 放行
+  [32m✓[0m baseline commit 不在历史里被拦
+  [32m✓[0m CI 输出点名幽灵 commit
+== 6e. bugfix 完成态：回归测试须带红灯日志（修复前的失败运行）==
+  [32m✓[0m bugfix 缺 kind=regression 的完成 TODO 被拦
+  [32m✓[0m CI 输出点名缺回归测试
+  [32m✓[0m 回归 TODO 缺红灯日志被拦
+  [32m✓[0m CI 输出点名缺红灯日志
+  [32m✓[0m 红灯日志 exit_code=0 被拦（修复前必须失败过）
+  [32m✓[0m CI 输出点名红灯日志不红
+  [32m✓[0m bugfix 有已完成回归 TODO + 红灯日志 → 放行
+== 7. --local 仍判新鲜度：日志早于源码 → 拦截 ==
+  [32m✓[0m 本地口径拦陈旧证据
+== 8. --local 把栈内未声明的源码改动也计入（srcGlob 生效）==
+  [32m✓[0m 未声明但同栈改动的源码使旧日志失效
+== 9. --local 合规（日志晚于所有源码）→ 通过 ==
+  [32m✓[0m 本地口径放行新鲜证据
+
+结果：24 通过，0 失败
+
+> harness-starter@1.1.0 test:wiring
+> bash test/wiring.test.sh
+
+== 1. 接线与 manifest 一致 ==
+  [32m✓[0m 无漂移
+== 2. 两个 CLI 都有接线文件 ==
+  [32m✓[0m Claude 接线存在
+  [32m✓[0m ZCode 接线存在
+== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
+  [32m✓[0m hooks.enabled = true
+== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
+  [32m✓[0m 全部 hook 已接线（缺 0 处）
+== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
+  [32m✓[0m Claude 为 command 字符串
+  [32m✓[0m ZCode 为 process + args
+== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
+  [32m✓[0m ZCode 全部 matcher 已锚定
+== 7. 手改接线 → --check 必须发现漂移 ==
+  [32m✓[0m 漂移被检出
+== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
+  [32m✓[0m doctor 对缺失接线报红
+  [32m✓[0m 体检输出点名了 zcode
+== 9. hooks.enabled=false → doctor 必须报阻塞 ==
+  [32m✓[0m 关闭 hook 被体检拦住
+== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
+  [32m✓[0m 配置命令违反纪律被体检拦住
+  [32m✓[0m 体检输出点名了违规 flag
+
+结果：14 通过，0 失败

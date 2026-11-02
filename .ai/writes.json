@@ -1,5 +1,5 @@
 {
-  "note": "由 scripts/build-agents.mjs 从 agents/*.agent.md 的 writes 字段生成，勿手改。写 agents/ 后跑 npm run build:agents。",
+  "note": "由 scripts/build-agents.mjs 从 agents/*.agent.md 的 writes 字段生成，勿手改。写 agents/ 后跑 npm run build:agents。注意：本文件是写入域的投影，供人评审与 CI diff——它是交接契约，不是运行时门禁（PreToolUse 载荷里没有 agent 名，hook 无法按身份拦路径）。",
   "agents": {
     "code-reviewer": {
       "title": "代码审查",
@@ -67,7 +67,8 @@
     "orchestrator": {
       "title": "编排器",
       "writes": [
-        ".ai/tasks/**"
+        ".ai/tasks/**",
+        "docs/plans/**"
       ],
       "stops": [
         "blocker 路由"

@@ -1,0 +1,205 @@
+# cmd: npm run gate
+# started: 2026-11-01T11:11:08Z
+# finished: 2026-11-01T11:12:57Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+== 41. 人已经填好但没应用的输入，不能被刷新冲掉 ==
+  [32m✓[0m 点名有未应用的填写
+  [32m✓[0m 说明不会覆盖
+  [32m✓[0m 填写仍在文件里
+== 42. 批量接受建议只作用于第三档 ==
+  [32m✓[0m default_ok 项被批（建议映射到选项编号）
+  [32m✓[0m 第一、二档不动（只有 D3 被批）
+  [32m✓[0m --except 排除的项不被批
+  [32m✓[0m 批量接受同样必须记名（exit 64）
+  [32m✓[0m 说清为什么
+== 43. 门禁没通过 / TODO 没收尾 → 不许推进（P1-1 实测复现过的假推进）==
+  [32m✓[0m gate 记着 fail + TODO 未收尾 → 拒绝推进（exit 3）
+  [32m✓[0m 点名是门禁没过
+  [32m✓[0m 点名未收尾的 TODO
+  [32m✓[0m state 未被改写（stage 与 gate 都保持原样，没被推进动作翻成 pass）
+  [32m✓[0m 门禁全 pass 但 TODO 未收尾 → 仍拒绝（exit 3）
+  [32m✓[0m 说清是阶段收尾要求
+  [32m✓[0m 门禁全 pass → 放行推进
+  [32m✓[0m 推进后 gate_result 清成空、stage 同步到新阶段
+  [32m✓[0m 上一阶段记 pass 且有 exited_at，新阶段是 pending
+  [32m✓[0m 清空后不会冒充已评估
+== 44. 产物索引：显示缺失与形状异常，但不判死（advisory，P3-10）==
+  [32m✓[0m 索引不影响退出码（无阻塞无校验失败 → 0）
+  [32m✓[0m 报出索引统计
+  [32m✓[0m 缺失的产物被点名
+  [32m✓[0m 形状异常只提示不改写
+  [32m✓[0m 给出找法，而不是判死
+  [32m✓[0m state 里的 artifacts 一个字节都没被改
+
+结果：167 通过，0 失败
+
+> harness-starter@1.1.0 test:evidence
+> bash test/evidence.test.sh
+
+== 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
+  [32m✓[0m CI 口径不误杀合规证据
+== 2. --file 只校验一份 state → 通过 ==
+  [32m✓[0m 单文件校验
+== 3. 日志 exit_code 非 0 → 拦截 ==
+  [32m✓[0m 失败命令不能入库成完成态
+== 4. 日志缺失 → 拦截 ==
+  [32m✓[0m 没有证据不算完成
+== 5. 日志未入库（只在本机）→ 拦截 ==
+  [32m✓[0m 未入库日志不算证据
+== 6. waived 没有记名 → 拦截 ==
+  [32m✓[0m 豁免必须记名
+== 6b. 拼错的 status → CI 拦截（枚举闭合，状态不能藏出门禁）==
+  [32m✓[0m 非法状态被 CI 拦住
+  [32m✓[0m CI 输出点名非法状态
+== 6c. stage=done 但 TODO 未收尾 → CI 拦截（退出条件）==
+  [32m✓[0m stage=done 退出条件不满足被拦
+== 6d. change 任务完成态缺追溯字段 → CI 拦截 ==
+  [32m✓[0m change 缺 baseline/affected_ids/change_tier 被拦
+  [32m✓[0m CI 输出点名缺基线
+  [32m✓[0m change 追溯字段齐备（真实 hash）→ 放行
+  [32m✓[0m baseline commit 不在历史里被拦
+  [32m✓[0m CI 输出点名幽灵 commit
+== 6e. bugfix 完成态：回归测试须带红灯日志（修复前的失败运行）==
+  [32m✓[0m bugfix 缺 kind=regression 的完成 TODO 被拦
+  [32m✓[0m CI 输出点名缺回归测试
+  [32m✓[0m 回归 TODO 缺红灯日志被拦
+  [32m✓[0m CI 输出点名缺红灯日志
+  [32m✓[0m 红灯日志 exit_code=0 被拦（修复前必须失败过）
+  [32m✓[0m CI 输出点名红灯日志不红
+  [32m✓[0m bugfix 有已完成回归 TODO + 红灯日志 → 放行
+== 7. --local 仍判新鲜度：日志早于源码 → 拦截 ==
+  [32m✓[0m 本地口径拦陈旧证据
+== 8. --local 把栈内未声明的源码改动也计入（srcGlob 生效）==
+  [32m✓[0m 未声明但同栈改动的源码使旧日志失效
+== 9. --local 合规（日志晚于所有源码）→ 通过 ==
+  [32m✓[0m 本地口径放行新鲜证据
+== 10. stage 拼错 → CI 拦截（阶段名是判据，不是标签）==
+  [32m✓[0m 连字符阶段名被 CI 拦下
+  [32m✓[0m CI 输出点名 stage 非法
+== 11. 跳阶没记名 → CI 拦截；记名 → 放行 ==
+  [32m✓[0m rs → impl 跳阶且无记名 → 拦
+  [32m✓[0m 报错说清是跳阶
+  [32m✓[0m 跳阶记了名 → 放行（可以跳，但要有人签字）
+== 14. 决策型工作包（#12）：证据=blockers 全 resolved，免 verify 日志 ==
+  [32m✓[0m 决策包完成（blockers 全 resolved）合法
+  [32m✓[0m 有未决 blocker 的决策包标完成 → 拦
+  [32m✓[0m 拦截信息点名决策未落全
+== 15. gate=deferred 必须记名（范围裁决与豁免同律）==
+  [32m✓[0m 无记名的 deferred → 拦
+  [32m✓[0m 记名的 deferred → 放行
+== 16. todo.stack 未注册 → 拦（枚举闭合，#9）==
+  [32m✓[0m 未注册栈 → 拦
+  [32m✓[0m 拦截信息列出合法栈
+On branch main
+nothing to commit, working tree clean
+== 17. 日志头窗口：exit_code 必须在前 5 行（#16，贴来的 BUILD SUCCESS 不算证据）==
+  [32m✓[0m exit_code 埋在窗口外 → 拦
+On branch main
+nothing to commit, working tree clean
+== 18. audit 数字与日志对账（#17，27/6/16 三版本并存的教训）==
+  [32m✓[0m audit.tests 16 分母与日志 total=16 一致 → 放行
+  [32m✓[0m audit.tests 27/27 与日志 total=16 → 拦
+  [32m✓[0m 拦截信息要求以日志为准
+== 19. done 前 deviations 必须处置（#19）==
+  [32m✓[0m done 带未处置偏离 → 拦
+  [32m✓[0m 偏离已记名处置 → 放行
+== 20. known_issues 收口闭环（#21）==
+  [32m✓[0m done 带未闭环 known_issue → 拦
+  [32m✓[0m known_issue 已给结论 → 放行
+== 21. gate_result 过期：CI 判红、local 仅提示（#20）==
+  [32m✓[0m CI 口径：过期 gate_result → 拦
+  [32m✓[0m local 口径：仅提示不判死
+== 22. gitChangedFiles 不能吃掉首条目的首字符（实测：pom.xml → om.xml）==
+  [32m✓[0m 首个改动文件是完整路径
+  [32m✓[0m 新增目录内的文件展开成具体路径（不是目录名）
+== 23. 未声明进任何 TODO 的构建基建文件 → CI 拦（#18 此前完全没有用例）==
+  [32m✓[0m 未声明的 pom.xml → 拦
+  [32m✓[0m 报错点名 pom.xml（不是被切坏的 om.xml）
+== 24. 测试夹具里的 pom.xml 不算构建基建（该放的放）==
+  [32m✓[0m 改测试夹具不判红
+== 25. 未跟踪的基建文件只提示，不判红（大仓库里天天有）==
+  [32m✓[0m 未跟踪的 Makefile 不判红
+  [32m✓[0m 但仍然可见（不静默丢弃）
+
+结果：53 通过，0 失败
+
+> harness-starter@1.1.0 test:verify-run
+> bash test/verify-run.test.sh
+
+== 1. # cmd 必须是真实命令，不能被测试计数覆盖（实测过的 bug）==
+  [32m✓[0m cmd 行保留完整命令（参数边界未被空格抹平）
+  [32m✓[0m cmd 行没有变成测试计数
+== 2. 多模块 surefire 报告要相加，不是取一份 ==
+  [32m✓[0m 两份报告 7+5 聚合为 12
+  [32m✓[0m exit_code 头存在且为 0
+== 3. 没有报告时**不写** # tests 行（不伪造 total=0）==
+  [32m✓[0m 无报告 → 没有 # tests 行
+== 4. 跨次运行不重复计数 ==
+  [32m✓[0m 首次计入本次新报告
+  [32m✓[0m 同一批报告不重复计入（第二次没有新报告 → 无计数行）
+== 5. 失败运行的 exit_code 要如实写，脚本退出码同步 ==
+  [32m✓[0m 脚本退出码 = 被跑命令的退出码
+  [32m✓[0m 日志头 exit_code = 7
+== 6. verify.mjs 能从头部读到结论（两边口径一致）==
+  [32m✓[0m 校验器读到的 exit_code 与脚本写的一致
+== 7. 用法错误 → 64（不静默跑空）==
+  [32m✓[0m 缺少 -- 分隔符 → 64
+
+结果：11 通过，0 失败
+
+> harness-starter@1.1.0 test:ledger
+> bash test/ledger.test.sh
+
+== 1. 没有账本时要说清不是没拦过和没接上的区别 ==
+  [32m✓[0m 没有账本 → 不崩，exit 0
+  [32m✓[0m 提示门禁可能没接上（不把空白当干净）
+== 2. 真实拦截与自测流量必须分开 ==
+  [32m✓[0m 真实 2 条、自测 1 条分开计
+  [32m✓[0m 按规则名聚合（不是只记 hook 名）
+  [32m✓[0m 自测流量不进真实基线
+== 3. 同一条规则反复拦 → 要提示回看原话 ==
+  [32m✓[0m ≥5 次时提示核对是否规则写宽
+== 4. 没有 events → 明确说无法证明门禁在线 ==
+  [32m✓[0m 点名没法证明在线
+== 5. 有 events → 报在线条数、覆盖整点、最近一次 ==
+  [32m✓[0m 报出在线条数与整点数
+  [32m✓[0m 说明它的用途是有分母
+  [32m✓[0m 有 events 后不再说'无法证明在线'
+== 6. 坏行不猜内容，也不崩 ==
+  [32m✓[0m 坏行后仍 exit 0
+  [32m✓[0m 坏行计数提示
+== 7. --json 里要有 events（给自动化用）==
+  [32m✓[0m --json 里 events.total / by_type / online_hours 齐备
+
+结果：13 通过，0 失败
+
+> harness-starter@1.1.0 test:wiring
+> bash test/wiring.test.sh
+
+== 1. 接线与 manifest 一致 ==
+  [32m✓[0m 无漂移
+== 2. 两个 CLI 都有接线文件 ==
+  [32m✓[0m Claude 接线存在
+  [32m✓[0m ZCode 接线存在
+== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
+  [32m✓[0m hooks.enabled = true
+== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
+  [32m✓[0m 全部 hook 已接线（缺 0 处）
+== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
+  [32m✓[0m Claude 为 command 字符串
+  [32m✓[0m ZCode 为 process + args
+== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
+  [32m✓[0m ZCode 全部 matcher 已锚定
+== 7. 手改接线 → --check 必须发现漂移 ==
+  [32m✓[0m 漂移被检出
+== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
+  [32m✓[0m doctor 对缺失接线报红
+  [32m✓[0m 体检输出点名了 zcode
+== 9. hooks.enabled=false → doctor 必须报阻塞 ==
+  [32m✓[0m 关闭 hook 被体检拦住
+== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
+  [32m✓[0m 配置命令违反纪律被体检拦住
+  [32m✓[0m 体检输出点名了违规 flag
+
+结果：14 通过，0 失败

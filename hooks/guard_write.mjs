@@ -22,9 +22,10 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readStdinJson } from './lib/verify.mjs';
+import { WRITE_TOOLS, writeTarget } from './lib/write_tools.mjs';
+import { recordDeny } from './lib/ledger.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'create_file', 'str_replace_editor']);
 
 function emit(decision, reason) {
   console.log(
@@ -42,7 +43,8 @@ function emit(decision, reason) {
   }
 }
 
-function deny(reason, suggestion) {
+function deny(reason, suggestion, subject) {
+  recordDeny('guard_write', 'deny', `${reason}｜${suggestion || ''}`, { target: subject });
   emit('deny', `[guard_write] 已拦截：${reason}${suggestion ? `\n做法：${suggestion}` : ''}`);
 }
 
@@ -50,7 +52,7 @@ function loadConfig() {
   try {
     return JSON.parse(readFileSync(join(ROOT, 'harness.config.json'), 'utf8'));
   } catch {
-    deny('harness.config.json 无法读取，写入白名单缺失', '修复配置后重试，不要直接放行');
+    deny('harness.config.json 无法读取，写入白名单缺失', '修复配置后重试，不要直接放行', 'harness.config.json');
   }
 }
 
@@ -80,20 +82,20 @@ function activeAllowlist() {
 }
 
 const payload = readStdinJson();
-if (payload === null) deny('hook 输入无法解析，按 fail-closed 处理');
+if (payload === null) deny('hook 输入无法解析，按 fail-closed 处理', null, '(stdin payload)');
 
 const tool = payload.tool_name || '';
 if (!WRITE_TOOLS.has(tool)) process.exit(0);
 
 const input = payload.tool_input || {};
-const target = String(input.file_path || input.path || input.notebook_path || '');
+const target = writeTarget(input);
 if (!target) process.exit(0);
 
 const abs = isAbsolute(target) ? target : resolve(ROOT, target);
 const rel = relative(ROOT, abs).split('\\').join('/');
 
 if (rel.startsWith('..') || isAbsolute(rel)) {
-  deny(`写入仓库外路径：${target}`, '只改本仓库内的文件；仓库外操作属于环境变更，交给人做');
+  deny(`写入仓库外路径：${target}`, '只改本仓库内的文件；仓库外操作属于环境变更，交给人做', target);
 }
 
 const guards = (loadConfig().gates || {}).writeGuards || {};
@@ -110,7 +112,8 @@ if (sensitive) {
   const example = (guards.sensitiveExempt || [])[0] || '.env.example';
   deny(
     `写入凭据类文件 ${rel}`,
-    `凭据不进仓库。确需示例，写 ${example.replace('**/', '')}（只放字段名与假值，不放真实凭据）`
+    `凭据不进仓库。确需示例，写 ${example.replace('**/', '')}（只放字段名与假值，不放真实凭据）`,
+    rel
   );
 }
 
@@ -118,7 +121,8 @@ const generated = hit(guards.generated);
 if (generated) {
   deny(
     `${rel} 是生成物（命中 ${generated}），手工修改会在下一次 build 被覆盖`,
-    '改 agents/*.agent.md 或 harness.config.json，然后跑 npm run build:agents'
+    '改 agents/*.agent.md 或 harness.config.json，然后跑 npm run build:agents',
+    rel
   );
 }
 
@@ -128,7 +132,8 @@ if (protectRule) {
   if (!allowed) {
     deny(
       `${rel} 属于受保护区（命中 ${protectRule}）——门禁代码、配置、模板与 agent 定义不允许在任务中被顺手改动`,
-      `若确实是本任务的一部分，由人往 hooks/write-allowlist.txt 加一行：\n    ${rel} | <为什么必须改> | <YYYY-MM-DD>\n然后说明改动并补测试，再继续`
+      `若确实是本任务的一部分，由人往 hooks/write-allowlist.txt 加一行：\n    ${rel} | <为什么必须改> | <YYYY-MM-DD>\n然后说明改动并补测试，再继续`,
+      rel
     );
   }
   console.error(`[guard_write] 受保护区已放行（allowlist）：${rel}`);

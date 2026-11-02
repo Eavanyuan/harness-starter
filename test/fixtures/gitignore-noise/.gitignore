@@ -1,0 +1,5 @@
+# 派生物：项目自己声明这不是源码
+.worktrees/
+snapshots/
+!golden/snapshots/
+*.log

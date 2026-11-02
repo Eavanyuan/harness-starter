@@ -25,6 +25,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
+/** 归属声明（harness-cli init 用）：把本次写出的接线文件清单落成 JSON。 */
+const manifestAt = process.argv.indexOf('--manifest');
+const MANIFEST_OUT = manifestAt >= 0 ? process.argv[manifestAt + 1] : null;
+if (manifestAt >= 0 && !MANIFEST_OUT) {
+  console.error('[build-hooks] --manifest 需要一个输出路径');
+  process.exit(1);
+}
 
 const EVENTS = new Set([
   'SessionStart',
@@ -183,4 +190,9 @@ if (CHECK) {
     process.exit(1);
   }
   console.log('[build-hooks] hook 接线与 manifest 一致');
+} else if (MANIFEST_OUT) {
+  writeFileSync(
+    join(ROOT, MANIFEST_OUT),
+    JSON.stringify({ tool: 'build-hooks', files: outputs.map((o) => o.path).sort() }, null, 2) + '\n'
+  );
 }

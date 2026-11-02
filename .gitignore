@@ -1,11 +1,18 @@
 # 机器本地状态，提交即冲突
 .ai/locks/
 
+# deny ledger：v1 本地观测，是否入库由 Harness² 多人信号层决策
+.ai/ledger/
+
+# init 覆盖生成物时留下的原内容备份（本地可恢复即可，不入库）
+.ai/backup/
+
 # 一次性线框，评审结论已进 FS
 prototypes/*.html
 
 node_modules/
 .DS_Store
+.idea/
 
 # 本地临时验证输出（正式证据在 .ai/verify，要入库）
 .ai/verify/*.tmp

@@ -1,0 +1,205 @@
+# cmd: npm run gate
+# started: 2026-10-30T08:17:00Z
+# finished: 2026-10-30T08:17:45Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+  [32m✓[0m wget | bash 必拦
+== 18. curl 管道执行 → 应拦截 ==
+  [32m✓[0m curl | sh 必拦
+== 19. 常规命令 → 应放行 ==
+  [32m✓[0m ls -la src 放行
+== 19b. 跳过测试 flag：-DskipTests → 应拦截 ==
+  [32m✓[0m -DskipTests 必拦
+== 19c. 跳过测试 flag：maven.test.skip → 应拦截 ==
+  [32m✓[0m -Dmaven.test.skip=true 必拦
+== 19d. 跳过测试 flag：--passWithNoTests → 应拦截 ==
+  [32m✓[0m --passWithNoTests 必拦
+== 19e. 正常验证命令 → 应放行（不误伤 -Dtest= 等形近参数）==
+  [32m✓[0m mvn -q test -Dtest=FooTest 放行
+  [32m✓[0m mvn -q compile 放行
+== 20. 读 .env.production → 应拦截 ==
+  [32m✓[0m 禁读真实 env 必拦
+== 21. 读 .env.example → 应放行（门禁不能堵死自己给的出路）==
+  [32m✓[0m 示例 env 放行
+== 22. 读普通源码 → 应放行 ==
+  [32m✓[0m 普通文件放行
+== 23. 拦截提示指向真实 allowlist 路径 ==
+  [32m✓[0m 提示路径为 hooks/allowlist.txt
+== 24. session_start：常规档 → 注入逐任务提醒 ==
+  [32m✓[0m 常规档输出任务清单
+== 25. session_start：light 档 → 豁免逐任务提醒（scaffold 真实分流）==
+  [32m✓[0m light 档跳过任务清单
+== 26. 拼错的 TODO 状态 → 必拦（枚举闭合，状态不能藏出门禁）==
+  [32m✓[0m 拼错状态必拦
+  [32m✓[0m 拦截信息点名了非法状态
+== 27. stage=done 但 TODO 未收尾 → 必拦（退出条件）==
+  [32m✓[0m stage=done 带未完成 TODO 必拦
+
+结果：35 通过，0 失败
+
+> harness-starter@1.1.0 test:writes
+> bash test/writes.test.sh
+
+== 1. 写业务源码 → 应放行 ==
+  [32m✓[0m 后端源码放行
+== 2. 写文档 → 应放行 ==
+  [32m✓[0m 功能规格放行
+== 3. 手改生成物 → 应拦截，且提示改源重建 ==
+  [32m✓[0m 生成物必拦
+  [32m✓[0m 拦截信息给出重建命令
+== 4. 改门禁代码 → 应拦截（考卷不能被考生改）==
+  [32m✓[0m hook 保护区必拦
+== 5. 改模板 → 应拦截 ==
+  [32m✓[0m 模板保护区必拦
+== 6. 改 agent 定义 → 应拦截 ==
+  [32m✓[0m agent 源保护区必拦
+== 7. 写凭据文件 → 应拦截 ==
+  [32m✓[0m 凭据文件必拦
+== 7b. 写凭据示例文件 → 应放行（拦截提示就让人写这个）==
+  [32m✓[0m 示例 env 放行
+== 7c. 写 ZCode 接线文件 → 应拦截（生成物）==
+  [32m✓[0m ZCode 接线属生成物必拦
+== 8. 写仓库外 → 应拦截 ==
+  [32m✓[0m 仓库外必拦
+== 9. 受保护区带到期放行条 → 应放行 ==
+  [32m✓[0m allowlist 生效
+== 10. 放行条过期 → 应恢复拦截 ==
+  [32m✓[0m 过期放行条件失效
+== 11. 输入损坏 → 应 fail-closed ==
+  [32m✓[0m 坏输入按拦截处理
+== 12. 非写入类工具 → 不应干预 ==
+  [32m✓[0m Read 不看写入规则
+
+结果：15 通过，0 失败
+
+> harness-starter@1.1.0 test:agents
+> bash test/agents.test.sh
+
+== 1. 生成物与源一致 ==
+  [32m✓[0m 无漂移
+== 2. 三套产物数量一致 ==
+  [32m✓[0m claude=zcode
+  [32m✓[0m claude=deepseek
+  [32m✓[0m 产物数=源数
+== 3. name 与文件名一致、tools 非空 ==
+  [32m✓[0m frontmatter 不合规数
+== 4. 工具集不得超出能力声明，文档类不得带 Edit/Bash ==
+  [32m✓[0m 越权工具数
+  [32m✓[0m 文档类带写码工具数
+== 5. 写入范围进入产物（writes 不再只是源文件里的注释）==
+  [32m✓[0m 缺写入范围的产物数
+  [32m✓[0m writes.json 存在
+  [32m✓[0m writes.json 的 agent 数
+== 6. writes 无占位符残留、无空值 ==
+  [32m✓[0m 占位符已替换
+  [32m✓[0m 空 writes 的 agent 数
+== 7. 漂移检测真能拦住手改 ==
+  [32m✓[0m 手改后 check 失败
+  [32m✓[0m 重建后恢复一致
+
+结果：14 通过，0 失败
+
+> harness-starter@1.1.0 test:skills
+> bash test/skills.test.sh
+
+check-skills 自测
+  ✓ 原样通过
+  ✓ 新增一个合法 skill 仍通过
+  ✓ name 与目录名不一致
+  ✓ 缺少必备章节
+  ✓ references 指向不存在的文件
+  ✓ 引用其他 skill 的入口（级联）
+  ✓ stack 不在 config.stacks 里
+  ✓ 缺 applies_to
+  ✓ 超过行数上限
+  ✓ required_skills 无法解析
+  ✓ 缺 frontmatter
+
+resolve-skills 自测
+  ✓ 后端文件只命中 backend
+  ✓ e2e 文件只命中 e2e（不命中 frontend/src）
+  ✓ 前端业务文件命中 frontend（不命中 e2e）
+  ✓ 多栈改动命中多个 skill
+  ✓ 范围外文件不加载 skill
+  ✓ 非 git 仓库时 --diff 明确报错而非静默
+
+通过 17，失败 0
+
+> harness-starter@1.1.0 test:init
+> bash test/init.test.sh
+
+== 1. 合法 slug → 建档，state.json 可解析且字段原样 ==
+  [32m✓[0m 合法 slug 建档
+  [32m✓[0m state.json 合法且字段正确
+== 2. 重复初始化 → 不覆盖 ==
+  [32m✓[0m 已存在时 exit 0 不覆盖
+== 3. 路径逃逸 → 拒绝 ==
+  [32m✓[0m ../ 被拒（exit 64）
+  [32m✓[0m 任务目录外无落盘
+== 4. 非法字符 → 拒绝 ==
+  [32m✓[0m 引号 slug 被拒
+  [32m✓[0m 大写 slug 被拒
+  [32m✓[0m 连字符开头被拒（防选项注入）
+== 5. 非法 flow-tier → 仍拒绝 ==
+  [32m✓[0m tier 越界被拒
+
+结果：9 通过，0 失败
+
+> harness-starter@1.1.0 test:evidence
+> bash test/evidence.test.sh
+
+== 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
+  [32m✓[0m CI 口径不误杀合规证据
+== 2. --file 只校验一份 state → 通过 ==
+  [32m✓[0m 单文件校验
+== 3. 日志 exit_code 非 0 → 拦截 ==
+  [32m✓[0m 失败命令不能入库成完成态
+== 4. 日志缺失 → 拦截 ==
+  [32m✓[0m 没有证据不算完成
+== 5. 日志未入库（只在本机）→ 拦截 ==
+  [32m✓[0m 未入库日志不算证据
+== 6. waived 没有记名 → 拦截 ==
+  [32m✓[0m 豁免必须记名
+== 6b. 拼错的 status → CI 拦截（枚举闭合，状态不能藏出门禁）==
+  [32m✓[0m 非法状态被 CI 拦住
+  [32m✓[0m CI 输出点名非法状态
+== 6c. stage=done 但 TODO 未收尾 → CI 拦截（退出条件）==
+  [32m✓[0m stage=done 退出条件不满足被拦
+== 7. --local 仍判新鲜度：日志早于源码 → 拦截 ==
+  [32m✓[0m 本地口径拦陈旧证据
+== 8. --local 把栈内未声明的源码改动也计入（srcGlob 生效）==
+  [32m✓[0m 未声明但同栈改动的源码使旧日志失效
+== 9. --local 合规（日志晚于所有源码）→ 通过 ==
+  [32m✓[0m 本地口径放行新鲜证据
+
+结果：12 通过，0 失败
+
+> harness-starter@1.1.0 test:wiring
+> bash test/wiring.test.sh
+
+== 1. 接线与 manifest 一致 ==
+  [32m✓[0m 无漂移
+== 2. 两个 CLI 都有接线文件 ==
+  [32m✓[0m Claude 接线存在
+  [32m✓[0m ZCode 接线存在
+== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
+  [32m✓[0m hooks.enabled = true
+== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
+  [32m✓[0m 全部 hook 已接线（缺 0 处）
+== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
+  [32m✓[0m Claude 为 command 字符串
+  [32m✓[0m ZCode 为 process + args
+== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
+  [32m✓[0m ZCode 全部 matcher 已锚定
+== 7. 手改接线 → --check 必须发现漂移 ==
+  [32m✓[0m 漂移被检出
+== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
+  [32m✓[0m doctor 对缺失接线报红
+  [32m✓[0m 体检输出点名了 zcode
+== 9. hooks.enabled=false → doctor 必须报阻塞 ==
+  [32m✓[0m 关闭 hook 被体检拦住
+== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
+  [32m✓[0m 配置命令违反纪律被体检拦住
+  [32m✓[0m 体检输出点名了违规 flag
+
+结果：14 通过，0 失败

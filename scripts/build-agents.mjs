@@ -40,6 +40,15 @@ const argv = process.argv.slice(2);
 const CHECK = argv.includes('--check');
 const PRUNE = argv.includes('--prune');
 const targetArg = argv.includes('--target') ? argv[argv.indexOf('--target') + 1] : null;
+/**
+ * 归属声明（harness-cli init 用）：把**本次真正写出的文件清单**落成 JSON。
+ *
+ * 为什么不是让 init 事后扫目录：扫目录分不清"我生成的"和"用户原本就有的"，
+ * 于是用户手写的 .claude/commands/deploy.md 会被记成我们的、remove 时被删。
+ * 归属只能由生成器自己声明——它知道 outputs 是什么，别处无法可靠反推。
+ */
+const MANIFEST_OUT = argv.includes('--manifest') ? argv[argv.indexOf('--manifest') + 1] : null;
+if (argv.includes('--manifest') && !MANIFEST_OUT) die('--manifest 需要一个输出路径');
 
 function die(msg) {
   console.error(`[build-agents] ${msg}`);
@@ -187,7 +196,7 @@ function renderWritesMatrix(agents, config) {
   return (
     JSON.stringify(
       {
-        note: '由 scripts/build-agents.mjs 从 agents/*.agent.md 的 writes 字段生成，勿手改。写 agents/ 后跑 npm run build:agents。',
+        note: '由 scripts/build-agents.mjs 从 agents/*.agent.md 的 writes 字段生成，勿手改。写 agents/ 后跑 npm run build:agents。注意：本文件是写入域的投影，供人评审与 CI diff——它是交接契约，不是运行时门禁（PreToolUse 载荷里没有 agent 名，hook 无法按身份拦路径）。',
         agents: matrix,
       },
       null,
@@ -249,9 +258,26 @@ function main() {
   if (dup.length) die(`agent name 重复：${dup.join(', ')}`);
   for (const a of agents) assertReadOnlyTrim(a.meta);
 
+  // agents.enabled（方案 §5.2）：四周节奏的机械基础——"第 1 周只上只读 agent"由它保证。
+  // 缺省（无该键）= 全部启用；orchestrator 恒在（唯一调度者）；未知名 / 空清单直接死，
+  // 不给"拼错名字 = 静默少生成一半 agent"留口子。writes.json / INDEX 同步只含启用集。
+  const enabledCfg = config.agents && config.agents.enabled;
+  if (enabledCfg !== undefined && enabledCfg !== null) {
+    if (!Array.isArray(enabledCfg) || enabledCfg.length === 0) {
+      die('agents.enabled 为空——一个 agent 都不生成，等于没有 harness');
+    }
+    const src = new Set(names);
+    const unknown = enabledCfg.filter((n) => !src.has(n));
+    if (unknown.length) die(`agents.enabled 含未知 agent：${unknown.join(', ')}`);
+    if (!enabledCfg.includes('orchestrator')) die('agents.enabled 必须包含 orchestrator（唯一调度者，恒在）');
+  }
+  const enabled = new Set(enabledCfg || names);
+  const active = agents.filter((a) => enabled.has(a.meta.name));
+  const skipped = names.filter((n) => !enabled.has(n));
+
   const outputs = new Map();
   for (const [target, t] of targets) {
-    for (const a of agents) {
+    for (const a of active) {
       const content =
         t.mode === 'prompt-only'
           ? renderPrompt(a.meta, a.body, config)
@@ -263,12 +289,13 @@ function main() {
       }
     }
     if (t.mode === 'prompt-only') {
-      outputs.set(join(dirname(t.agentsDir), 'INDEX.md'), renderIndex(agents, config, target));
+      outputs.set(join(dirname(t.agentsDir), 'INDEX.md'), renderIndex(active, config, target));
     }
   }
 
-  // writes 是全 CLI 共享的契约，与 target 无关，只产一份。
-  outputs.set('.ai/writes.json', renderWritesMatrix(agents, config));
+  // writes 是全 CLI 共享的契约，与 target 无关，只产一份（且只含启用集——
+  // 治理文档与实际启用面必须一致，否则又是"看起来存在的门禁"）。
+  outputs.set('.ai/writes.json', renderWritesMatrix(active, config));
 
   if (CHECK) {
     const drift = [];
@@ -310,9 +337,17 @@ function main() {
     }
   }
 
+  if (MANIFEST_OUT) {
+    writeFileSync(
+      join(ROOT, MANIFEST_OUT),
+      JSON.stringify({ tool: 'build-agents', files: [...outputs.keys()].sort() }, null, 2) + '\n'
+    );
+  }
+
   console.log(`[build-agents] 生成 ${outputs.size} 个文件 · targets=${targets.map(([n]) => n).join(',')}`);
+  if (skipped.length) console.log(`  已裁剪（agents.enabled 之外）：${skipped.join(', ')}`);
   for (const [target, t] of targets) {
-    console.log(`  ${target.padEnd(9)} → ${t.agentsDir} (${agents.length}) + ${t.commandsDir}`);
+    console.log(`  ${target.padEnd(9)} → ${t.agentsDir} (${active.length}) + ${t.commandsDir}`);
   }
 }
 

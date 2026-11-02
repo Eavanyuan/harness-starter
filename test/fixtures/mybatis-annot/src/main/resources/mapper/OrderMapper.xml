@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 血缘夹具：只认 statement 元素里的 SQL。
+     注释里的语句（见下）与 resultMap 的列名都不是表。 -->
+<mapper namespace="demo.OrderMapper">
+
+  <!-- select * from ghost_order -->
+
+  <resultMap id="orderMap" type="demo.Order">
+    <result column="cpu_usage" property="cpu"/>
+    <result column="update_time" property="updateTime"/>
+  </resultMap>
+
+  <select id="findAll">select * from td_order</select>
+
+  <insert id="add">
+    insert into td_order (id, appid) values (#{id}, #{appid})
+  </insert>
+
+</mapper>

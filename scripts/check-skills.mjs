@@ -34,7 +34,10 @@ const config = JSON.parse(readFileSync(join(ROOT, 'harness.config.json'), 'utf8'
 const cfg = config.skills || {};
 const MAX_LINES = cfg.maxLines || 200;
 const REQUIRED_SECTIONS = cfg.requiredSections || ['## Stage 0', '## 硬规则', '## 交付'];
-const stackKeys = Object.keys(config.stacks || {});
+// v2 projects 数组 + v1 stacks 对象统一提取 id 集合
+const stackKeys = Array.isArray(config.projects)
+  ? [...new Set(config.projects.map((p) => p.id))]
+  : Object.keys(config.stacks || {});
 // 技术栈之外的受管区域（如 harness 自身）。它们有自己的文件域，但不是 stacks。
 const extraStacks = cfg.extraStacks || [];
 

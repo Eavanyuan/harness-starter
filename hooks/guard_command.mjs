@@ -13,12 +13,24 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readStdinJson } from './lib/verify.mjs';
+import { readStdinJson, blockedRules, GENERIC_RULE_HINT } from './lib/verify.mjs';
+import { recordDeny } from './lib/ledger.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-function deny(reason, suggestion) {
-  const msg = `[guard_command] 已拦截：${reason}${suggestion ? `\n建议：${suggestion}` : ''}`;
+/**
+ * 提示分两层：规则自己的修法（rule.hint）+ 任何规则都成立的例外出口（allowlist）。
+ * 早先把两者揉成一段共用文案，结果 -DskipTests 的提示在讲强推——被拦的人照着改，改不好。
+ * 例外路径则一段都不能少：没有出口的门禁，最后一定被人整体关掉。
+ */
+function deny(reason, suggestion, target, rule = 'deny') {
+  const hint = suggestion || GENERIC_RULE_HINT;
+  const escape = '例外出口：hooks/allowlist.txt 写 <命令前缀> | <原因> | <YYYY-MM-DD>，到期自动失效';
+  // 账本里记**具体哪条规则**，不是笼统的 "deny"：
+  // 只记 hook 名的话，npm run ledger:report 只能告诉你"命令门禁拦了 286 次"，
+  // 说不出是哪条规则在拦——那正是判断误拦率需要的那个数字。
+  recordDeny('guard_command', rule, `${reason}｜${hint}`, { target });
+  const msg = `[guard_command] 已拦截：${reason}\n建议：${hint}\n${escape}`;
   console.log(
     JSON.stringify({
       hookSpecificOutput: {
@@ -36,7 +48,7 @@ function loadConfig() {
   try {
     return JSON.parse(readFileSync(join(ROOT, 'harness.config.json'), 'utf8'));
   } catch {
-    deny('harness.config.json 无法读取，安全清单缺失', '修复配置后重试，不要直接放行');
+    deny('harness.config.json 无法读取，安全清单缺失', '修复配置后重试，不要直接放行', 'harness.config.json');
   }
 }
 
@@ -55,7 +67,7 @@ function activeAllowlist() {
 }
 
 const payload = readStdinJson();
-if (payload === null) deny('hook 输入无法解析，按 fail-closed 处理');
+if (payload === null) deny('hook 输入无法解析，按 fail-closed 处理', null, '(stdin payload)');
 
 const tool = payload.tool_name || '';
 const input = payload.tool_input || {};
@@ -72,13 +84,10 @@ if (tool === 'Bash') {
     process.exit(0);
   }
 
-  for (const pattern of gates.blockedCommands || []) {
-    const re = new RegExp(pattern);
+  for (const rule of blockedRules(gates)) {
+    const re = new RegExp(rule.pattern);
     if (re.test(cmd)) {
-      deny(
-        `命中高危命令规则 /${pattern}/`,
-        '改用 --force-with-lease 之类的可回滚形式；确需执行请写入 hooks/allowlist.txt（<命令前缀> | <原因> | <YYYY-MM-DD>），到期自动失效'
-      );
+      deny(`命中高危命令规则 /${rule.pattern}/`, rule.hint || GENERIC_RULE_HINT, cmd, rule.pattern);
     }
   }
   process.exit(0);
@@ -92,7 +101,9 @@ if (tool === 'Read') {
     if (new RegExp(pattern, 'i').test(path)) {
       deny(
         `尝试读取敏感文件：${path}`,
-        '不要读原始文件。改为读示例文件（.env.example）或让用户提供脱敏后的字段名'
+        '不要读原始文件。改为读示例文件（.env.example）或让用户提供脱敏后的字段名',
+        path,
+        pattern
       );
     }
   }

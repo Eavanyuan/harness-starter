@@ -5,11 +5,18 @@
     "defaultFlowTier": "M",
     "trustLevel": "L1"
   },
+  "promotionDir": "docs/plans",
+  "runtime": {
+    "spawn_agents": "unknown",
+    "shell": "unknown",
+    "ask_user": "unknown",
+    "note": "宿主会话的能力声明。unknown 表示没验证过——orchestrator 必须在第一段先自检（真能派子 agent 吗？真能跑命令吗？），验证后改成本会话的真实值。声明与运行时脱节的代价是整条流水线跑空：TDC 第一个任务就是没有 agent.spawn 却按 spawn 流程起手。"
+  },
   "stacks": {
     "backend": {
       "dir": "backend",
       "srcGlob": "**/*.java",
-      "lint": "mvn -q -DskipTests compile",
+      "lint": "mvn -q compile",
       "test": "mvn -q test",
       "testOne": "mvn -q test -Dtest=<name>"
     },
@@ -28,6 +35,22 @@
     "requiredSections": ["## Stage 0", "## 硬规则", "## 交付"],
     "extraStacks": ["harness"],
     "note": "skill 按 applies_to 的文件 glob 选择，不是按 stack 一对一：同一 stack 可以有多份（如 frontend 与 e2e 都服务 frontend）。命中多份则全部加载。extraStacks 是技术栈之外的受管区域（harness = 门禁与生成器自身），不算 stacks。"
+  },
+  "agents": {
+    "enabled": [
+      "orchestrator",
+      "requirement-analyst",
+      "feature-decomposer",
+      "tech-selector",
+      "spec-writer",
+      "interaction-prototyper",
+      "spec-reviewer",
+      "coder",
+      "test-engineer",
+      "code-reviewer",
+      "retro-ledger"
+    ],
+    "note": "agent 启用清单（四周节奏的机械基础）：第 1 周可裁到只读子集（orchestrator + requirement-analyst / tech-selector / spec-reviewer），第 3 周再放开 coder。缺省（删掉 enabled 键）= 全部启用；orchestrator 恒在；build-agents 只生成清单内产物，writes.json / prompts INDEX 同步只含启用集。改后跑 npm run build:agents。"
   },
   "capabilityMap": {
     "fs.read": {
@@ -97,7 +120,7 @@
       "label": "高能力模型",
       "agents": ["claude-*", "deepseek-v4*", "glm-4.6*"],
       "scaffold": "light",
-      "note": "豁免流程脚手架（逐 TODO 提醒、分级提示），但技能加载与 verify 证据链不豁免"
+      "note": "豁免流程脚手架：SessionStart 不注入逐任务 TODO 提醒（session_start.mjs 按 scaffold 分流输出）；技能加载与 verify 证据链不豁免"
     },
     {
       "id": "standard",
@@ -111,18 +134,66 @@
     "requireVerifyLog": true,
     "verifyFreshnessHours": 72,
     "blockedCommands": [
-      "rm\\s+-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
-      "rm\\s+-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
-      "rm\\s+(-[A-Za-z]+\\s+){2,}(/|~|\\$HOME)(?!\\w)",
-      "git\\s+push(?!\\s+--force-with-lease)[^|;&]*?\\s\\+\\S+",
-      "git\\s+push\\s+--force(?!-with-lease)",
-      "git\\s+push\\s+-f\\b",
-      "--no-verify",
-      "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:ba|z|da)?sh\\b",
-      "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:python|perl|node)\\b",
-      "DROP\\s+(TABLE|DATABASE)",
-      "TRUNCATE\\s+",
-      "kubectl\\s+delete"
+      {
+        "pattern": "rm\\s+-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
+        "hint": "删根目录/家目录/上跳目录没有等价的安全写法。要清理就写明确的相对路径，或让人手工执行"
+      },
+      {
+        "pattern": "rm\\s+-[A-Za-z]*f[A-Za-z]*r[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",
+        "hint": "同上：递归强删根/home/父目录一律拦。清理工作树用 git clean 并先跑 --dry-run"
+      },
+      {
+        "pattern": "rm\\s+(-[A-Za-z]+\\s+){2,}(/|~|\\$HOME)(?!\\w)",
+        "hint": "拆开写的 -r -f 绕过不了规则。目标路径必须落在仓库内且写全"
+      },
+      {
+        "pattern": "git\\s+push(?!\\s+--force-with-lease)[^|;&]*?\\s\\+\\S+",
+        "hint": "用 +refspec 强推等于改写远端历史。改用 --force-with-lease，或推新分支"
+      },
+      {
+        "pattern": "git\\s+push\\s+--force(?!-with-lease)",
+        "hint": "改用 --force-with-lease：别人推过新提交时会被拒绝，不至于覆盖他人的工作"
+      },
+      {
+        "pattern": "git\\s+push\\s+-f\\b",
+        "hint": "-f 是 --force 的简写，同样拦。改用 --force-with-lease"
+      },
+      {
+        "pattern": "--no-verify",
+        "hint": "跳过 hook 等于绕过全部门禁。hook 报错就修被报的问题，不要跳过它"
+      },
+      {
+        "pattern": "-DskipTests(?!\\x3dfalse)\\b",
+        "hint": "跳过测试没有合法等价形式：要么修实现，要么修测试。例外：-DskipTests=false 是显式打开测试（模块默认 skipTests=true 时必须带它），放行。确需临时跳过请在 PR 说明理由"
+      },
+      {
+        "pattern": "-Dmaven\\.test\\.skip(?:\\.tests)?\\s*=\\s*(?!false)",
+        "hint": "maven.test.skip 连编译都跳过，比 -DskipTests 更隐蔽。修测试，不要关掉它（=false 是显式打开，放行）"
+      },
+      {
+        "pattern": "--passWithNoTests\\b",
+        "hint": "零测试通过不算验证。补测试，或明确说明该模块本无测试并留 verify 记录"
+      },
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:ba|z|da)?sh\\b",
+        "hint": "管道执行远程脚本不可审计。先下载、读一遍、确认来源与校验和，再本地执行"
+      },
+      {
+        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:python|perl|node)\\b",
+        "hint": "同上：管道进解释器。下载到文件、审查后再执行"
+      },
+      {
+        "pattern": "DROP\\s+(TABLE|DATABASE)",
+        "hint": "DDL 用 db/<日期>/ 下的增量 migration，不在会话里直接执行破坏性语句"
+      },
+      {
+        "pattern": "TRUNCATE\\s+",
+        "hint": "清表属数据变更，走 migration 或让人执行；会话内用带 WHERE 的 DELETE 并先备份"
+      },
+      {
+        "pattern": "kubectl\\s+delete",
+        "hint": "删生产资源属环境变更，交给人做；本地调试用独立命名空间"
+      }
     ],
     "sensitiveRead": [
       "\\.env$",
@@ -134,7 +205,7 @@
       "\\.p12$"
     ],
     "writeGuards": {
-      "note": "三类写入拦截，判据是路径而非 agent 身份——CLI 的 PreToolUse 载荷里没有 agent 名，硬做身份校验只会变成自欺。generated 手改必被覆盖；protected 是考卷区，改它需人工放行；sensitive 一律拒（Exempt 里的示例文件除外，否则门禁会把唯一合法的出路也堵死）。",
+      "note": "三类写入拦截，判据是路径而非 agent 身份——CLI 的 PreToolUse 载荷里没有 agent 名，硬做身份校验只会变成自欺。generated 手改必被覆盖；protected 是考卷区，改它需人工放行；sensitive 一律拒（Exempt 里的示例文件除外，否则门禁会把唯一合法的出路也堵死）。已知边界：agents 的 writes 字段是交接契约，不是运行时门禁——声明了窄 writes 的 agent（含只写文档的）在运行时仍可写任何未受保护路径，如业务源码。这道残余风险的兜底是 CR 与 .ai/writes.json 的 CI diff，不是 hook；要真正收紧只能裁 capabilities（生成期裁工具集）或进程级沙箱。",
       "generated": [
         ".claude/agents/**",
         ".claude/commands/**",
