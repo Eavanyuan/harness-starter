@@ -20,8 +20,14 @@
  *
  * 用法：
  *   node scripts/ci-verify.mjs                 # CI 口径，扫全部 state
- *   node scripts/ci-verify.mjs --local         # 本地口径，额外判新鲜度
+ *   node scripts/ci-verify.mjs --local         # 本地口径，额外判新鲜度（等价 --mode local）
  *   node scripts/ci-verify.mjs --file <path>   # 只校验一份 state（写入门禁/人工复查）
+ *   node scripts/ci-verify.mjs --mode ci|local # 显式口径。未知值报错，不静默降级
+ *   node scripts/ci-verify.mjs --json          # 机器可读结果（cron / worker / 任何入口都读得懂）
+ *
+ * 为什么要有 --mode 与 --json：判据本身只有一份（hooks/lib/verify.mjs），
+ * 但"谁在什么场景下问它"是多样的。口径写进参数而不是写进调用者，
+ * 机器可读结果写进 stdout 而不是让人去 grep 中文，判据才可能被 hook 之外的东西复用。
  */
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -48,9 +54,20 @@ const argv = process.argv.slice(2);
 // 这正是本仓库 checklist §16「枚举不闭合」的形态。
 let mode = 'ci';
 let onlyFile = null;
+let json = false;
 for (let i = 0; i < argv.length; i++) {
   const a = argv[i];
   if (a === '--local') mode = 'local';
+  else if (a === '--mode') {
+    // 口径必须显式且闭合：拼错的 --mode locl 若降级成 ci 默认，
+    // 调用者以为在严格校验，实际跑的是宽松口径——与 `--lcoal` 静默降级同型。
+    const v = argv[++i];
+    if (v !== 'ci' && v !== 'local') {
+      console.error(`[ci-verify] --mode 只接受 ci|local，收到：${v === undefined ? '(缺值)' : v}`);
+      process.exit(64);
+    }
+    mode = v;
+  } else if (a === '--json') json = true;
   else if (a === '--file') {
     const v = argv[i + 1];
     if (!v || v.startsWith('--')) {
@@ -61,7 +78,7 @@ for (let i = 0; i < argv.length; i++) {
     i++;
   } else {
     console.error(`[ci-verify] 未知参数：${a}`);
-    console.error('用法：node scripts/ci-verify.mjs [--local] [--file <state.json>]');
+    console.error('用法：node scripts/ci-verify.mjs [--mode ci|local] [--local] [--json] [--file <state.json>]');
     process.exit(64);
   }
 }
@@ -70,8 +87,11 @@ const config = loadConfig(ROOT) || {};
 const problems = [];
 /** 提示不判死：WIP 阶段门禁没跑完是正常的，CI 不该把半成品提交判红。 */
 const notices = [];
+/** 实际读过的 state 文件，供 --json 的调用者核对"检了哪些"，而不是只看一个 ok。 */
+const checked = [];
 
 function report(statePath, name) {
+  checked.push(name);
   let state;
   try {
     state = JSON.parse(readFileSync(statePath, 'utf8'));
@@ -148,12 +168,20 @@ function report(statePath, name) {
 if (onlyFile) {
   const p = resolve(ROOT, onlyFile);
   if (!existsSync(p)) {
-    console.error(`[ci-verify] 文件不存在：${onlyFile}`);
+    // 退出码 2 表示"没法判"（输入不存在），与 1（判了，不通过）区分：
+    // 调用方据此能分清"该修代码"还是"该修路径参数"。
+    const msg = `文件不存在：${onlyFile}`;
+    if (json) {
+      console.log(JSON.stringify({ ok: false, mode, root: ROOT, checked, problems: [msg], notices }, null, 2));
+    } else {
+      console.error(`[ci-verify] ${msg}`);
+    }
     process.exit(2);
   }
   report(p, onlyFile);
 } else if (!existsSync(TASKS_DIR)) {
-  console.log('[ci-verify] 没有 .ai/tasks，跳过状态校验');
+  if (json) notices.push('没有 .ai/tasks，跳过状态校验');
+  else console.log('[ci-verify] 没有 .ai/tasks，跳过状态校验');
 } else {
   const declared = new Set();
   const statePaths = [];
@@ -212,6 +240,14 @@ if (onlyFile) {
   if (undeclaredOther.length) {
     notices.push(`${undeclaredOther.length} 个改动文件未声明进任何 TODO（新鲜度比对不覆盖它们，收口前补进对应 TODO 的 files）：${undeclaredOther.slice(0, 5).join('、')}${undeclaredOther.length > 5 ? ' 等' : ''}`);
   }
+}
+
+// --json 是给"不是人"的调用者用的：cron、post-checkout、worker 的交付前检查、
+// 别的仓库的 pre-push。它们没法读中文提示，也不该靠 grep 中文正则在判"过没过"。
+// 判据只有一份（上面的 problems/notices），这里只是换一种编码输出同一个结论。
+if (json) {
+  console.log(JSON.stringify({ ok: problems.length === 0, mode, root: ROOT, checked, problems, notices }, null, 2));
+  process.exit(problems.length ? 1 : 0);
 }
 
 if (notices.length) {

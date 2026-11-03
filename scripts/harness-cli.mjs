@@ -9,6 +9,7 @@
  *   analyze <target> [--out dir] [--in-project]   机械探测事实视图（只读，报告默认落项目外）
  *   init <target> [--dry-run] [--agents read-only|full] [--stack-dir <dir>]
  *   remove <target> [--dry-run] [--yes] [--force]
+ *   verify <target> [--mode ci|local] [--json] [--file <state.json>]   统一验证入口（读磁盘，不读 hook 载荷）
  *
  * 安全内核（方案 §6/§7 的 v1 子集）：
  *   - --dry-run 三态预览（create / skip / conflict），不落一个字节
@@ -87,6 +88,11 @@ function usage() {
   node scripts/harness-cli.mjs analyze <target> [--out <dir>] [--in-project]
   node scripts/harness-cli.mjs init <target> [--dry-run] [--agents read-only|full] [--stack-dir <dir>]
   node scripts/harness-cli.mjs remove <target> [--dry-run] [--yes] [--force]
+  node scripts/harness-cli.mjs verify <target> [--mode ci|local] [--json] [--file <state.json>]
+      统一验证入口：只读磁盘判「状态与证据链」，不依赖任何 CLI 的 hook 载荷。
+      所以 cron / post-checkout / worker 的交付前检查都能用同一个判据。
+      --mode 必须显式（默认 ci）：local 额外判 72h 新鲜度，ci 只认 git 里可复现的事实。
+      --json 输出 {ok,mode,root,checked,problems,notices}，退出码 0 过 / 1 不过 / 2 无法判 / 64 用法错。
   node scripts/harness-cli.mjs resume <target> [<slug>]
       按三档列出待决事项，并生成/刷新 .ai/tasks/<slug>/DECISIONS.md（可留存的决策单）。
 
@@ -314,6 +320,32 @@ function needsStackDir(sv) {
 }
 
 /* ------------------------------- check ------------------------------- */
+
+/**
+ * 统一验证入口（checklist §36 的直接产物：判据的洞不表现为失败，表现为绿灯）。
+ *
+ * 现状问题是"生效点位太窄"：同样的判据，只有挂了这个 CLI hook 的那条路会被执行，
+ * 换工具写 state、换 CLI、人手动 commit，全都绕过去。要让判据不再依赖入口，
+ * 就得有一个"只看磁盘、不看谁来问"的调用方式——就是这个命令。
+ *
+ * 为什么是 spawn 而不是 import：ci-verify.mjs 是带副作用的脚本（顶层 process.exit + 一堆 IO），
+ * import 会立刻执行一遍并接管本进程。判据只能有一份，所以这里不实现第二套判定，
+ * 只把参数翻译过去——两份实现必然分叉，然后出现"harness verify 说过了、CI 说没过"。
+ */
+function cmdVerify(target, opts) {
+  const script = join(target, 'scripts', 'ci-verify.mjs');
+  if (!existsSync(script)) {
+    die(`${target} 里没有 scripts/ci-verify.mjs —— 这不是装过 harness 的项目（先跑 harness init）`);
+  }
+  const argv = [script];
+  if (opts.file) argv.push('--file', opts.file);
+  if (opts.json) argv.push('--json');
+  argv.push('--mode', opts.mode);
+  const r = spawnSync(process.execPath, argv, { stdio: 'inherit' });
+  if (r.error) die(`调用 ci-verify 失败：${r.error.message}`);
+  // status 为 null 表示被信号杀掉：不能当成 0（那会把崩溃读成"通过"）。
+  return r.status === null ? 1 : r.status;
+}
 
 function cmdCheck(target) {
   const pf = preflight(target);
@@ -1730,8 +1762,8 @@ const args = process.argv.slice(2);
 const cmd = args[0];
 // 每个动词显式声明自己接受的 flag：拼错/不支持的 flag 直接 usage，
 // 不能让它被当成 positional 静默吞掉（--stack-dir svc-a 就曾这样把目录当参数丢掉）。
-const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except'] };
-const BOOL_FLAGS = { detect: ['--json'], analyze: ['--in-project', '--full-edges'], init: ['--dry-run'], remove: ['--dry-run', '--yes', '--force'], resume: ['--advance', '--accept-suggested'], 'review-packet': ['--first'] };
+const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except'], verify: ['--mode', '--file'] };
+const BOOL_FLAGS = { detect: ['--json'], analyze: ['--in-project', '--full-edges'], init: ['--dry-run'], remove: ['--dry-run', '--yes', '--force'], resume: ['--advance', '--accept-suggested'], 'review-packet': ['--first'], verify: ['--json'] };
 const valueFlags = new Set(VALUE_FLAGS[cmd] || []);
 const boolFlags = new Set(BOOL_FLAGS[cmd] || []);
 const flags = new Set();
@@ -1790,6 +1822,17 @@ switch (cmd) {
         except: (values['--except'] || '').split(',').map((s) => s.trim()).filter(Boolean),
       })
     );
+    break;
+  }
+  case 'verify': {
+    // 口径在这里也要闭合一次：ci-verify 自己会拒未知值，但参数解析层先拦，
+    // 才能在**启动子进程之前**给出 usage，而不是把一个半截命令传下去。
+    const mode = values['--mode'] || 'ci';
+    if (mode !== 'ci' && mode !== 'local') {
+      console.error(`[harness] --mode 只接受 ci|local，收到：${mode}`);
+      usage();
+    }
+    process.exit(cmdVerify(safeTarget(positional[0], true), { mode, json: flags.has('--json'), file: values['--file'] || null }));
     break;
   }
   case 'review-packet': {

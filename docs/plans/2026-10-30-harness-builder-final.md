@@ -452,9 +452,12 @@ evidence 组 1 条红（旧链 history 被拦）。再改判据，两组全绿�
   分析器侧：多构建根折叠与模块聚合、**单模块也有模块视图**、Java FQN 与基础包多数派、
   Go 模块缓存与只认 import 声明、.gitignore 目录推导、**MyBatis 血缘正负例**、
   harness 安装物不计入项目代码、明细边上限与截断标记）；
-  全套 gate 合计 **11 个测试文件 / 455 条断言**（hooks 57 / writes 16 / agents 14 / skills 17 / init 25 /
-  harness-cli 198 / evidence 56 / verify-run 11 / ledger 13 / completeness 34 / wiring 14；
+  全套 gate 合计 **11 个测试文件 / 472 条断言**（hooks 57 / writes 16 / agents 23 / skills 17 / init 25 /
+  harness-cli 206 / evidence 56 / verify-run 11 / ledger 13 / completeness 34 / wiring 14；
   §13.7 记的"9 个文件 / 397 条"漏算了 skills 与 completeness 两组，此处一并纠正）；
+  2026-11-03 增 `harness verify`（统一验证入口，`--mode ci|local` 显式口径 + `--json` 机器可读），
+  并把 completeness / ledger 接进 CI——此前这两组只在本地 `npm run gate` 里跑，
+  CI 是绿的因为没跑它们，不是因为它们通过；
   夹具从 `test/fixtures/` 拷出模板仓库再探测——safeTarget 拒绝探测模板自身；
   全部接入 gate；按 H1 每个新判据同批补用例
 - **文档**：README（支持范围、运行时前提、license、只读声明、release 约定、三个明确不做）、

@@ -46,6 +46,16 @@ jobs:
       - name: skill 校验器自测
         run: bash test/skills.test.sh
 
+      # 这两个测试原来只在本地 `npm run gate` 里跑，CI 一直是绿的——
+      # 因为 CI 根本没跑它们，不是因为它们通过了。判据只在"人记得敲"的时候存在，
+      # 等于没有：completeness 判的是文档完备性，ledger 判的是拦截账本，
+      # 都是"坏了也不会立刻有人发现"的那类。两个合计约 10s，代价可接受。
+      - name: 文档完备性（占位符残留 / 章节空 / 追溯断裂）
+        run: bash test/completeness.test.sh
+
+      - name: 拦截账本（误拦率的数据来源）
+        run: bash test/ledger.test.sh
+
       - name: Agent 定义与生成物一致
         run: node scripts/build-agents.mjs --check
 

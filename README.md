@@ -216,7 +216,14 @@ node scripts/harness-cli.mjs resume /path/to/project <slug> \
 
 node scripts/harness-cli.mjs review-packet /path/to/project <slug>           # 评审包（markdown，直接贴 PR）
 node scripts/harness-cli.mjs review-packet /path/to/project <slug> --first   # 强制按首版口径
+
+node scripts/harness-cli.mjs verify /path/to/project --json              # 统一验证入口（机器可读）
+node scripts/harness-cli.mjs verify /path/to/project --mode local        # 本地口径：额外判 72h 新鲜度
 ```
+
+`verify` 是**不依赖 hook 载荷**的入口：它只读磁盘，所以 cron、post-checkout、CI 之外的
+worker 交付前检查都能用同一个判据。退出码 0 过 / 1 不过 / 2 无法判（输入不存在）/ 64 用法错。
+`--json` 输出 `{ok, mode, root, checked, problems, notices}`——给机器读，别去 grep 中文提示。
 
 退出码可直接用于自动化：`0` 无阻塞（决策齐备且门禁全 pass 时会自动推进阶段）、
 `3` 还有"必须现在定"的未解项，或机器校验/本阶段门禁没过、`64` 用法错误（含决策值不在选项内）。

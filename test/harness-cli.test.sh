@@ -859,6 +859,35 @@ expect_out "给出找法，而不是判死" "按目录约定找" "$out"
 st="$(node -e 'const s=require(process.argv[1]);console.log(JSON.stringify(s.artifacts))' "$ART/.ai/tasks/t1/state.json")"
 check "state 里的 artifacts 一个字节都没被改" '{"rs":"docs/rs.md","adr":"docs/adr-404.md","fs_final":null,"promotion_note":"决策冻结后把定稿移到 docs/plans/"}' "$st"
 
+echo "== 45. verify：统一验证入口（读磁盘，不读 hook 载荷）=="
+# 这个子命令存在的理由，是让判据不再只能由"挂了 hook 的那条路"触发。
+# 所以三条必须成立：不要 stdin payload、结论机器可读、口径拼错就报错（不静默降级）。
+# 判据只有一份（scripts/ci-verify.mjs），这里只搭一个最小可判项目把入口跑通。
+VPROJ="$TMP/vproj"
+mkdir -p "$VPROJ/scripts" "$VPROJ/hooks/lib" "$VPROJ/.ai/tasks/demo"
+cp "$HERE/scripts/ci-verify.mjs" "$VPROJ/scripts/"
+cp "$HERE"/hooks/lib/*.mjs "$VPROJ/hooks/lib/"
+cp "$HERE/harness.config.json" "$VPROJ/"
+cp -R "$HERE/templates" "$VPROJ/templates"
+node -e 'const fs=require("fs");fs.writeFileSync(process.argv[1]+"/.ai/tasks/demo/state.json",JSON.stringify({meta:{schema_version:1,task:"demo",flow_tier:"S"},stage:"impl",stage_history:[{stage:"rs",gate:"pass"},{stage:"adr",gate:"deferred",waived_by:"张三（无架构级取舍）"},{stage:"fs_review",gate:"pass"},{stage:"wbs",gate:"pass"},{stage:"impl"}],todos:[],artifacts:{}},null,2))' "$VPROJ"
+out="$(CLI verify "$VPROJ" --json 2>&1)"; code=$?
+check "合规 state → 退出码 0" 0 "$code"
+expect_out "结论可被机器读（ok:true）" '"ok": true' "$out"
+expect_out "报出实际检过的 state" '"demo"' "$out"
+
+# 反向用例：没有证据的完成态必须红。只证"能过"的入口等于给自己发绿灯。
+node -e 'const fs=require("fs"),p=process.argv[1]+"/.ai/tasks/demo/state.json";const s=JSON.parse(fs.readFileSync(p,"utf8"));s.todos=[{id:"T1",title:"须有证据",status:"completed",files:[],verify:null,audit:null}];fs.writeFileSync(p,JSON.stringify(s,null,2))' "$VPROJ"
+out="$(CLI verify "$VPROJ" --json 2>&1)"; code=$?
+check "无证据的完成态 → 退出码 1" 1 "$code"
+expect_out "结论可被机器读（ok:false）" '"ok": false' "$out"
+expect_out "失败项能定位到具体 todo" 'T1' "$out"
+
+CLI verify "$VPROJ" --mode locl >/dev/null 2>&1
+check "拼错的 --mode 不许静默降级 → 64" 64 "$?"
+
+CLI verify "$TMP" >/dev/null 2>&1
+check "非 harness 目录 → 明确拒绝（非 0）" 1 "$?"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1
