@@ -1,6 +1,6 @@
 # cmd: npm run gate
-# started: 2026-11-02T09:04:20Z
-# finished: 2026-11-02T09:07:24Z
+# started: 2026-11-03T07:21:46Z
+# finished: 2026-11-03T07:24:13Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
   [32m✓[0m CI 输出点名缺回归测试
