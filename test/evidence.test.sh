@@ -514,6 +514,18 @@ check "但仍然可见（不静默丢弃）" ok "$r"
 rm -f Makefile
 
 
+echo "== 22b. verify 字符串形态 → 拦截并给出正确示例（license-center-sms 实测） =="
+node -e '
+  const fs=require("fs");const sp=".ai/tasks/demo/state.json";
+  const s=JSON.parse(fs.readFileSync(sp,"utf8"));
+  s.todos[0].verify = ".ai/verify/T1.log";
+  fs.writeFileSync(sp,JSON.stringify(s,null,2));
+'
+git add -A && git commit -qm "verify string"
+check "verify 是字符串 → 拦" 1 "$(ci)"
+check "拦截信息含对象形态示例" 1 "$(node scripts/ci-verify.mjs 2>&1 | grep -c '必须是对象')"
+git checkout -q HEAD~1 -- .ai/tasks/demo/state.json && git commit -qm "restore-22"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

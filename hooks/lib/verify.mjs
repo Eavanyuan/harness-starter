@@ -432,6 +432,18 @@ export function validateTodos(todos, repo, opts = {}) {
       continue;
     }
 
+    // #15（license-center-sms 实测）：verify 字段被塞了字符串路径而非 {log_path} 对象。
+    // 写作会话的直觉是把 verify 当"链接栏"用——提前拦下并给出正确形态的示例，
+    // 比在 checkVerify 里报"缺少 log_path"（信息不指向修复方式）教育性好得多。
+    if (typeof todo.verify === 'string') {
+      failures.push({
+        id,
+        rule: 'verify',
+        reason: `verify 是字符串（${todo.verify.slice(0, 40)}…），必须是对象：{ "log_path": "<路径>" }——直接改 state 里的形态即可`,
+      });
+      continue;
+    }
+
     const audit = checkAudit(todo);
     if (!audit.ok) failures.push({ id, rule: 'audit', reason: audit.reason });
 

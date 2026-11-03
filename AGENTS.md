@@ -11,11 +11,12 @@
 ## 硬规则（每次都要生效）
 
 1. 验证纪律见 `.ai/rules/verification.md`，五条不裁剪。验证命令**必须**用 `bash scripts/verify-run.sh <todo-id> -- <命令>` 包装——裸跑的日志无标准头，CI 判"未入库"。
-2. 进度只认 `.ai/tasks/<slug>/state.json`，不认会话记忆。一个任务一份，并行任务不要合并。
+2. 进度只认 `.ai/tasks/<slug>/state.json`，不认会话记忆。一个任务一份，并行任务不要合并。TODO 完成时 `verify` 是**对象** `{"log_path":"..."}`（不是字符串），`ooda_stage` 用 `audit`（不是 `done`），`audit` 四项齐填。
 3. 改代码前必须加载 `applies_to` 命中的 `.skills/*/SKILL.md`，其 `## Stage 0` 未完成不得动手（读不完等于没有）。
 4. **审查代码（无论正式 CR 还是本地随手审）同样必须先跑 `resolve-skills --diff` 并按命中 skill 的硬规则表逐条核**。不加载 skill 就审 = 凭记忆操作 = 没审。审查产出按 `templates/CR-代码审查记录.md` 格式（含 §0 硬规则逐条核表）。
 5. 只读 agent 不许调 `Edit` / `Bash` 改源码。改 `agents/*.agent.md` / `hooks.manifest.json` 后必须跑 `build:agents` / `build:hooks`。
 7. **变更/缺陷修复不新建独立流程**——用 `bash scripts/init-harness.sh <slug> S --type change --related <原任务> --baseline <commit>` 建关联任务。不加 `--type`/`--related` 的 change 会在追溯链校验时被拦（checkTaskTraceability）。
+8. **S 档裁剪边界**：可跳 wbs/adr/fs_review（无多方案决策点时），**必须走 rs**（哪怕一段话）和 **cr**（按 CR 模板 + §0）。跳 rs 需在 `meta.no_doc_reason` 写明理由；跳 cr 等于交付未审代码。
 
 ## 找 skill
 
