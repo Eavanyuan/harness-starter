@@ -40,6 +40,8 @@ debug 路径不得新增或修改对外 props、emit、路由。**一旦要改�
 
 ## 硬规则
 
+> L0 验证纪律（.ai/rules/verification.md 五条）对全部栈生效，此处是本栈的查法补充。
+
 | # | 规则 | 怎么查 |
 |---|---|---|
 | F1 | 改 `.vue` / `.ts` 必须同次补对应单测；只改源码不补测试即违规 | diff 里 `frontend/src` 与 `frontend/tests` 的文件数对照 |

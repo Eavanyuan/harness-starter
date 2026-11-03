@@ -1,11 +1,24 @@
-# CR 代码审查记录 — <MR 标题>
+# CR 代码审查记录 — <MR 标题 / 本地审查说明>
 
 > 产出：`code-reviewer` · 报告或 MR comment
 > 规则：🔴 = 0 且 🟡 均已表态，方可 approve；approve 权在人。
+>
+> **本模板适用于所有审查路径**——正式 CR（code-reviewer agent / `/cr`）和本地手动审查（人在会话里说"审一下"）。
+> 区别只在分发方式：正式 CR 走 MR comment 闭环；手动审查落会话输出 + `.ai/review/`。
+> 两种路径都必须先跑 `node scripts/resolve-skills.mjs --diff` 并按命中 skill 的硬规则表逐条核。
 
-- 审查范围：`<base>...<head>` / MR #
+- 审查范围：`<base>...<head>` / MR # / 本地 diff
 - 关联 FS：`docs/02-features/...`
 - 关联 SR 报告：
+- **已加载的 skill**：`<resolve-skills --diff 输出的命中清单>`
+
+## 0 硬规则逐条核（命中 skill 的规则表，必填）
+
+| # | 规则 | 检测命令 | 结果 |
+|---|---|---|---|
+| R1 | 编排在 service 不在 resource | `<skill 里的查法>` | ✅ / 🔴 / 未命中 |
+| R2 | 入参在边界校验 | | |
+| ... | 按 skill 实际规则填 | | |
 
 ## 1 改动摘要
 

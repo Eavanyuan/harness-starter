@@ -49,6 +49,8 @@ references:
 
 ## 硬规则
 
+> L0 验证纪律（.ai/rules/verification.md 五条）对全部栈生效，此处是本栈的查法补充。
+
 | # | 规则 | 怎么查 |
 |---|---|---|
 | H1 | 改 `hooks/**` 或 `scripts/**` 必须同批新增测试场景，没有测试的门禁改动一律不合 | `git diff --name-only HEAD \| rg '^(hooks\|scripts)/'` 非空时，`git diff --name-only HEAD \| rg -c '^test/'` 必须 > 0 |

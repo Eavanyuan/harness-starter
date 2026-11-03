@@ -42,6 +42,8 @@ references:
 
 ## 硬规则
 
+> L0 验证纪律（.ai/rules/verification.md 五条）对全部栈生效，此处是本栈的查法补充。
+
 | # | 规则 | 怎么查 |
 |---|---|---|
 | E1 | 选择器用 `data-testid`；禁用中文文案、`nth-child`、层级 XPath | `rg -nP "locator\\(['\"].*[\\p{Han}]" frontend/tests/e2e` |
