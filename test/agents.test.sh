@@ -96,14 +96,17 @@ node scripts/build-agents.mjs >/dev/null 2>&1
 check "重建后恢复一致" 0 "$(node scripts/build-agents.mjs --check >/dev/null 2>&1; echo $?)"
 
 echo "== 8. CR 模板包含 §0 硬规则逐条核（防模板被改丢关键节）=="
-check "CR 模板包含硬规则逐条核表" 0 "$(grep -q "§0 硬规则逐条核\|## 0 硬规则" templates/CR-代码审查记录.md && echo 0 || echo 1)"
-check "CR 模板声明两种路径都适用" 0 "$(grep -q "所有审查路径\|正式 CR.*本地.*手动审查\|本地.*手动.*正式 CR" templates/CR-代码审查记录.md && echo 0 || echo 1)"
-check "CR 模板要求先跑 resolve-skills" 0 "$(grep -q "resolve-skills" templates/CR-代码审查记录.md && echo 0 || echo 1)"
+# 交替一律用 grep -E。BRE 的 "a\|b" 是 GNU 扩展：BSD grep 靠兼容层过，
+# toybox / busybox / 精简镜像的 grep 把它当字面量 "|"，于是同一份代码在 CI 绿、在别处红。
+# 判据不该依赖"执行环境恰好是哪种 grep"——那是把环境假设写进了断言。
+check "CR 模板包含硬规则逐条核表" 0 "$(grep -qE "§0 硬规则逐条核|## 0 硬规则" templates/CR-代码审查记录.md && echo 0 || echo 1)"
+check "CR 模板声明两种路径都适用" 0 "$(grep -qE "所有审查路径|正式 CR.*本地.*手动审查|本地.*手动.*正式 CR" templates/CR-代码审查记录.md && echo 0 || echo 1)"
+check "CR 模板要求先跑 resolve-skills" 0 "$(grep -qF "resolve-skills" templates/CR-代码审查记录.md && echo 0 || echo 1)"
 
 echo "== 9. AGENTS.md 包含审查规则和 verify-run 工具引用 =="
-check "AGENTS.md 含审查前必加载 skill 规则" 0 "$(grep -q "审查代码.*resolve-skills\|resolve-skills.*审查" AGENTS.md && echo 0 || echo 1)"
-check "AGENTS.md 含 verify-run.sh 引用" 0 "$(grep -q "verify-run" AGENTS.md && echo 0 || echo 1)"
-check "AGENTS.md 含 --type change/bugfix 引用" 0 "$(grep -q "\-\-type.*change\|\-\-type.*bugfix" AGENTS.md && echo 0 || echo 1)"
+check "AGENTS.md 含审查前必加载 skill 规则" 0 "$(grep -qE "审查代码.*resolve-skills|resolve-skills.*审查" AGENTS.md && echo 0 || echo 1)"
+check "AGENTS.md 含 verify-run.sh 引用" 0 "$(grep -qF "verify-run" AGENTS.md && echo 0 || echo 1)"
+check "AGENTS.md 含 --type change/bugfix 引用" 0 "$(grep -qE -- "--type.*change|--type.*bugfix" AGENTS.md && echo 0 || echo 1)"
 
 echo "== 10. AGENTS.md 含意图路由表（先分类再动手）=="
 check "意图路由表存在" 0 "$(grep -q '## 意图路由' AGENTS.md && echo 0 || echo 1)"
