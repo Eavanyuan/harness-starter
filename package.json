@@ -19,6 +19,7 @@
     ".ai/state.example.json",
     ".github/workflows/",
     "harness.config.json",
+    "harness.rules.json",
     "AGENTS.md",
     ".gitignore",
     "README.md"
@@ -43,11 +44,14 @@
     "test:init": "bash test/init.test.sh",
     "harness": "node scripts/harness-cli.mjs",
     "test:harness-cli": "bash test/harness-cli.test.sh",
-    "gate": "npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring",
+    "gate": "npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring && npm run test:router && npm run test:ai-review && npm run test:broker",
     "ledger:report": "node scripts/ledger-report.mjs",
     "test:verify-run": "bash test/verify-run.test.sh",
     "test:ledger": "bash test/ledger.test.sh",
-    "test:completeness": "bash test/completeness.test.sh"
+    "test:completeness": "bash test/completeness.test.sh",
+    "test:router": "bash test/review-router.test.sh",
+    "test:ai-review": "bash test/ai-review.test.sh",
+    "test:broker": "bash test/notify-broker.test.sh"
   },
   "engines": {
     "node": ">=18"

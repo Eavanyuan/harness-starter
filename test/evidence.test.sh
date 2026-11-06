@@ -22,7 +22,10 @@ cd "$TMP/repo"
 # .ai/verify/*.log 证据挡在库外，CI 口径按"未入库"判红（TDC 收编实测踩到）。
 # 证据链与项目忽略策略的冲突由 init 检测并补托管块（试装反馈 #7），不在本测试职责内。
 rm -f .gitignore
-rm -rf .ai/tasks && mkdir -p .ai/tasks/demo .ai/tasks/demo-base .ai/verify src
+# .ai/verify 也必须清掉再重建：rsync 会把仓库里真实任务的证据日志一并带进来，
+# 基线 commit 入库后，下方 `log T2 0` 写的就是"已跟踪文件的修改"而非"未入库文件"，
+# §5「未入库日志不算证据」当场翻转为永久绿（实测：任务 TODO 恰好也叫 T1/T2 时触发）。
+rm -rf .ai/tasks .ai/verify && mkdir -p .ai/tasks/demo .ai/tasks/demo-base .ai/verify src
 # demo-base：change/bugfix 的关联目标（related_task 完成态会复核存在性）
 # 零 TODO 的完成态现在要求写清理由（meta.no_todo_reason）：否则删光 todos 就是最便宜的全绿捷径。
 printf '{"meta":{"task":"demo-base","no_todo_reason":"关联目标，仅用于追溯"},"stage":"done","todos":[]}\n' > .ai/tasks/demo-base/state.json
@@ -295,10 +298,36 @@ check "跳阶记了名 → 放行（可以跳，但要有人签字）" 0 "$(ci)"
 # 用新链判相邻会把合规的历史判成"跳阶且没记名"——于是人只剩两条路：改历史或关掉检查。
 # 退休链必须认，否则这次判据变更的净效果是让人伪造记录。
 cat > .ai/tasks/demo/state.json <<'EOF'
-{ "meta": { "task": "demo" }, "stage": "impl", "stage_history": [ { "stage": "rs" }, { "stage": "wbs" }, { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "impl" } ], "todos": [] }
+{ "meta": { "task": "demo", "created_at": "2026-10-20T00:00:00Z" }, "stage": "impl", "stage_history": [ { "stage": "rs" }, { "stage": "wbs" }, { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "impl" } ], "todos": [] }
 EOF
 git add -A
-check "退休链序 rs→wbs→adr→fs_review→impl → 放行（当时不是跳阶）" 0 "$(ci)"
+check "退休链序 rs→wbs→adr→fs_review→impl（退休前建的任务）→ 放行" 0 "$(ci)"
+
+# 退休链必须带时间闸：否则它就是永久第二条合法路径——新任务照抄一份旧 state 就永远"合法跳阶"，
+# retired_on 沦为一个没人读的注释字段（实测：2026-11-06 建的任务走了 2026-11-02 退休的链序）。
+cat > .ai/tasks/demo/state.json <<'EOF'
+{ "meta": { "task": "demo", "created_at": "2026-11-06T00:00:00Z" }, "stage": "impl", "stage_history": [ { "stage": "rs" }, { "stage": "wbs" }, { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "impl" } ], "todos": [] }
+EOF
+git add -A
+check "退休后新建的任务走旧链序 → 拦（豁免只对存量成立）" 1 "$(ci)"
+
+# 另一条正当路径：链序把新阶段插在中间，导致 from→to 在现行链上不相邻，
+# 但被越过的每一站都在 history 里具名 defer 过 —— 每站都有签字，不是悄悄跳过。
+cat > .ai/tasks/demo/state.json <<'EOF'
+{ "meta": { "task": "demo", "created_at": "2026-11-06T00:00:00Z" }, "stage": "impl", "stage_history": [
+  { "stage": "rs" }, { "stage": "wbs", "gate": "deferred", "waived_by": "S 档：单一交付物" },
+  { "stage": "adr", "gate": "deferred", "waived_by": "S 档：无多方案" },
+  { "stage": "fs_review", "gate": "deferred", "waived_by": "S 档：无 FS" }, { "stage": "impl" } ], "todos": [] }
+EOF
+git add -A
+check "越过的每一站都具名 defer → 放行（有签字就不算跳阶）" 0 "$(ci)"
+cat > .ai/tasks/demo/state.json <<'EOF'
+{ "meta": { "task": "demo", "created_at": "2026-11-06T00:00:00Z" }, "stage": "impl", "stage_history": [
+  { "stage": "rs" }, { "stage": "wbs", "gate": "deferred", "waived_by": "S 档：单一交付物" },
+  { "stage": "adr" }, { "stage": "fs_review" }, { "stage": "impl" } ], "todos": [] }
+EOF
+git add -A
+check "只 defer 了一站、另两站无声越过 → 仍拦（逐个记名才算数）" 1 "$(ci)"
 
 # 豁免只补"旧链相邻"这个事实，不是给跳阶开后门：逆序在两个链上都不相邻，仍要记名
 cat > .ai/tasks/demo/state.json <<'EOF'

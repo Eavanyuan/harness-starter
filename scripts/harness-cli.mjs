@@ -65,7 +65,7 @@ const READ_ONLY_AGENTS = ['orchestrator', 'requirement-analyst', 'tech-selector'
 
 /** 随模板复制的目录与单文件。生成物（.claude/.zcode/prompts）不复制——目标侧自己 build。 */
 const TEMPLATE_DIRS = ['agents', 'hooks', 'scripts', 'templates', '.skills', 'test', 'guides'];
-const TEMPLATE_FILES = ['harness.config.json', 'AGENTS.md', '.ai/rules/verification.md', '.ai/state.example.json'];
+const TEMPLATE_FILES = ['harness.config.json', 'harness.rules.json', 'AGENTS.md', '.ai/rules/verification.md', '.ai/state.example.json'];
 /** build 产物（init 后由目标侧 build 生成；安装完成后展开成**文件清单**写入 manifest）。 */
 const GENERATED = [
   '.claude/agents', '.claude/commands', '.claude/settings.json',
@@ -210,7 +210,16 @@ function listTemplateFiles() {
     }
   };
   for (const d of TEMPLATE_DIRS) if (existsSync(join(TEMPLATE, d))) visit(join(TEMPLATE, d), d);
-  for (const f of TEMPLATE_FILES) if (existsSync(join(TEMPLATE, f))) out.push({ rel: f, abs: join(TEMPLATE, f) });
+  // 声明了就必须在：`existsSync` 守卫原来是"有就拷、没有就算了"，
+  // 于是发布包漏了某个数据文件时，init 一路绿灯装完，落地项目第一条命令才发现读不到配置。
+  // 缺文件是**发布包残缺**，不是"这个项目不需要它"——在安装这一步就红，比在消费方红便宜。
+  for (const f of TEMPLATE_FILES) {
+    const abs = join(TEMPLATE, f);
+    if (!existsSync(abs)) {
+      die(`模板仓库不完整，缺少声明在 TEMPLATE_FILES 里的文件：${f}（检查 package.json 的 files 是否漏了它）`);
+    }
+    out.push({ rel: f, abs });
+  }
   return out.sort((a, b) => (a.rel < b.rel ? -1 : 1));
 }
 

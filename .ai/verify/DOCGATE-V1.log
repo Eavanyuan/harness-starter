@@ -1,106 +1,8 @@
 # cmd: npm run gate
-# started: 2026-11-03T07:21:46Z
-# finished: 2026-11-03T07:24:13Z
+# started: 2026-11-06T06:01:44Z
+# finished: 2026-11-06T06:04:21Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-  [32m✓[0m CI 输出点名缺回归测试
-  [32m✓[0m 回归 TODO 缺红灯日志被拦
-  [32m✓[0m CI 输出点名缺红灯日志
-  [32m✓[0m 红灯日志 exit_code=0 被拦（修复前必须失败过）
-  [32m✓[0m CI 输出点名红灯日志不红
-  [32m✓[0m bugfix 有已完成回归 TODO + 红灯日志 → 放行
-== 7. --local 仍判新鲜度：日志早于源码 → 拦截 ==
-  [32m✓[0m 本地口径拦陈旧证据
-== 8. --local 把栈内未声明的源码改动也计入（srcGlob 生效）==
-  [32m✓[0m 未声明但同栈改动的源码使旧日志失效
-== 9. --local 合规（日志晚于所有源码）→ 通过 ==
-  [32m✓[0m 本地口径放行新鲜证据
-== 10. stage 拼错 → CI 拦截（阶段名是判据，不是标签）==
-  [32m✓[0m 连字符阶段名被 CI 拦下
-  [32m✓[0m CI 输出点名 stage 非法
-== 11. 跳阶没记名 → CI 拦截；记名 → 放行 ==
-  [32m✓[0m rs → impl 跳阶且无记名 → 拦
-  [32m✓[0m 报错说清是跳阶
-  [32m✓[0m 跳阶记了名 → 放行（可以跳，但要有人签字）
-  [32m✓[0m 退休链序 rs→wbs→adr→fs_review→impl → 放行（当时不是跳阶）
-  [32m✓[0m 倒退回上一阶段（新旧链都不相邻）→ 仍拦
-  [32m✓[0m 报错仍说清是跳阶
-== 14. 决策型工作包（#12）：证据=blockers 全 resolved，免 verify 日志 ==
-  [32m✓[0m 决策包完成（blockers 全 resolved）合法
-  [32m✓[0m 有未决 blocker 的决策包标完成 → 拦
-  [32m✓[0m 拦截信息点名决策未落全
-== 15. gate=deferred 必须记名（范围裁决与豁免同律）==
-  [32m✓[0m 无记名的 deferred → 拦
-  [32m✓[0m 记名的 deferred → 放行
-== 16. todo.stack 未注册 → 拦（枚举闭合，#9）==
-  [32m✓[0m 未注册栈 → 拦
-  [32m✓[0m 拦截信息列出合法栈
-On branch main
-nothing to commit, working tree clean
-== 17. 日志头窗口：exit_code 必须在前 5 行（#16，贴来的 BUILD SUCCESS 不算证据）==
-  [32m✓[0m exit_code 埋在窗口外 → 拦
-On branch main
-nothing to commit, working tree clean
-== 18. audit 数字与日志对账（#17，27/6/16 三版本并存的教训）==
-  [32m✓[0m audit.tests 16 分母与日志 total=16 一致 → 放行
-  [32m✓[0m audit.tests 27/27 与日志 total=16 → 拦
-  [32m✓[0m 拦截信息要求以日志为准
-== 19. done 前 deviations 必须处置（#19）==
-  [32m✓[0m done 带未处置偏离 → 拦
-  [32m✓[0m 偏离已记名处置 → 放行
-== 20. known_issues 收口闭环（#21）==
-  [32m✓[0m done 带未闭环 known_issue → 拦
-  [32m✓[0m known_issue 已给结论 → 放行
-== 21. gate_result 过期：CI 判红、local 仅提示（#20）==
-  [32m✓[0m CI 口径：过期 gate_result → 拦
-  [32m✓[0m local 口径：仅提示不判死
-== 22. gitChangedFiles 不能吃掉首条目的首字符（实测：pom.xml → om.xml）==
-  [32m✓[0m 首个改动文件是完整路径
-  [32m✓[0m 新增目录内的文件展开成具体路径（不是目录名）
-== 23. 未声明进任何 TODO 的构建基建文件 → CI 拦（#18 此前完全没有用例）==
-  [32m✓[0m 未声明的 pom.xml → 拦
-  [32m✓[0m 报错点名 pom.xml（不是被切坏的 om.xml）
-== 24. 测试夹具里的 pom.xml 不算构建基建（该放的放）==
-  [32m✓[0m 改测试夹具不判红
-== 25. 未跟踪的基建文件只提示，不判红（大仓库里天天有）==
-  [32m✓[0m 未跟踪的 Makefile 不判红
-  [32m✓[0m 但仍然可见（不静默丢弃）
-
-结果：56 通过，0 失败
-
-> harness-starter@1.1.0 test:verify-run
-> bash test/verify-run.test.sh
-
-== 1. # cmd 必须是真实命令，不能被测试计数覆盖（实测过的 bug）==
-  [32m✓[0m cmd 行保留完整命令（参数边界未被空格抹平）
-  [32m✓[0m cmd 行没有变成测试计数
-== 2. 多模块 surefire 报告要相加，不是取一份 ==
-  [32m✓[0m 两份报告 7+5 聚合为 12
-  [32m✓[0m exit_code 头存在且为 0
-== 3. 没有报告时**不写** # tests 行（不伪造 total=0）==
-  [32m✓[0m 无报告 → 没有 # tests 行
-== 4. 跨次运行不重复计数 ==
-  [32m✓[0m 首次计入本次新报告
-  [32m✓[0m 同一批报告不重复计入（第二次没有新报告 → 无计数行）
-== 5. 失败运行的 exit_code 要如实写，脚本退出码同步 ==
-  [32m✓[0m 脚本退出码 = 被跑命令的退出码
-  [32m✓[0m 日志头 exit_code = 7
-== 6. verify.mjs 能从头部读到结论（两边口径一致）==
-  [32m✓[0m 校验器读到的 exit_code 与脚本写的一致
-== 7. 用法错误 → 64（不静默跑空）==
-  [32m✓[0m 缺少 -- 分隔符 → 64
-
-结果：11 通过，0 失败
-
-> harness-starter@1.1.0 test:ledger
-> bash test/ledger.test.sh
-
-== 1. 没有账本时要说清不是没拦过和没接上的区别 ==
-  [32m✓[0m 没有账本 → 不崩，exit 0
-  [32m✓[0m 提示门禁可能没接上（不把空白当干净）
-== 2. 真实拦截与自测流量必须分开 ==
-  [32m✓[0m 真实 2 条、自测 1 条分开计
-  [32m✓[0m 按规则名聚合（不是只记 hook 名）
   [32m✓[0m 自测流量不进真实基线
 == 3. 同一条规则反复拦 → 要提示回看原话 ==
   [32m✓[0m ≥5 次时提示核对是否规则写宽
@@ -203,3 +105,101 @@ nothing to commit, working tree clean
   [32m✓[0m 体检输出点名了违规 flag
 
 结果：14 通过，0 失败
+
+> harness-starter@1.1.0 test:router
+> bash test/review-router.test.sh
+
+== 1. 命中与分流 ==
+  [32m✓[0m RS 文档 → rs + evidence
+  [32m✓[0m 任务目录 rs.md（单层 *）命中
+  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
+  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
+  [32m✓[0m 源码（projects 槽 backend）→ cr
+  [32m✓[0m RS + 源码混合 → 三类并存
+  [32m✓[0m 未匹配文件（README）→ 仅 evidence
+== 2. 噪声与 trivial ==
+  [32m✓[0m 纯噪声 → 无任何审核
+  [32m✓[0m 纯噪声 → trivial=true（evidence 也跳过）
+  [32m✓[0m 噪声+真实混合 → 噪声不进 rs
+== 3. projects 无配置时 fallback 兜底 ==
+  [32m✓[0m 无 config → cr 走 fallback
+  [32m✓[0m fallback 槽 src/** 命中 python 源码
+== 4. fail-closed：规则坏了不许装没事 ==
+  [32m✓[0m 规则缺失 → exit 2
+  [32m✓[0m schema_version 越界 → exit 2
+== 5. git 模式（--base 真实 diff） ==
+  [32m✓[0m --base diff 只取新文件
+
+结果：15 通过，0 失败
+
+> harness-starter@1.1.0 test:ai-review
+> bash test/ai-review.test.sh
+
+== 1. L0 机器判据：零 token 先阻断 ==
+  [32m✓[0m 坏 RS（缺开放问题章节）→ exit 1
+  [32m✓[0m 机器判据路径零 API 调用
+  [32m✓[0m verdict 含缺章节明细
+== 2. 机器判据干净 + 模型通过 ==
+  [32m✓[0m 好 RS → exit 0
+  [32m✓[0m 恰好 1 次模型调用
+  [32m✓[0m verdict 头记录 token 用量
+  [32m✓[0m events.jsonl 计量落账
+== 3. 模型返回 🔴 / 垃圾 / 5xx ==
+  [32m✓[0m 模型 🔴 → exit 1
+  [32m✓[0m verdict 红/黄计数正确
+sed: s|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|: No such file or directory  [32m✓[0m 非法 JSON 重试仍败 → exit 2
+  [32m✓[0m 端点 5xx（机器无红）→ exit 2 fail-closed
+== 4. 降级与防御 ==
+  [32m✓[0m 未知类型 → exit 2
+  [32m✓[0m 机器裁决型（evidence）拒绝走 AI → exit 2
+  [32m✓[0m 未知机器判据 id → exit 2（不静默跳过）
+== 4b. 显式降级路径必须真的不调模型 ==
+  [32m✓[0m 带 key + --machine-only → 模型 0 次调用
+  [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
+  [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
+  [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
+== 5. dry-run 与增量缓存 ==
+sed: s|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|: No such file or directory  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
+  [32m✓[0m dry-run 零 API 调用
+  [32m✓[0m 沿用上轮红结论仍阻断（exit 1）
+  [32m✓[0m 未变更文件不重复调模型
+  [32m✓[0m 缓存生效：打包文件数归零
+
+结果：23 通过，0 失败
+
+> harness-starter@1.1.0 test:broker
+> bash test/notify-broker.test.sh
+
+sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==
+  [32m✓[0m 决策卡片 msg_type=interactive
+  [32m✓[0m 每个选项一个按钮（票拟）
+  [32m✓[0m 按钮 value 携带回投上下文
+  [32m✓[0m 缺 options 的决策事件 → 拒渲染（非 0）
+  [32m✓[0m webhook 发送成功且落账
+  [32m✓[0m events.jsonl 记 card_sent
+== 2. broker：健康与认证 ==
+  [32m✓[0m healthz → 200
+  [32m✓[0m webhook token 不匹配 → 403
+  [32m✓[0m 飞书 URL 校验回显 challenge
+  [32m✓[0m 回投未带校验 token → 403
+  [32m✓[0m 被拒的回投不产生 GitLab 提交
+  [32m✓[0m 回投 token 不匹配 → 403
+== 3. MR 事件路由 → 卡片找人 ==
+  [32m✓[0m MR 路由返回 rs+evidence
+  [32m✓[0m 飞书收到 1 张卡片
+  [32m✓[0m 卡片含审核类型与批红角色
+  [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
+  [32m✓[0m 降级卡片含说明
+== 4. pipeline 失败与 digest ==
+  [32m✓[0m pipeline 失败 → 失败卡片
+  [32m✓[0m 非卡片事件走 digest（不推飞书）
+  [32m✓[0m digest 不产生新卡片
+== 5. 决策回投（批红落账） ==
+  [32m✓[0m 卡片回调 → 200 落账
+  [32m✓[0m GitLab 收到 1 次文件提交
+  [32m✓[0m RS 开放问题行写入结论+批红人
+  [32m✓[0m commit message 带身份与结论
+  [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
+  [32m✓[0m 失败回投不产生新提交
+
+结果：26 通过，0 失败

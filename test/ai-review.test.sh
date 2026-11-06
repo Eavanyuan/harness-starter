@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+# ai-review 自测：L0 机器判据 + 模式 B 单发 + fail-closed + token 计量。
+#
+# 模型端点用本地 mock（不打真网）：requests.log 记每个请求，mode/response.json 控制行为。
+# 核心负向判据（checklist §3）：解析失败/端点 5xx/缺凭据，绝不允许产出"通过"。
+# 用法：bash test/ai-review.test.sh
+set -uo pipefail
+
+HERE="$(cd "$(dirname "$0")/.." && pwd)"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+export HARNESS_LEDGER_DIR="$TMP/ledger"
+
+pass=0
+fail=0
+check() {
+  if [ "$2" = "$3" ]; then
+    printf "  \033[32m✓\033[0m %s\n" "$1"
+    pass=$((pass + 1))
+  else
+    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"
+    fail=$((fail + 1))
+  fi
+}
+
+# ---- fixture 仓库：rules + config + 清单 + 被审文档（模拟落地项目布局）----
+REPO="$TMP/repo"
+mkdir -p "$REPO/docs/01-requirements" "$REPO/scripts/reviews" "$REPO/.ai/reviews"
+cp "$HERE/harness.rules.json" "$REPO/"
+cp "$HERE/scripts/reviews/rs.md" "$REPO/scripts/reviews/"
+echo '{ "projects": [ { "id": "docs", "lang": "md", "dir": "docs" } ] }' > "$REPO/harness.config.json"
+
+cat > "$REPO/docs/01-requirements/RS-bad.md" <<'EOF'
+# RS-坏文档
+## 1 背景与痛点
+缺章节的坏文档。
+## 2 用户故事
+### US-1 坏的
+- **作为**：谁
+**验收标准**
+- 看起来对其实没有 GWT
+## 3 核心需求
+| 编号 | 需求 | 优先级 | 来源 |
+|---|---|---|---|
+EOF
+
+cat > "$REPO/docs/01-requirements/RS-good.md" <<'EOF'
+# RS-好文档
+## 1 背景与痛点
+好文档。
+## 2 用户故事
+### US-1 正常
+- **作为**：开发
+**验收标准**
+- Given 已建档 When 跑审核 Then 退出码为 0
+## 3 核心需求
+| 编号 | 需求 | 优先级 | 来源 |
+|---|---|---|---|
+| R-1 | 路由 | P0 | 会话 |
+## 7 开放问题
+| 编号 | 问题 | 状态 |
+|---|---|---|
+| OP-1 | 无 | 已定 |
+EOF
+
+git -C "$REPO" init -q && git -C "$REPO" config user.email t@t && git -C "$REPO" config user.name t
+git -C "$REPO" add -A && git -C "$REPO" commit -qm base
+
+FILES="$TMP/files.txt"
+printf 'docs/01-requirements/RS-bad.md\n' > "$FILES"
+FILES_GOOD="$TMP/files-good.txt"
+printf 'docs/01-requirements/RS-good.md\n' > "$FILES_GOOD"
+
+# ---- mock 模型端点（OpenAI 兼容形状）----
+mkdir -p "$TMP/mock"
+echo ok > "$TMP/mock/mode"
+echo '{"summary":"无问题","findings":[]}' > "$TMP/mock/response.json"
+cat > "$TMP/mock/server.mjs" <<'EOF'
+import http from 'node:http';
+import fs from 'node:fs';
+const dir = process.env.MOCK_DIR;
+const srv = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    fs.appendFileSync(`${dir}/requests.log`, `${body}\n`);
+    const mode = fs.readFileSync(`${dir}/mode`, 'utf8').trim();
+    if (mode === 'http500') { res.writeHead(500); res.end('{}'); return; }
+    let content;
+    if (mode === 'garbage') content = 'I am not JSON at all';
+    else content = fs.readFileSync(`${dir}/response.json`, 'utf8');
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content } }], usage: { prompt_tokens: 1234, completion_tokens: 56 } }));
+  });
+});
+srv.listen(0, '127.0.0.1', () => fs.writeFileSync(`${dir}/port`, String(srv.address().port)));
+EOF
+MOCK_DIR="$TMP/mock" node "$TMP/mock/server.mjs" &
+MOCK_PID=$!
+for _ in $(seq 1 50); do [ -f "$TMP/mock/port" ] && break; sleep 0.1; done
+PORT="$(cat "$TMP/mock/port")"
+reqs() { [ -f "$TMP/mock/requests.log" ] && wc -l < "$TMP/mock/requests.log" | tr -d ' ' || echo 0; }
+
+export AI_REVIEW_BASE_URL="http://127.0.0.1:${PORT}"
+export AI_REVIEW_MODEL="mock-small"
+unset AI_REVIEW_API_KEY
+
+echo "== 1. L0 机器判据：零 token 先阻断 =="
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES" --out "$REPO/.ai/reviews" >/dev/null 2>&1
+rc=$?
+check "坏 RS（缺开放问题章节）→ exit 1" "1" "$rc"
+check "机器判据路径零 API 调用" "0" "$(reqs)"
+V="$(ls "$REPO/.ai/reviews"/rs-*.md | head -1)"
+grep -q '缺必填章节「开放问题」' "$V"; check "verdict 含缺章节明细" "0" "$?"
+
+echo "== 2. 机器判据干净 + 模型通过 =="
+export AI_REVIEW_API_KEY="mock-key"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews" >/dev/null 2>&1
+rc=$?
+check "好 RS → exit 0" "0" "$rc"
+check "恰好 1 次模型调用" "1" "$(reqs)"
+V="$(ls -t "$REPO/.ai/reviews"/rs-*.md | head -1)"
+grep -q '^# tokens: in=1234 out=56' "$V"; check "verdict 头记录 token 用量" "0" "$?"
+grep -q '"tokens_in":1234' "$TMP/ledger/events.jsonl"; check "events.jsonl 计量落账" "0" "$?"
+
+echo "== 3. 模型返回 🔴 / 垃圾 / 5xx =="
+echo '{"summary":"x","findings":[{"severity":"red","rule":"RS-A2","file":"docs/01-requirements/RS-good.md","message":"Then 不可观测"}]}' > "$TMP/mock/response.json"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" >/dev/null 2>&1
+check "模型 🔴 → exit 1" "1" "$?"
+V="$(ls -t "$REPO/.ai/reviews2"/rs-*.md | head -1)"
+grep -q '^# findings: red=1 yellow=0' "$V"; check "verdict 红/黄计数正确" "0" "$?"
+
+sed -i '' 's|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|' "$FILES_GOOD"
+cp "$REPO/docs/01-requirements/RS-good.md" "$REPO/docs/01-requirements/RS-good2.md"
+echo garbage > "$TMP/mock/mode"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews3" >/dev/null 2>&1
+check "非法 JSON 重试仍败 → exit 2" "2" "$?"
+
+echo http500 > "$TMP/mock/mode"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews3" >/dev/null 2>&1
+check "端点 5xx（机器无红）→ exit 2 fail-closed" "2" "$?"
+echo ok > "$TMP/mock/mode"
+
+echo "== 4. 降级与防御 =="
+node "$HERE/scripts/ai-review.mjs" --type zzz --root "$REPO" --files "$FILES" >/dev/null 2>&1
+check "未知类型 → exit 2" "2" "$?"
+node "$HERE/scripts/ai-review.mjs" --type evidence --root "$REPO" --files "$FILES" >/dev/null 2>&1
+check "机器裁决型（evidence）拒绝走 AI → exit 2" "2" "$?"
+sed 's/"rs_required_sections"/"no_such_check"/' "$HERE/harness.rules.json" > "$REPO/harness.rules.json"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES" >/dev/null 2>&1
+check "未知机器判据 id → exit 2（不静默跳过）" "2" "$?"
+cp "$HERE/harness.rules.json" "$REPO/"
+
+echo "== 4b. 显式降级路径必须真的不调模型 =="
+# 三处口径（RS US-2、指南 §一.1「🔴 直接出，模型都不用调」、CR §0 H6「合法绕过」）都说这两条路零调用。
+# 原实现把 canCall 判断放在最前，于是只要机器上配了 key，--machine-only 照调不误、
+# 机器已出 🔴 也照调一次——而有 key 的 CI 正是这两个开关唯一存在的理由。
+before=$(reqs)
+AI_REVIEW_API_KEY="mock-key" node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" \
+  --files "$FILES_GOOD" --out "$REPO/.ai/reviews4" --machine-only >/dev/null 2>&1
+rc=$?
+check "带 key + --machine-only → 模型 0 次调用" "$before" "$(reqs)"
+check "带 key + --machine-only → exit 0（机器判据干净即通过）" "0" "$rc"
+
+before=$(reqs)
+AI_REVIEW_API_KEY="mock-key" node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" \
+  --files "$FILES" --out "$REPO/.ai/reviews5" >/dev/null 2>&1
+rc=$?
+check "带 key + 机器判据有 🔴 → 模型 0 次调用" "$before" "$(reqs)"
+check "带 key + 机器判据有 🔴 → exit 1" "1" "$rc"
+
+echo "== 5. dry-run 与增量缓存 =="
+# 回到 RS-good.md：它在 reviews2 有成功轮的缓存（§3 红结论），才能测"沿用不重跑"
+sed -i '' 's|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|' "$FILES_GOOD"
+echo '{"summary":"无问题","findings":[]}' > "$TMP/mock/response.json"
+before=$(reqs)
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" --dry-run 2>/dev/null \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.files_total,j.files_in_bundle,j.bundle_chars>0?1:0)})' > "$TMP/dry.txt"
+check "dry-run 打包统计（§3 已建缓存 → 本轮全沿用）" "1 0 1" "$(cat "$TMP/dry.txt")"
+check "dry-run 零 API 调用" "$before" "$(reqs)"
+# 增量：同文件正式跑（reviews2 已有缓存），全部沿用 → 不调模型；沿用的是上轮红结论 → 仍阻断
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" >/dev/null 2>&1
+check "沿用上轮红结论仍阻断（exit 1）" "1" "$?"
+check "未变更文件不重复调模型" "$before" "$(reqs)"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" --dry-run 2>/dev/null \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.files_in_bundle)})' > "$TMP/dry2.txt"
+check "缓存生效：打包文件数归零" "0" "$(cat "$TMP/dry2.txt")"
+
+kill $MOCK_PID 2>/dev/null; wait $MOCK_PID 2>/dev/null
+echo
+printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
+[ "$fail" -eq 0 ] || exit 1

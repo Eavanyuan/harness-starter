@@ -56,6 +56,17 @@ jobs:
       - name: 拦截账本（误拦率的数据来源）
         run: bash test/ledger.test.sh
 
+      # 审核自动化的三组。此前它们只在本地 `bash test/*.test.sh` 里跑过：
+      # 不注册 = 这 800 多行代码的任何改动都没有门禁看得见，坏了也只能靠人恰好想起。
+      - name: 审核路由（变更文件 → 该跑哪些审核）
+        run: bash test/review-router.test.sh
+
+      - name: AI 审核（L0 判据 / 模式B / fail-closed / token 计量）
+        run: bash test/ai-review.test.sh
+
+      - name: 通知与回投（卡片 / webhook 鉴权 / 决策落账）
+        run: bash test/notify-broker.test.sh
+
       - name: Agent 定义与生成物一致
         run: node scripts/build-agents.mjs --check
 

@@ -511,6 +511,24 @@ function isForwardStep(chain, from, to) {
   return i >= 0 && chain[i + 1] === to;
 }
 
+/**
+ * from → to 之间被越过的每一站，是否都在 history 里具名 defer 过。
+ *
+ * 这是"跳阶"与"链序不同"的分界线：S 档任务把 wbs/adr/fs_review 逐个 defer（每站写了理由），
+ * 再 fs_review → impl —— 每一站都有签字，只是现行链把 wbs 排在 impl 前一位。
+ * 只看落点 waived_by 会把这种正当裁剪误判成跳阶；而不看中间站，又会让"整段悄悄跳过"蒙混过去。
+ * 逆序（to 在 from 之前）不认：退回去不是跳过，是走错。
+ */
+function everySkippedNamed(hist, from, to) {
+  const i = STAGE_CHAIN.indexOf(from);
+  const j = STAGE_CHAIN.indexOf(to);
+  if (i < 0 || j <= i) return false;
+  return STAGE_CHAIN.slice(i + 1, j).every((s) => {
+    const e = hist.find((h) => h && h.stage === s);
+    return !!e && typeof e.waived_by === 'string' && !!e.waived_by.trim();
+  });
+}
+
 /** 档位枚举（S/M/L/XL）。档位本身不改变判据强度，只记录"这套流程被裁剪过"。 */
 export const FLOW_TIERS = ['S', 'M', 'L', 'XL'];
 export const RISK_TIERS = ['LOW', 'MEDIUM', 'HIGH'];
@@ -552,19 +570,30 @@ export function checkStage(state) {
 
   const hist = Array.isArray(state.stage_history) ? state.stage_history : [];
   const retired = RETIRED_STAGE_CHAINS.map((c) => c.id).join('/');
+  const createdAt = Date.parse(meta.created_at || '');
+  // 退休链只对"退休之前就已存在的任务"成立。没有这道时间闸，旧链序就是永久第二条合法路径：
+  // 新任务照抄一份旧 state 就永远"合法跳阶"，retired_on 沦为一个没人读的注释字段
+  //（实测：2026-11-06 新建的任务走的正是 2026-11-02 退休的 rs → wbs → adr → fs_review）。
+  const legacyChains = RETIRED_STAGE_CHAINS.filter((c) => {
+    const retiredAt = Date.parse(c.retired_on);
+    if (!Number.isFinite(createdAt) || !Number.isFinite(retiredAt)) return false; // 判不了就不给豁免
+    return createdAt <= retiredAt + 86_400_000 - 1; // retired_on 当天建的任务仍算旧账
+  });
   for (let i = 1; i < hist.length; i++) {
     const from = hist[i - 1] && hist[i - 1].stage;
     const to = hist[i] && hist[i].stage;
     if (!STAGE_CHAIN.includes(to) || from === to) continue;
     if (isForwardStep(STAGE_CHAIN, from, to)) continue;
     // 旧链上相邻 = 当时不是跳阶，是事实（链序改过一次，见 RETIRED_STAGE_CHAINS）
-    if (RETIRED_STAGE_CHAINS.some((c) => isForwardStep(c.chain, from, to))) continue;
+    if (legacyChains.some((c) => isForwardStep(c.chain, from, to))) continue;
+    // 越过的每一站都具名 defer 过 = 不是"悄悄跳过"，只是链序把新阶段插在了中间
+    if (everySkippedNamed(hist, from, to)) continue;
     const who = hist[i] && hist[i].waived_by;
     if (typeof who !== 'string' || !who.trim()) {
       failures.push({
         id: '(task)',
         rule: 'skip',
-        reason: `stage_history 里 ${JSON.stringify(from)} → ${JSON.stringify(to)} 不是相邻阶段，且未记名豁免（waived_by 为空）—— 现行链与退休链 ${retired} 都比对过仍不相邻，跳阶可以，但要有人签字`,
+        reason: `stage_history 里 ${JSON.stringify(from)} → ${JSON.stringify(to)} 不是相邻阶段，且未记名豁免（waived_by 为空）—— 现行链与适用退休链 ${retired} 都比对过仍不相邻，跳阶可以，但要有人签字`,
       });
     }
   }

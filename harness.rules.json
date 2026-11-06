@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "$comment": "审核路由与通知路由的机器可执行规则。review-router / ai-review / harness-broker 共读；改规则改这里，不改代码。路径模式：* 单层、** 任意层。severity：red=阻断（退出码 1），yellow=建议。",
+  "reviews": {
+    "rs": {
+      "title": "需求规格审核",
+      "paths": [".ai/tasks/*/rs.md", "docs/01-requirements/**"],
+      "checklist": "scripts/reviews/rs.md",
+      "machine_checks": [
+        { "id": "rs_required_sections", "severity": "red", "sections": ["背景与痛点", "用户故事", "核心需求", "开放问题"] },
+        { "id": "rs_acceptance_testable", "severity": "yellow" }
+      ],
+      "model_tier": "narrow",
+      "max_findings": 10,
+      "approval_role": "tech_lead"
+    },
+    "adr": {
+      "title": "技术决策审核",
+      "paths": ["docs/adr/**", "docs/plans/**/ADR-*.md"],
+      "checklist": "scripts/reviews/adr.md",
+      "machine_checks": [{ "id": "adr_refs_exist", "severity": "yellow" }],
+      "model_tier": "narrow",
+      "max_findings": 10,
+      "approval_role": "tech_lead"
+    },
+    "cr": {
+      "title": "代码审核",
+      "$comment": "paths_from=projects 表示源码路径取自 harness.config.json 的 projects[].dir（v2 数组或 v1 stacks），fallback_paths 兜底无配置仓库。",
+      "paths_from": "projects",
+      "fallback_paths": ["backend/**", "frontend/src/**", "src/**"],
+      "checklist": "scripts/reviews/cr.md",
+      "machine_checks": [],
+      "model_tier": "deep",
+      "max_findings": 10,
+      "approval_role": "code_owner"
+    },
+    "evidence": {
+      "$comment": "证据链校验不走 AI：任何真实变更必跑 ci-verify，机器裁决。",
+      "title": "证据链校验",
+      "always": true,
+      "runner": "node scripts/ci-verify.mjs",
+      "approval_role": "machine"
+    }
+  },
+  "model_tiers": {
+    "$comment": "model 留空则用 env AI_REVIEW_MODEL。narrow=窄域小模型，deep=旗舰。",
+    "narrow": { "model": "" },
+    "deep": { "model": "" }
+  },
+  "bundle": {
+    "$comment": "预打包上下文的硬顶：防一次大 MR 把 token 打爆。超限文件截断并在结论里注明。",
+    "max_files": 12,
+    "max_lines_per_file": 600
+  },
+  "skip": {
+    "noise_paths": ["**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock", ".ai/ledger/**", ".ai/backup/**", ".ai/locks/**", "**/*.log"]
+  },
+  "notify": {
+    "roles": { "tech_lead": "技术负责人", "code_owner": "代码所有者", "pm": "产品", "author": "发起人", "sre": "值班运维", "machine": "机器裁决" },
+    "$comment": "card_events 推飞书卡片（需决策/需批红）；digest_events 只进 broker 日志不推卡片，防通知疲劳。",
+    "card_events": ["mr_open", "pipeline_failed", "review_blocked", "decision_open"],
+    "digest_events": ["mr_merged", "pipeline_success"]
+  }
+}

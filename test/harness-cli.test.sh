@@ -888,6 +888,14 @@ check "拼错的 --mode 不许静默降级 → 64" 64 "$?"
 CLI verify "$TMP" >/dev/null 2>&1
 check "非 harness 目录 → 明确拒绝（非 0）" 1 "$?"
 
+echo "== 46. 发布包必须带齐 init 声明要拷的模板文件 =="
+# 实测过的坑：harness.rules.json 进了 TEMPLATE_FILES，却漏在 package.json 的 files 里。
+# 源码仓库一切正常，装出来的项目 init 成功、审核路由每次 exit 2——装的时候不报错，
+# 用的时候才红，而且红在一个跟"安装"看不出因果关系的地方。
+PACKED="$(cd "$HERE" && npm pack --dry-run 2>&1)"
+check "发布包含 harness.rules.json" 0 "$(printf '%s' "$PACKED" | grep -q 'harness\.rules\.json' && echo 0 || echo 1)"
+check "发布包含 harness.config.json（对照组）" 0 "$(printf '%s' "$PACKED" | grep -q 'harness\.config\.json' && echo 0 || echo 1)"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

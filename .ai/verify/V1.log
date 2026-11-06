@@ -1,0 +1,205 @@
+# cmd: npm run gate
+# started: 2026-11-06T05:58:33Z
+# finished: 2026-11-06T06:01:09Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+  [32m✓[0m 自测流量不进真实基线
+== 3. 同一条规则反复拦 → 要提示回看原话 ==
+  [32m✓[0m ≥5 次时提示核对是否规则写宽
+== 4. 没有 events → 明确说无法证明门禁在线 ==
+  [32m✓[0m 点名没法证明在线
+== 5. 有 events → 报在线条数、覆盖整点、最近一次 ==
+  [32m✓[0m 报出在线条数与整点数
+  [32m✓[0m 说明它的用途是有分母
+  [32m✓[0m 有 events 后不再说'无法证明在线'
+== 6. 坏行不猜内容，也不崩 ==
+  [32m✓[0m 坏行后仍 exit 0
+  [32m✓[0m 坏行计数提示
+== 7. --json 里要有 events（给自动化用）==
+  [32m✓[0m --json 里 events.total / by_type / online_hours 齐备
+
+结果：13 通过，0 失败
+
+> harness-starter@1.1.0 test:completeness
+> bash test/completeness.test.sh
+
+== 1. 完备文档 → 必须通过（不误杀） ==
+  [32m✓[0m 三份文档齐备时门禁放行
+== 2. 模板占位符残留 → 拦截 ==
+  [32m✓[0m 占位符残留判红
+  [32m✓[0m 报错点名占位符
+== 3. 章节只剩表头 → 拦截 ==
+  [32m✓[0m 空表章节判红
+  [32m✓[0m 报错点名 §9
+== 4. 追溯表漏条目 → 拦截 ==
+  [32m✓[0m RS 覆盖率不足判红
+  [32m✓[0m 报错点名 US-2
+== 5. WBS 指向不存在的 FS 小节 → 拦截 ==
+  [32m✓[0m 悬空 spec_ref 判红
+  [32m✓[0m 报错说明悬空
+== 6. FS 小节没有任务对应 → 拦截 ==
+  [32m✓[0m 漏做判定为红
+  [32m✓[0m 报错点名 §4.2
+== 7. WBS 缺 spec_ref 列 → 拦截 ==
+  [32m✓[0m 缺列判红
+  [32m✓[0m 报错点名 spec_ref
+== 8. 声明了不存在的路径 → 拦截 ==
+  [32m✓[0m 声明与事实不符判红
+  [32m✓[0m 报错说明文件不存在
+== 8b. 中文/空格文件名 → 必须真检（不许静默跳过） ==
+  [32m✓[0m 中文+空格路径指向存在的文件 → 放行（不误杀）
+  [32m✓[0m 同一路径指向不存在的文件 → 判红
+  [32m✓[0m 报错点名那份不存在的文件
+== 8c. 登记写成了说明文字 → 判红（不是提示，不再放行） ==
+  [32m✓[0m 读不出路径的登记判红
+  [32m✓[0m 报错说清为什么算没登记
+== 8d. 路径后面跟说明 → 抠出路径照检 ==
+  [32m✓[0m 带后缀说明的登记仍按路径检（存在则放行）
+== 9. 阶段没越过产出阶段 → 不判（写到一半是常态） ==
+  [32m✓[0m fs_review 阶段不判 FS 完备性
+  [32m✓[0m 同一份文档到 impl 就判红
+== 10. 未登记的产物 → 提示但不判死 ==
+  [32m✓[0m 未登记不判红
+  [32m✓[0m 提示点了 WBS
+== 11. review-packet 首版 ==
+  [32m✓[0m 完备时 review-packet 退出 0
+  [32m✓[0m 首版标注
+  [32m✓[0m 给出该谁签
+  [32m✓[0m 有缺口时 review-packet 退出 1
+  [32m✓[0m 评审包列出待补项
+== 12. review-packet 列表模式 ==
+  [32m✓[0m 列表模式退出 0
+  [32m✓[0m 列出任务名
+== 13. review-packet 变更版 ==
+  [32m✓[0m 识别为变更版
+  [32m✓[0m 按小节报改动（不是只报标题）
+
+通过 34，失败 0
+
+> harness-starter@1.1.0 test:wiring
+> bash test/wiring.test.sh
+
+== 1. 接线与 manifest 一致 ==
+  [32m✓[0m 无漂移
+== 2. 两个 CLI 都有接线文件 ==
+  [32m✓[0m Claude 接线存在
+  [32m✓[0m ZCode 接线存在
+== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
+  [32m✓[0m hooks.enabled = true
+== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
+  [32m✓[0m 全部 hook 已接线（缺 0 处）
+== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
+  [32m✓[0m Claude 为 command 字符串
+  [32m✓[0m ZCode 为 process + args
+== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
+  [32m✓[0m ZCode 全部 matcher 已锚定
+== 7. 手改接线 → --check 必须发现漂移 ==
+  [32m✓[0m 漂移被检出
+== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
+  [32m✓[0m doctor 对缺失接线报红
+  [32m✓[0m 体检输出点名了 zcode
+== 9. hooks.enabled=false → doctor 必须报阻塞 ==
+  [32m✓[0m 关闭 hook 被体检拦住
+== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
+  [32m✓[0m 配置命令违反纪律被体检拦住
+  [32m✓[0m 体检输出点名了违规 flag
+
+结果：14 通过，0 失败
+
+> harness-starter@1.1.0 test:router
+> bash test/review-router.test.sh
+
+== 1. 命中与分流 ==
+  [32m✓[0m RS 文档 → rs + evidence
+  [32m✓[0m 任务目录 rs.md（单层 *）命中
+  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
+  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
+  [32m✓[0m 源码（projects 槽 backend）→ cr
+  [32m✓[0m RS + 源码混合 → 三类并存
+  [32m✓[0m 未匹配文件（README）→ 仅 evidence
+== 2. 噪声与 trivial ==
+  [32m✓[0m 纯噪声 → 无任何审核
+  [32m✓[0m 纯噪声 → trivial=true（evidence 也跳过）
+  [32m✓[0m 噪声+真实混合 → 噪声不进 rs
+== 3. projects 无配置时 fallback 兜底 ==
+  [32m✓[0m 无 config → cr 走 fallback
+  [32m✓[0m fallback 槽 src/** 命中 python 源码
+== 4. fail-closed：规则坏了不许装没事 ==
+  [32m✓[0m 规则缺失 → exit 2
+  [32m✓[0m schema_version 越界 → exit 2
+== 5. git 模式（--base 真实 diff） ==
+  [32m✓[0m --base diff 只取新文件
+
+结果：15 通过，0 失败
+
+> harness-starter@1.1.0 test:ai-review
+> bash test/ai-review.test.sh
+
+== 1. L0 机器判据：零 token 先阻断 ==
+  [32m✓[0m 坏 RS（缺开放问题章节）→ exit 1
+  [32m✓[0m 机器判据路径零 API 调用
+  [32m✓[0m verdict 含缺章节明细
+== 2. 机器判据干净 + 模型通过 ==
+  [32m✓[0m 好 RS → exit 0
+  [32m✓[0m 恰好 1 次模型调用
+  [32m✓[0m verdict 头记录 token 用量
+  [32m✓[0m events.jsonl 计量落账
+== 3. 模型返回 🔴 / 垃圾 / 5xx ==
+  [32m✓[0m 模型 🔴 → exit 1
+  [32m✓[0m verdict 红/黄计数正确
+sed: s|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|: No such file or directory  [32m✓[0m 非法 JSON 重试仍败 → exit 2
+  [32m✓[0m 端点 5xx（机器无红）→ exit 2 fail-closed
+== 4. 降级与防御 ==
+  [32m✓[0m 未知类型 → exit 2
+  [32m✓[0m 机器裁决型（evidence）拒绝走 AI → exit 2
+  [32m✓[0m 未知机器判据 id → exit 2（不静默跳过）
+== 4b. 显式降级路径必须真的不调模型 ==
+  [32m✓[0m 带 key + --machine-only → 模型 0 次调用
+  [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
+  [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
+  [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
+== 5. dry-run 与增量缓存 ==
+sed: s|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|: No such file or directory  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
+  [32m✓[0m dry-run 零 API 调用
+  [32m✓[0m 沿用上轮红结论仍阻断（exit 1）
+  [32m✓[0m 未变更文件不重复调模型
+  [32m✓[0m 缓存生效：打包文件数归零
+
+结果：23 通过，0 失败
+
+> harness-starter@1.1.0 test:broker
+> bash test/notify-broker.test.sh
+
+sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==
+  [32m✓[0m 决策卡片 msg_type=interactive
+  [32m✓[0m 每个选项一个按钮（票拟）
+  [32m✓[0m 按钮 value 携带回投上下文
+  [32m✓[0m 缺 options 的决策事件 → 拒渲染（非 0）
+  [32m✓[0m webhook 发送成功且落账
+  [32m✓[0m events.jsonl 记 card_sent
+== 2. broker：健康与认证 ==
+  [32m✓[0m healthz → 200
+  [32m✓[0m webhook token 不匹配 → 403
+  [32m✓[0m 飞书 URL 校验回显 challenge
+  [32m✓[0m 回投未带校验 token → 403
+  [32m✓[0m 被拒的回投不产生 GitLab 提交
+  [32m✓[0m 回投 token 不匹配 → 403
+== 3. MR 事件路由 → 卡片找人 ==
+  [32m✓[0m MR 路由返回 rs+evidence
+  [32m✓[0m 飞书收到 1 张卡片
+  [32m✓[0m 卡片含审核类型与批红角色
+  [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
+  [32m✓[0m 降级卡片含说明
+== 4. pipeline 失败与 digest ==
+  [32m✓[0m pipeline 失败 → 失败卡片
+  [32m✓[0m 非卡片事件走 digest（不推飞书）
+  [32m✓[0m digest 不产生新卡片
+== 5. 决策回投（批红落账） ==
+  [32m✓[0m 卡片回调 → 200 落账
+  [32m✓[0m GitLab 收到 1 次文件提交
+  [32m✓[0m RS 开放问题行写入结论+批红人
+  [32m✓[0m commit message 带身份与结论
+  [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
+  [32m✓[0m 失败回投不产生新提交
+
+结果：26 通过，0 失败

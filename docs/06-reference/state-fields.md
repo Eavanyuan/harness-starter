@@ -41,6 +41,7 @@
 | 字段 | 等级 | 说明 |
 |---|---|---|
 | `schema_version` | 判据 | `migrate()`；未知版本显式报错，不静默跳过 |
+| `created_at` | **判据** | `checkStage()` — 决定这个任务适用哪条阶段链：`created_at` 早于某条退休链的 `retired_on`（含当天）才允许走旧链序。缺这个字段 = 不给豁免（判不了就不放宽），所以它不是装饰性时间戳 |
 | `task` | 索引 | 任务名，`session_start` / `resume` 展示用 |
 | `task_type` | 判据 | `checkTaskTraceability()`；`feature` / `change` / `bugfix` |
 | `related_task` / `baseline` / `affected_ids` / `change_tier` | 判据 | change/bugfix 追溯链（完成态复核） |

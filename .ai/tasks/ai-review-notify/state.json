@@ -1,0 +1,319 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ai-review-notify",
+    "task_type": "feature",
+    "related_task": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-06T02:40:39Z",
+    "flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档裁剪（AGENTS.md 硬规则 8）：行为契约由 RS 验收标准 + 64 条测试锚定，无 FS/WBS 产出；无多方案决策点故无 ADR"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-06T02:45:00Z",
+      "exited_at": "2026-11-06T02:55:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "requirement-analyst",
+      "model": "glm-5.3",
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-06T02:55:00Z",
+      "exited_at": "2026-11-06T02:55:01Z",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（AGENTS.md 硬规则 8）：单一交付物、无拆分决策点",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-06T02:55:01Z",
+      "exited_at": "2026-11-06T02:55:02Z",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：无多方案取舍（模式 B/规则数据化均沿用既有设计定案）",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-06T02:55:02Z",
+      "exited_at": "2026-11-06T02:55:03Z",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：无 FS（接口面为零依赖脚本，行为由 64 条测试锚定）",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-06T03:00:00Z",
+      "exited_at": "2026-11-06T03:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": "glm-5.3",
+      "skill_versions": {
+        "harness": "1.0.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-06T03:35:00Z",
+      "exited_at": "2026-11-06T03:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer",
+      "model": "glm-5.3",
+      "skill_versions": {
+        "harness": "1.0.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-06T03:40:00Z",
+      "exited_at": "2026-11-06T03:45:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-06T03:45:00Z",
+      "exited_at": "2026-11-06T03:46:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：经验已记 CR §三与 KI-1/KI-2，retro-ledger 沉淀待接线落地后一并做",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-审核与通知自动化.md",
+    "fs": null,
+    "wbs": null,
+    "adr": null,
+    "matrix": null,
+    "review": ".ai/tasks/ai-review-notify/cr-代码审查记录.md"
+  },
+  "todos": [
+    {
+      "id": "T1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "审核路由规则数据化 + review-router（零 LLM、噪声跳过、fail-closed）",
+      "files": [
+        "harness.rules.json",
+        "scripts/lib/review-rules.mjs",
+        "scripts/review-router.mjs",
+        "test/review-router.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；harness.rules.json 合法 JSON",
+        "tests": "router 组 15 断言全绿（含规则缺失/越界两条 fail-closed 负向）",
+        "feature_complete": "RS/ADR/CR/evidence 四类路由 + projects 槽 + fallback 兜底 + trivial 噪声跳过均有用例",
+        "quality_clean": "glob 仅支持 * 与 ** 两种通配；路径模式全部来自 rules 文件，代码无字面量"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T1.log",
+        "command": "bash test/review-router.test.sh"
+      }
+    },
+    {
+      "id": "T2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "L0 机器判据 + ai-review 模式 B（预打包单发、token 计量、fail-closed、增量缓存）",
+      "files": [
+        "scripts/lib/review-checks.mjs",
+        "scripts/ai-review.mjs",
+        "test/ai-review.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；布尔旗标解析（--dry-run 不再吞后续参数）",
+        "tests": "ai-review 组 23 断言全绿：零 token 阻断、非法 JSON/5xx → exit 2、计量入账、dry-run 零 API、缓存沿用不重跑；复核补 4 条盯「带 key 时 --machine-only / 机器红仍然 0 次调用」",
+        "feature_complete": "RS US-2 四条验收标准逐条有用例锚定；「不该调模型」的三条路径各自有计数断言，不再只靠'没配 key'这一种现场",
+        "quality_clean": "输出封顶 max_findings 红优先；机器判据注册表未知 id 显式报错不静默跳过"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T2.log",
+        "command": "bash test/ai-review.test.sh"
+      }
+    },
+    {
+      "id": "T3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "通知自动化：卡片渲染/发送 + broker 事件桥（认证 403、降级 fail-open、决策回投落账）",
+      "files": [
+        "scripts/lib/notify.mjs",
+        "scripts/harness-broker.mjs",
+        "test/notify-broker.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；零 npm 依赖（node18 自带 fetch/http）",
+        "tests": "notify+broker 组 26 断言全绿：票拟按钮/value 上下文/403/降级卡片/digest 防疲劳/回投 422 不盲写；复核补 4 条锁鉴权（未配 token 503、无 token 403、错 token 403、challenge 原样回显）",
+        "feature_complete": "RS US-3 验收标准逐条有用例锚定；mock 飞书+GitLab 全本地",
+        "quality_clean": "broker 不写 state 不合 MR，回投走 GitLab 文件 API 正式提交；两个入口都 constant-time 比较；缺校验 token 时写入口直接 503（读路径才允许试点裸奔）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T3.log",
+        "command": "bash test/notify-broker.test.sh"
+      }
+    },
+    {
+      "id": "T4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "审核清单 prompt（rs/adr/cr）+ 接入指南 + cli 传播登记",
+      "files": [
+        "scripts/reviews/rs.md",
+        "scripts/reviews/adr.md",
+        "scripts/reviews/cr.md",
+        "guides/审核与通知自动化.md",
+        "docs/01-requirements/RS-审核与通知自动化.md",
+        "scripts/harness-cli.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "gate 全绿（check:agents/check:hooks 无漂移；harness-cli.test.sh 的 manifest 契约未受 TEMPLATE_FILES 增项影响）",
+        "tests": "npm run gate 全链 exit 0（含受影响的 harness-cli 组），V1.log 留档",
+        "feature_complete": "harness.rules.json 已进 cli TEMPLATE_FILES，随 init 传播到落地项目；env/部署/安全边界写入 guides",
+        "quality_clean": "三份清单均 ≤80 行且声明「只报真问题不报风格、判不了就别说」"
+      },
+      "verify": {
+        "log_path": ".ai/verify/V1.log",
+        "command": "npm run gate && bash test/review-router.test.sh && bash test/ai-review.test.sh && bash test/notify-broker.test.sh"
+      }
+    },
+    {
+      "id": "T5",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "复核整改：退休链加时间闸 + 「越过的每一站都具名 defer」判定（防止旧链序变成永久第二条合法路径）",
+      "files": [
+        "hooks/lib/verify.mjs",
+        "docs/06-reference/state-fields.md",
+        "test/evidence.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；created_at 因成为判据输入而补进 state-fields.md 契约表（doctor 抓到的空转字段）",
+        "tests": "evidence 组 61 断言全绿（新增 5 条：退休前任务走旧链放行 / 退休后任务走旧链拦 / 中间站逐个 defer 放行 / 只 defer 一站仍拦）",
+        "feature_complete": "红灯先复现：同一份 state 交旧实现 checkStage → 放行（漏判），新实现 → 拦",
+        "quality_clean": "缺 created_at 不给豁免（判不了就不放宽），报错里给出两条可行动作"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T5.log",
+        "command": "bash test/evidence.test.sh"
+      }
+    },
+    {
+      "id": "T6",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "复核整改：唯一数据源随包发布 + 安装器不再静默跳过缺失模板文件",
+      "files": [
+        "scripts/harness-cli.mjs",
+        "package.json",
+        "test/harness-cli.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；`npm pack --dry-run` 现在列出 harness.rules.json",
+        "tests": "harness-cli 组 208 断言全绿（新增 §46：发布包必须带齐 init 声明要拷的模板文件）",
+        "feature_complete": "两条链路都堵：发布侧（files 补项）+ 安装侧（缺声明文件时 die，不再 existsSync 静默跳过）",
+        "quality_clean": "用例断言的是「发出去的包里有没有」，不是「仓库里有没有」——后者一直是绿的，前者才是故障点"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T6.log",
+        "command": "bash test/harness-cli.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "gate/CI 注册未落：package.json 与 .github/workflows/quality-gate.yml 属考卷区被 guard_write 拦截，测试可直接跑但未进 gate 链与 CI workflow",
+      "disposition": "fixed",
+      "by": "Yuan Yuan（2026-11-06 会话内授权落地，T6 同批）",
+      "note": "pending-wiring.md 备的 diff 漏了 package.json 的 files 数组：只补 scripts 与 CI 的话，发布包仍缺 harness.rules.json，落地项目 init 成功但审核路由永远 exit 2。本轮一并补上，并把「缺声明模板文件就 die」写进 cli。"
+    }
+  ],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "symptom": "scripts/reviews/cr.md 与 templates/CR-代码审查记录.md §0 语义同源但物理两份，存在漂移风险",
+      "root_cause": "模板在考卷区不能程序化引用，清单需独立成文件供 ai-review 打包",
+      "owner_todo": "T4",
+      "resolution": "acknowledged：cr.md 头部已声明「改动任一侧须同步另一侧」；待 retro 评估是否做 CI 一致性检查"
+    },
+    {
+      "id": "KI-2",
+      "symptom": "ai-review 增量缓存沿用上轮 findings 时不感知 rules 判据变更",
+      "root_cause": "缓存键只含文件内容 sha，不含规则版本",
+      "owner_todo": "T2",
+      "resolution": "acknowledged：改判据后需删 .ai/reviews/.cache-*.json；指南与 CR 已记录，规则版本进缓存键留作下批"
+    }
+  ],
+  "gate_result": {
+    "last_check": "2026-11-06T05:58:32Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "ci_verify_local_pass",
+        "pass": true
+      }
+    ]
+  }
+}

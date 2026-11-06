@@ -16,3 +16,6 @@ node_modules/
 
 # 本地临时验证输出（正式证据在 .ai/verify，要入库）
 .ai/verify/*.tmp
+
+# ai-review 增量缓存（键=文件内容 sha，属本机状态；结论 md 才入库）
+.ai/reviews/.cache-*.json

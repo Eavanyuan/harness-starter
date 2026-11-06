@@ -1,6 +1,6 @@
 # cmd: bash test/completeness.test.sh
-# started: 2026-11-02T08:56:26Z
-# finished: 2026-11-02T08:56:36Z
+# started: 2026-11-06T03:20:27Z
+# finished: 2026-11-06T03:20:29Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 完备文档 → 必须通过（不误杀） ==
