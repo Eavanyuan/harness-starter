@@ -1,6 +1,6 @@
 # cmd: npm run gate
-# started: 2026-11-06T07:41:54Z
-# finished: 2026-11-06T07:44:52Z
+# started: 2026-11-06T07:47:21Z
+# finished: 2026-11-06T07:50:09Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 10. 未登记的产物 → 提示但不判死 ==

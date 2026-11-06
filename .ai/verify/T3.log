@@ -1,6 +1,6 @@
 # cmd: bash test/notify-broker.test.sh
-# started: 2026-11-06T07:44:58Z
-# finished: 2026-11-06T07:45:01Z
+# started: 2026-11-06T07:47:07Z
+# finished: 2026-11-06T07:47:10Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==

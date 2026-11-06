@@ -36,7 +36,8 @@ const opts = () => ({
   port: Number(argFlag('--port') || process.env.PORT || 8788),
   // 默认只绑回环：本地试点不对外。真要接 GitLab/飞书的回调，必须显式给 HOST=0.0.0.0，
   // 并且同时配置两个校验 token —— 绑 0.0.0.0 而不配 token 等于把回投入口挂到公网。
-  // 走长连接（FEISHU_MODE=ws）时入站不需要这个口子，绑回环就够了。
+  // 走长连接（FEISHU_MODE=ws）只是免掉「飞书 → broker」这条边（飞书在公网，进不来内网），
+  // **GitLab → broker 的 webhook 仍然要打得到**：GitLab 在另一台机器上时绑回环就收不到事件。
   host: process.env.HOST || '127.0.0.1',
   secret: process.env.GITLAB_WEBHOOK_SECRET || '',
   feishuToken: process.env.FEISHU_VERIFY_TOKEN || '',
