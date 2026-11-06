@@ -89,3 +89,31 @@ H4 写着"路径模式全在 rules、代码无路径字面量"，而 `scripts/li
 
 所以 §0 的判据改成：**每行给可复现命令 + 输出摘要**，没有命令的 ✅ 按未核处理。
 这条同样适用于 CR 模板（`templates/CR-代码审查记录.md`），已列为本轮遗留。
+
+---
+
+## 七、第三轮：飞书长连接入站（2026-11-06，T7）
+
+场景从"公网 broker"换成"纯内网"：出站推卡片一直通，入站（飞书 → broker）缺一条路，
+按钮点选永远回不来。长连接由 broker 主动出站建 WS 解决。审查对象是这一段的三个新文件
+（`lib/feishu-frame.mjs`、`lib/ws-client.mjs`、`feishu-ws.mjs`）与 broker 的接线。
+
+| # | 问题 | 判据 | 处置 |
+|---|---|---|---|
+| P1-5 | 去重占位"收到就记"：第一次因 GitLab 5xx 失败、应答 500 请网关重投，重投却被自己当重复丢掉并回 200 | 假网关第一次写 OP-3 直接 500，看仓库有没有那一行 | `createDeduper` 拆成 `seen`/`forget`；处理失败撤回占位。测试「GitLab 抖过一次的事件重投后落账」= 1 |
+| P1-6 | 回投失败一律 422：GitLab 抖动与"账实不符"共用一个状态码，前者本该重试却让飞书停止重投 | 对同一个 5xx 分别看应答码与账本 `retryable` | `PermanentError` 区分：可重试 → 502（长连接应答 500），账实不符 → 422 + toast |
+| P2-7 | 重连放弃后进程仍活着、`/healthz` 照回 `{ok:true}`——入站死了没人看得见 | `curl /healthz` 看能不能读出 `feishu.connected` | healthz 带上 `mode/connected/events/duplicates/failures/lastError`；http 模式不谎报 ws |
+| P2-8 | 测试自身有三处"红得不对"：`"event"` 写成 `"type"`、ack 的 data 是 base64 却直接字符串匹配、http 模式连接数写死 1 | 解 base64 后再断言、连接数取运行前的实测值 | 加 `ack_json` 辅助按协议解码；连接数改成前后对比 |
+
+### 又一条"通过但原因是错的"
+
+假 GitLab 的 5xx 触发条件最初写成 `content.includes('OP-3 |')`。PUT 的是**整篇文档**，
+content 里永远有 `| OP-3 |` 这行——于是第一次任意写入（OP-1）就被打成 500，测试因为
+"OP-1 恰好重投成功"而全绿，「OP-3 抖过一次」这条断言则在没抖的情况下通过。
+改成按 `commit_message`（这次动的是哪一行）判定后才真正打在第一枪上。
+
+同型的三处断言错误（事件字段名、base64、写死连接数）说明一件事：**断言写错时，
+红灯和绿灯都不携带信息。** 所以每条负向用例都要问一句"它在什么情况下会红"，
+答不上来就等于没有这条用例。
+
+证据：`.ai/verify/T7.log`（`bash test/feishu-ws.test.sh`，43 断言）、`V1.log`（全链 gate）。

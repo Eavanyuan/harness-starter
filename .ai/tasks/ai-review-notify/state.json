@@ -14,7 +14,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档裁剪（AGENTS.md 硬规则 8）：行为契约由 RS 验收标准 + 64 条测试锚定，无 FS/WBS 产出；无多方案决策点故无 ADR"
   },
-  "stage": "ci",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -103,10 +103,20 @@
     {
       "stage": "ci",
       "entered_at": "2026-11-06T07:36:53Z",
-      "exited_at": null,
-      "gate": "pending",
+      "exited_at": "2026-11-06T07:41:50Z",
+      "gate": "pass",
       "waived_by": "复核追加 T7（飞书长连接入站）：done 后补交付物，按流程回 ci 重跑证据链",
       "agent": "ci-verify",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-06T07:41:50Z",
+      "exited_at": "2026-11-06T07:41:50Z",
+      "gate": "deferred",
+      "waived_by": "S 档：本轮经验写入 CR §六与 T7.audit（去重占位必须跟随处理结果、应答码即重投开关），retro-ledger 沉淀待复用批一并做",
+      "agent": null,
       "model": null,
       "skill_versions": {}
     }
@@ -330,8 +340,29 @@
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": "ci",
-    "checks": []
+    "last_check": "2026-11-06T07:41:50Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "ci_verify_local_pass",
+        "pass": true
+      }
+    ]
   }
 }
