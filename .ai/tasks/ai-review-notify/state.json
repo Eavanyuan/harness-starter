@@ -14,7 +14,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档裁剪（AGENTS.md 硬规则 8）：行为契约由 RS 验收标准 + 64 条测试锚定，无 FS/WBS 产出；无多方案决策点故无 ADR"
   },
-  "stage": "done",
+  "stage": "ci",
   "stage_history": [
     {
       "stage": "rs",
@@ -97,6 +97,16 @@
       "gate": "deferred",
       "waived_by": "S 档：经验已记 CR §三与 KI-1/KI-2，retro-ledger 沉淀待接线落地后一并做",
       "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-06T07:36:53Z",
+      "exited_at": null,
+      "gate": "pending",
+      "waived_by": "复核追加 T7（飞书长连接入站）：done 后补交付物，按流程回 ci 重跑证据链",
+      "agent": "ci-verify",
       "model": null,
       "skill_versions": {}
     }
@@ -263,6 +273,35 @@
         "log_path": ".ai/verify/T6.log",
         "command": "bash test/harness-cli.test.sh"
       }
+    },
+    {
+      "id": "T7",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "内网入站：飞书长连接（pbbp2 帧编解码 / 最小 WS 客户端 / 分片合并 / 去重与失败重投 / broker 双通道接线）",
+      "files": [
+        "scripts/lib/feishu-frame.mjs",
+        "scripts/lib/ws-client.mjs",
+        "scripts/feishu-ws.mjs",
+        "scripts/harness-broker.mjs",
+        "test/feishu-ws.test.sh",
+        "package.json",
+        ".github/workflows/quality-gate.yml"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；零依赖（node18 内置 http/https/crypto）——不引 @larksuiteoapi/node-sdk（6MB，拖 axios/ws/protobufjs 三棵子树）",
+        "tests": "feishu-ws 组 39 断言全绿（假网关按 RFC6455 真握手、真收发 protobuf，不是自说自话的 mock）：换端点/握手/心跳、单片/分片/重投、失败重投、账实不符、断线重连、http 模式不串道",
+        "feature_complete": "帧格式与官方 SDK 同款（用 protobufjs 独立生成同结构帧做双向互操作，字节完全一致）；卡片两种信封（schema 2.0 事件 / 老版裸 action）都归一化进同一个 handleFeishuEvent",
+        "quality_clean": "两条入站路径共用同一个 handleFeishuEvent，回投行为不分叉；应答码即重投开关（可重试 500 / 账实不符 4xx）；去重的占位只在处理成功后才保留"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T7.log",
+        "command": "bash test/feishu-ws.test.sh"
+      }
     }
   ],
   "blockers": [],
@@ -291,29 +330,8 @@
     }
   ],
   "gate_result": {
-    "last_check": "2026-11-06T05:58:32Z",
-    "stage": "done",
-    "checks": [
-      {
-        "name": "todos_completed_with_evidence",
-        "pass": true
-      },
-      {
-        "name": "deviations_dispositioned",
-        "pass": true
-      },
-      {
-        "name": "known_issues_resolved",
-        "pass": true
-      },
-      {
-        "name": "stage_history_chain_legal",
-        "pass": true
-      },
-      {
-        "name": "ci_verify_local_pass",
-        "pass": true
-      }
-    ]
+    "last_check": null,
+    "stage": "ci",
+    "checks": []
   }
 }

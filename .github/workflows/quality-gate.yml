@@ -67,6 +67,11 @@ jobs:
       - name: 通知与回投（卡片 / webhook 鉴权 / 决策落账）
         run: bash test/notify-broker.test.sh
 
+      # 内网场景的唯一入站通道。它坏掉的样子特别安静：卡片照发、人也照点，
+      # 只是点完什么都没发生——所以必须有一条会红的判据盯着帧编解码与去重/重投。
+      - name: 飞书长连接（换端点 / 握手 / 分片 / 去重 / 失败重投）
+        run: bash test/feishu-ws.test.sh
+
       - name: Agent 定义与生成物一致
         run: node scripts/build-agents.mjs --check
 
