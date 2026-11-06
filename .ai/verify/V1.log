@@ -1,27 +1,8 @@
 # cmd: npm run gate
-# started: 2026-11-06T07:47:21Z
-# finished: 2026-11-06T07:50:09Z
+# started: 2026-11-06T08:24:48Z
+# finished: 2026-11-06T08:28:06Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-== 10. 未登记的产物 → 提示但不判死 ==
-  [32m✓[0m 未登记不判红
-  [32m✓[0m 提示点了 WBS
-== 11. review-packet 首版 ==
-  [32m✓[0m 完备时 review-packet 退出 0
-  [32m✓[0m 首版标注
-  [32m✓[0m 给出该谁签
-  [32m✓[0m 有缺口时 review-packet 退出 1
-  [32m✓[0m 评审包列出待补项
-== 12. review-packet 列表模式 ==
-  [32m✓[0m 列表模式退出 0
-  [32m✓[0m 列出任务名
-== 13. review-packet 变更版 ==
-  [32m✓[0m 识别为变更版
-  [32m✓[0m 按小节报改动（不是只报标题）
-
-通过 34，失败 0
-
-> harness-starter@1.1.0 test:wiring
 > bash test/wiring.test.sh
 
 == 1. 接线与 manifest 一致 ==
@@ -146,8 +127,27 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m commit message 带身份与结论
   [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
   [32m✓[0m 失败回投不产生新提交
+== 6. 方案 D：决策走 git（零入站口） ==
+  [32m✓[0m push 里的「已裁决」被读成决策
+  [32m✓[0m 账本记 decision_landed via git
+  [32m✓[0m 落账带 commit author 身份
+  [32m✓[0m 读 git 的决策不写仓库（commit 本身就是账）
+  [32m✓[0m 作废的旧结论（-行）不被采纳
+  [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
+  [32m✓[0m 非默认分支的改动不算结论（还没生效）
+  [32m✓[0m approvers 名单外的人改的不落账
+  [32m✓[0m 名单外记 decision_rejected 留痕
+  [32m✓[0m 名单内的人改的照常落账
+  [32m✓[0m diff 接口 5xx 时 push 仍返回 200
+  [32m✓[0m 读不到 diff 显式留痕（不静默当没决策）
+== 7. link 模式卡片：不依赖任何回调 ==
+  [32m✓[0m link 模式只给一个按钮（不是 N 个都跳同一页）
+  [32m✓[0m 按钮自带 url（点了直接开编辑页，不经 broker）
+  [32m✓[0m link 模式不再生成 decision value（没有回调可回）
+  [32m✓[0m 正文点名要改哪一行（OP-1）
+  [32m✓[0m MR 卡「去处理」按钮自带 url
 
-结果：26 通过，0 失败
+结果：43 通过，0 失败
 
 > harness-starter@1.1.0 test:feishu-ws
 > bash test/feishu-ws.test.sh

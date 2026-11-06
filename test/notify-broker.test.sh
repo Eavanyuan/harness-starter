@@ -67,6 +67,15 @@ const srv = http.createServer((req, res) => {
   req.on('end', () => {
     const mode = fs.readFileSync(`${dir}/mode`, 'utf8').trim();
     fs.appendFileSync(`${dir}/requests.log`, `${req.method} ${req.url} ${body}\n`);
+    // 方案 D：读某个 commit 的 diff。真实 GitLab 用 /repository/commits/:sha/diff，
+    // 不含 `/diffs` 子串，所以不会和上面的 MR diffs 分支撞。
+    if (req.url.includes('/repository/commits/')) {
+      if (mode === 'commitdiff500') { res.writeHead(500); res.end('{}'); return; }
+      const diff = fs.readFileSync(`${dir}/commit-diff.patch`, 'utf8');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify([{ new_path: 'docs/01-requirements/RS-x.md', diff }]));
+      return;
+    }
     if (req.url.includes('/diffs')) {
       if (mode === 'diffs500') { res.writeHead(500); res.end('{}'); return; }
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -214,6 +223,96 @@ curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/jso
   "http://127.0.0.1:${BPORT}/webhook/feishu" > "$TMP/code"
 check "账实不符（OP 不存在）→ 422 显式红" "422" "$(cat "$TMP/code")"
 check "失败回投不产生新提交" "$((puts_before + 1))" "$(gl_puts)"
+
+echo "== 6. 方案 D：决策走 git（零入站口） =="
+# 人在 RS 文档里把开放问题那行改成「已裁决：X」并提交，broker 从 push 的 diff 里读。
+# 这条路只用「GitLab → broker」这条内网边，飞书侧连回调都不用配。
+cat > "$TMP/gitlab/commit-diff.patch" <<'EOF'
+@@ -4,3 +4,4 @@
+-| OP-1 | 用哪个方案 | 开放 |
++| OP-1 | 用哪个方案 | 已裁决：A（张三 @ 2026-11-06 16:00 git 批红） |
++| OP-2 | 灰度还是全量 | 开放 |
++| OP-3 | 保留旧结论 | 已废止 |
+@@ -8,1 +9,1 @@
+-| OP-9 | 改判 | 已裁决：Z |
++| OP-9 | 改判 | 已裁决：Y |
+@@ -12,1 +12,0 @@
+-| OP-8 | 这一行被整行删掉了 | 已裁决：W |
+EOF
+
+push_payload() { cat <<EOF
+{ "object_kind": "push", "ref": "${3:-refs/heads/main}", "project": { "id": 1, "path": "demo" },
+  "user_name": "$1", "user_email": "$2",
+  "commits": [ { "id": "${4:-abc1234def}", "author": { "name": "$1", "email": "$2" },
+                 "added": [], "modified": ["docs/01-requirements/RS-x.md"] } ] }
+EOF
+}
+landed_of() { node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log((j.landed||[]).map(d=>d.blocker_id+"="+d.choice).join(","))' "$1" 2>/dev/null || echo '<parse-error>'; }
+
+puts_before_git=$(gl_puts)
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 张三 zhangsan@corp.com)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push.json"
+check "push 里的「已裁决」被读成决策" "OP-1=A,OP-9=Y" "$(landed_of "$TMP/push.json")"
+grep -q '"type":"decision_landed".*"via":"git"' "$TMP/ledger/events.jsonl"; check "账本记 decision_landed via git" "0" "$?"
+grep -q '"type":"decision_landed".*"by":"张三"' "$TMP/ledger/events.jsonl"; check "落账带 commit author 身份" "0" "$?"
+check "读 git 的决策不写仓库（commit 本身就是账）" "$puts_before_git" "$(gl_puts)"
+
+# 状态还是「开放」、或者写成「已废止」的行都不能算决策——否则满篇都是假批红。
+# 孤立删除行（OP-8 整行被删）是这条的关键用例：如果解析器连 `-` 行也认，
+# 删掉一条旧结论就会被当成"又批了一次"。上面 OP-9 的改判盖不住它——那种写法里
+# 减号行后面紧跟同编号的加号行，会被后者覆盖，缺陷正好被藏起来。
+check "作废的旧结论（-行）不被采纳" "0" "$(grep -c '"choice":"W"' "$TMP/ledger/events.jsonl" || true)"
+
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 张三 zhangsan@corp.com)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push2.json"
+check "同一 commit 重推（force push 会重放）不重复落账" "" "$(landed_of "$TMP/push2.json")"
+
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 张三 zhangsan@corp.com refs/heads/feat/x sha-feature)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push3.json"
+check "非默认分支的改动不算结论（还没生效）" "" "$(landed_of "$TMP/push3.json")"
+
+# 配了 approvers 就是 fail-closed：不是名单里的人改的，记 rejected 但不落账
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));j.notify.git_decision.approvers=["tech@corp.com"];fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$TMP/rules/harness.rules.json"
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 李四 lisi@corp.com refs/heads/main sha-outsider)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push4.json"
+check "approvers 名单外的人改的不落账" "" "$(landed_of "$TMP/push4.json")"
+grep -q '"type":"decision_rejected".*"reason":"author_not_approver"' "$TMP/ledger/events.jsonl"; check "名单外记 decision_rejected 留痕" "0" "$?"
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main sha-insider)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push5.json"
+check "名单内的人改的照常落账" "OP-1=A,OP-9=Y" "$(landed_of "$TMP/push5.json")"
+
+# 读不到 diff 时不能把 push 打成 5xx（GitLab 会重试，重试也读不到），但必须留痕
+echo commitdiff500 > "$TMP/gitlab/mode"
+curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(push_payload 张三 zhangsan@corp.com refs/heads/main sha-nodiff)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/code"
+check "diff 接口 5xx 时 push 仍返回 200" "200" "$(cat "$TMP/code")"
+grep -q '"type":"decision_landed_failed"' "$TMP/ledger/events.jsonl"; check "读不到 diff 显式留痕（不静默当没决策）" "0" "$?"
+echo ok > "$TMP/gitlab/mode"
+
+echo "== 7. link 模式卡片：不依赖任何回调 =="
+# 纯内网部署（不配长连接、也没有公网回调）时，决策卡必须是"可点的链接"，
+# 而不是"N 个点了没反应的按钮"——后者是这套东西上线后最常见的"配好了但点不动"。
+HARNESS_DECISION_MODE=link GITLAB_URL="http://gitlab.internal" \
+  node "$HERE/scripts/lib/notify.mjs" --event "$TMP/ev-decision.json" > "$TMP/card-link.json" 2>/dev/null
+link_actions() { node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));const a=c.card.elements.flatMap(e=>e.actions||[]);console.log(a.length)' "$TMP/card-link.json"; }
+check "link 模式只给一个按钮（不是 N 个都跳同一页）" "1" "$(link_actions)"
+check "按钮自带 url（点了直接开编辑页，不经 broker）" \
+  "http://gitlab.internal/-/edit/main/docs/01-requirements/RS-x.md" \
+  "$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(c.card.elements.flatMap(e=>e.actions||[])[0].url||"")' "$TMP/card-link.json")"
+check "link 模式不再生成 decision value（没有回调可回）" \
+  "guide" \
+  "$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(c.card.elements.flatMap(e=>e.actions||[])[0].value.k)' "$TMP/card-link.json")"
+grep -q 'OP-1' "$TMP/card-link.json"; check "正文点名要改哪一行（OP-1）" "0" "$?"
+
+# callback 模式不能被上面这次改动带跑：MR 卡的「去处理」现在也自带 url，
+# 否则即使配了回调，k:'open' 也会被 broker 当"未知卡片动作"打回 400。
+cat > "$TMP/ev-mr.json" <<'EOF'
+{ "kind": "mr", "mr": { "iid": 7, "title": "演示", "url": "http://gitlab.internal/demo/-/merge_requests/7" },
+  "reviews": [ { "id": "rs", "title": "需求规格审核", "approval_role": "pm" } ] }
+EOF
+node "$HERE/scripts/lib/notify.mjs" --event "$TMP/ev-mr.json" > "$TMP/card-mr.json" 2>/dev/null
+check "MR 卡「去处理」按钮自带 url" "http://gitlab.internal/demo/-/merge_requests/7" \
+  "$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(c.card.elements.flatMap(e=>e.actions||[])[0].url||"")' "$TMP/card-mr.json")"
 
 kill $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 wait $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null

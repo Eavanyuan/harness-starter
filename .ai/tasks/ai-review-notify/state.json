@@ -119,6 +119,26 @@
       "agent": null,
       "model": null,
       "skill_versions": {}
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-06T08:14:36Z",
+      "exited_at": "2026-11-06T08:24:45Z",
+      "gate": "pass",
+      "waived_by": "复核追加 T8（方案 D：决策走 git）：done 后新增交付物，按流程回 ci 重跑证据链",
+      "agent": "ci-verify",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-06T08:24:45Z",
+      "exited_at": "2026-11-06T08:24:45Z",
+      "gate": "deferred",
+      "waived_by": "S 档：本轮经验写入 CR §八（假绿：负向用例被后值覆盖救活；死按钮：value 里有 url 不等于按钮能跳），retro-ledger 沉淀待复用批一并做",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
     }
   ],
   "artifacts": {
@@ -312,6 +332,34 @@
         "log_path": ".ai/verify/T7.log",
         "command": "bash test/feishu-ws.test.sh"
       }
+    },
+    {
+      "id": "T8",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "内网零入站：决策改走 git（push diff 解析 / 身份取 commit author / 名单 fail-closed / 卡片 link 模式）",
+      "files": [
+        "scripts/lib/decision-from-git.mjs",
+        "scripts/harness-broker.mjs",
+        "scripts/lib/notify.mjs",
+        "harness.rules.json",
+        "test/notify-broker.test.sh",
+        "guides/审核与通知自动化.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 全通过；仍然零依赖",
+        "tests": "notify-broker 组 43 断言全绿（新增 17 条）。三条关键负向做过变异验证：认 `-` 行 / 去掉名单校验 / 去掉幂等 / 去掉默认分支过滤，每一种都确实变红——第一版「作废结论」用例是假绿（减号行后面紧跟同编号加号行，被后者覆盖），改用「孤立删除行」后才真正能红",
+        "feature_complete": "push 事件 → 读 commit diff → 认出状态列被改成「已裁决：X」的新增行 → 校验 author → 落账 decision_landed(via:git)；卡片 link 模式只给一个跳转按钮，不做成 N 个按钮跳同一页",
+        "quality_clean": "两个方案的判据不重复实现（解析在 lib、裁决在 broker、身份取 Git 服务器记录）；link/callback 两种卡片形态在 renderDecisionCard 里显式分叉，不靠猜环境"
+      },
+      "verify": {
+        "log_path": ".ai/verify/T8.log",
+        "command": "bash test/notify-broker.test.sh"
+      }
     }
   ],
   "blockers": [],
@@ -340,7 +388,7 @@
     }
   ],
   "gate_result": {
-    "last_check": "2026-11-06T07:41:50Z",
+    "last_check": "2026-11-06T08:24:45Z",
     "stage": "done",
     "checks": [
       {

@@ -1,0 +1,57 @@
+# cmd: bash test/notify-broker.test.sh
+# started: 2026-11-06T08:28:07Z
+# finished: 2026-11-06T08:28:13Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==
+  [32m✓[0m 决策卡片 msg_type=interactive
+  [32m✓[0m 每个选项一个按钮（票拟）
+  [32m✓[0m 按钮 value 携带回投上下文
+  [32m✓[0m 缺 options 的决策事件 → 拒渲染（非 0）
+  [32m✓[0m webhook 发送成功且落账
+  [32m✓[0m events.jsonl 记 card_sent
+== 2. broker：健康与认证 ==
+  [32m✓[0m healthz → 200
+  [32m✓[0m webhook token 不匹配 → 403
+  [32m✓[0m 飞书 URL 校验回显 challenge
+  [32m✓[0m 回投未带校验 token → 403
+  [32m✓[0m 被拒的回投不产生 GitLab 提交
+  [32m✓[0m 回投 token 不匹配 → 403
+== 3. MR 事件路由 → 卡片找人 ==
+  [32m✓[0m MR 路由返回 rs+evidence
+  [32m✓[0m 飞书收到 1 张卡片
+  [32m✓[0m 卡片含审核类型与批红角色
+  [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
+  [32m✓[0m 降级卡片含说明
+== 4. pipeline 失败与 digest ==
+  [32m✓[0m pipeline 失败 → 失败卡片
+  [32m✓[0m 非卡片事件走 digest（不推飞书）
+  [32m✓[0m digest 不产生新卡片
+== 5. 决策回投（批红落账） ==
+  [32m✓[0m 卡片回调 → 200 落账
+  [32m✓[0m GitLab 收到 1 次文件提交
+  [32m✓[0m RS 开放问题行写入结论+批红人
+  [32m✓[0m commit message 带身份与结论
+  [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
+  [32m✓[0m 失败回投不产生新提交
+== 6. 方案 D：决策走 git（零入站口） ==
+  [32m✓[0m push 里的「已裁决」被读成决策
+  [32m✓[0m 账本记 decision_landed via git
+  [32m✓[0m 落账带 commit author 身份
+  [32m✓[0m 读 git 的决策不写仓库（commit 本身就是账）
+  [32m✓[0m 作废的旧结论（-行）不被采纳
+  [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
+  [32m✓[0m 非默认分支的改动不算结论（还没生效）
+  [32m✓[0m approvers 名单外的人改的不落账
+  [32m✓[0m 名单外记 decision_rejected 留痕
+  [32m✓[0m 名单内的人改的照常落账
+  [32m✓[0m diff 接口 5xx 时 push 仍返回 200
+  [32m✓[0m 读不到 diff 显式留痕（不静默当没决策）
+== 7. link 模式卡片：不依赖任何回调 ==
+  [32m✓[0m link 模式只给一个按钮（不是 N 个都跳同一页）
+  [32m✓[0m 按钮自带 url（点了直接开编辑页，不经 broker）
+  [32m✓[0m link 模式不再生成 decision value（没有回调可回）
+  [32m✓[0m 正文点名要改哪一行（OP-1）
+  [32m✓[0m MR 卡「去处理」按钮自带 url
+
+结果：43 通过，0 失败

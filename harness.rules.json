@@ -59,6 +59,11 @@
     "roles": { "tech_lead": "技术负责人", "code_owner": "代码所有者", "pm": "产品", "author": "发起人", "sre": "值班运维", "machine": "机器裁决" },
     "$comment": "card_events 推飞书卡片（需决策/需批红）；digest_events 只进 broker 日志不推卡片，防通知疲劳。",
     "card_events": ["mr_open", "pipeline_failed", "review_blocked", "decision_open"],
-    "digest_events": ["mr_merged", "pipeline_success"]
+    "digest_events": ["mr_merged", "pipeline_success"],
+    "git_decision": {
+      "$comment": "方案 D：决策走 git 而不是飞书回调。人在 RS 文档里把开放问题那行改成「已裁决：X」并提交，broker 从 push 事件的 diff 落账——只用「GitLab → broker」这条内网天然可达的边，飞书侧不需要配任何回调。approvers 为空 = 不设名单（依赖 GitLab 分支保护，能 push 到默认分支的人本就有权）；配了邮箱就是 fail-closed，名单外的人改了只记 decision_rejected 不落账。",
+      "enabled": true,
+      "approvers": []
+    }
   }
 }

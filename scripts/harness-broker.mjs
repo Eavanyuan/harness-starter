@@ -28,6 +28,7 @@ import http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { join } from 'node:path';
 import { loadRules, route } from './lib/review-rules.mjs';
+import { parseDecisionRowsFromDiff, createSeenKeys } from './lib/decision-from-git.mjs';
 import { renderDecisionCard, renderMrCard, renderPipelineCard, sendCard } from './lib/notify.mjs';
 import { startFeishuWs } from './feishu-ws.mjs';
 import { recordEvent } from '../hooks/lib/ledger.mjs';
@@ -171,6 +172,75 @@ async function handleFeishuEvent(cfg, body, { transport, token } = {}) {
   }
 }
 
+/** 幂等键：同一个 commit 里的同一个 OP 只落一次账（force push / 分支更新会重放 push）。 */
+const seenGitDecisions = createSeenKeys();
+
+/**
+ * 方案 D：从 push 事件里读「人在 GitLab 上做的批红」。
+ *
+ * 为什么需要它：飞书按钮回传要求「飞书 → broker」这条边存在，而内网里这条边最贵
+ * （长连接要能出站且代理放行 WS，反代要域名+证书+验签）。把决策动作挪到 GitLab 上，
+ * 只用「GitLab → broker」这条内网天然可达的边，飞书侧连回调都不用配。
+ *
+ * 只认三件事，多一个都算误判：
+ *   - 默认分支（feature 分支上的改动还没生效，不能当结论）
+ *   - markdown 文件（RS 文档）
+ *   - 状态列被改成「已裁决：X」的**新增行**（`+` 行；`-` 行是作废的旧值）
+ *
+ * 这里 broker **不写仓库**——commit 本身就是账。所以这个函数没有"失败重试"的概念，
+ * 读不到 diff 就记一条 failed 走人，不会造成账实不符。
+ */
+async function handleGitDecisions(cfg, body, rules) {
+  const gd = (rules.notify && rules.notify.git_decision) || {};
+  if (gd.enabled === false) return { landed: [], skipped: 'disabled' };
+  const commits = Array.isArray(body.commits) ? body.commits.slice(0, 10) : [];
+  const allow = Array.isArray(gd.approvers)
+    ? gd.approvers.map((e) => String(e).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const landed = [];
+
+  for (const c of commits) {
+    const sha = c.id || c.sha || '';
+    const touched = [...(c.added || []), ...(c.modified || [])].filter((p) => /\.md$/i.test(p));
+    if (!sha || !touched.length) continue;
+    let diffs;
+    try {
+      diffs = await gl(cfg, `/projects/${body.project.id}/repository/commits/${sha}/diff?per_page=100`);
+    } catch (e) {
+      // 读不到 diff ≠ 这次没有决策。必须显式记，否则"批过了但没落账"永远查不出来。
+      recordEvent('broker', 'decision_landed_failed', { commit: sha.slice(0, 8), error: String(e.message) });
+      continue;
+    }
+    // 身份取 commit author（Git 服务器记的），不是请求体里声明的 user——
+    // 这是这条路比飞书回投更可靠的地方：客户端伪造不了 author。
+    const by = {
+      name: (c.author && c.author.name) || body.user_name || '',
+      email: String((c.author && c.author.email) || body.user_email || '').toLowerCase(),
+    };
+    // approvers 为空 = 不设名单，依赖 GitLab 分支保护（能 push 到默认分支的人本就有权）。
+    // 配了名单就是 fail-closed：名单外的人改了也只记 rejected，不落账。
+    const allowed = allow.length === 0 || allow.includes(by.email);
+    for (const d of diffs) {
+      for (const row of parseDecisionRowsFromDiff(d.diff)) {
+        const key = `${sha}:${row.blocker_id}`;
+        if (seenGitDecisions.has(key)) continue;
+        seenGitDecisions.add(key);
+        if (!allowed) {
+          recordEvent('broker', 'decision_rejected', {
+            reason: 'author_not_approver', blocker: row.blocker_id, by: by.name, email: by.email, via: 'git', commit: sha.slice(0, 8),
+          });
+          continue;
+        }
+        recordEvent('broker', 'decision_landed', {
+          blocker: row.blocker_id, choice: row.choice, by: by.name, email: by.email, via: 'git', commit: sha.slice(0, 8), file: d.new_path,
+        });
+        landed.push({ blocker_id: row.blocker_id, choice: row.choice, file: d.new_path, commit: sha.slice(0, 8) });
+      }
+    }
+  }
+  return { landed };
+}
+
 async function handle(cfg, req, res) {
   const json = (code, body) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
   // 健康检查要能回答"入站还通不通"，不只是"进程还在不在"。
@@ -200,6 +270,17 @@ async function handle(cfg, req, res) {
     const cardEvents = rules.notify?.card_events || [];
     const roles = rules.notify?.roles || {};
     const attr = body.object_attributes || {};
+
+    // 方案 D：人直接在 GitLab 上改 RS 做决策 → 只走「GitLab → broker」这条内网边，
+    // 飞书只负责找人、不承担回传。放在 MR 分支之前：同一批变更常常也带 MR 更新，
+    // 但决策必须按 push 的 diff 读才准（MR diff 是相对目标分支的整体差异，分不清哪次提交做的）。
+    const onDefaultBranch = !body.ref || body.ref === `refs/heads/${cfg.defaultBranch}`;
+    if (body.object_kind === 'push' && onDefaultBranch && Array.isArray(body.commits) && body.commits.length > 0) {
+      const { landed, skipped } = await handleGitDecisions(cfg, body, rules);
+      if (skipped) return json(200, { ok: true, landed: [], skipped });
+      if (landed.length === 0) recordEvent('broker', 'digest', { kind: 'push', action: 'no_decision' });
+      return json(200, { ok: true, landed });
+    }
 
     if (body.object_kind === 'merge_request' && ['open', 'reopen', 'update'].includes(attr.action)) {
       const files = await mrFiles(cfg, body.project?.id, attr.iid);
