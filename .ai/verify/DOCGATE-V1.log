@@ -1,6 +1,6 @@
 # cmd: npm run gate
-# started: 2026-11-06T06:01:44Z
-# finished: 2026-11-06T06:04:21Z
+# started: 2026-11-06T06:07:24Z
+# finished: 2026-11-06T06:11:03Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
   [32m✓[0m 自测流量不进真实基线
