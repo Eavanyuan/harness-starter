@@ -1,0 +1,12 @@
+# cmd: bash -c bash\ test/review-router.test.sh\ \|\ tail\ -1\ \&\&\ bash\ test/ai-review.test.sh\ 2\>/dev/null\ \|\ tail\ -1\ \&\&\ bash\ test/notify-broker.test.sh\ 2\>/dev/null\ \|\ tail\ -1\ \&\&\ bash\ test/feishu-ws.test.sh\ 2\>/dev/null\ \|\ tail\ -1\ \&\&\ npm\ run\ gate\ 2\>\&1\ \|\ tail\ -3
+# started: 2026-11-07T09:48:51Z
+# finished: 2026-11-07T09:49:35Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+结果：15 通过，0 失败
+结果：23 通过，0 失败
+结果：43 通过，0 失败
+结果：43 通过，0 失败
+  [32m✓[0m http 模式仍能回显 challenge
+
+结果：43 通过，0 失败

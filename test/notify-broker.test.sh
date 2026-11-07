@@ -71,7 +71,11 @@ const srv = http.createServer((req, res) => {
     // 不含 `/diffs` 子串，所以不会和上面的 MR diffs 分支撞。
     if (req.url.includes('/repository/commits/')) {
       if (mode === 'commitdiff500') { res.writeHead(500); res.end('{}'); return; }
-      const diff = fs.readFileSync(`${dir}/commit-diff.patch`, 'utf8');
+      // 按 sha 取 patch：一个 push 可以带多个 commit，每个 commit 的 diff 不一样
+      // （合并场景里原提交和合并提交都改了同一行），共用一份 patch 测不出跨 commit 去重。
+      const sha = decodeURIComponent(req.url.split('/repository/commits/')[1].split('/')[0]);
+      const per = `${dir}/commit-diff-${sha}.patch`;
+      const diff = fs.readFileSync(fs.existsSync(per) ? per : `${dir}/commit-diff.patch`, 'utf8');
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify([{ new_path: 'docs/01-requirements/RS-x.md', diff }]));
       return;
@@ -100,7 +104,6 @@ const srv = http.createServer((req, res) => {
 });
 srv.listen(0, '127.0.0.1', () => fs.writeFileSync(`${dir}/port`, String(srv.address().port)));
 EOF
-sed -i '' "s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|" "$TMP/gitlab/server.mjs"
 MOCK_DIR="$TMP/gitlab" node "$TMP/gitlab/server.mjs" &
 GITLAB_PID=$!
 for _ in $(seq 1 50); do [ -f "$TMP/gitlab/port" ] && break; sleep 0.1; done
@@ -271,6 +274,58 @@ curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' 
   -d "$(push_payload 张三 zhangsan@corp.com refs/heads/feat/x sha-feature)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push3.json"
 check "非默认分支的改动不算结论（还没生效）" "" "$(landed_of "$TMP/push3.json")"
 
+# MR 合并的真实形状（L2 实测）：一次合并的 push 里既有原提交、也有合并提交。
+# 合并提交的 diff 相对第一父就是整条分支的净变更，于是同一个 OP 被投第二次，
+# 而它的 author 是**合并者**。全收的后果：一次批红落两条账，账本看起来是两个人批的。
+cat > "$TMP/gitlab/commit-diff-c0ffee01.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-5 | 合并进来的结论 | 开放 |
++| OP-5 | 合并进来的结论 | 已裁决：E（张三 @ 2026-11-07 10:00 git 批红） |
+EOF
+cat > "$TMP/gitlab/commit-diff-c0ffee02.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-5 | 合并进来的结论 | 开放 |
++| OP-5 | 合并进来的结论 | 已裁决：E（张三 @ 2026-11-07 10:00 git 批红） |
+EOF
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' -d @- \
+  "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push-merge.json" <<'EOF'
+{ "object_kind": "push", "ref": "refs/heads/main", "project": { "id": 1, "path": "demo" },
+  "user_name": "李四", "user_email": "lisi@corp.com",
+  "commits": [
+    { "id": "c0ffee01", "author": { "name": "张三", "email": "zhangsan@corp.com" },
+      "added": [], "modified": ["docs/01-requirements/RS-x.md"] },
+    { "id": "c0ffee02", "author": { "name": "李四", "email": "lisi@corp.com" },
+      "added": [], "modified": ["docs/01-requirements/RS-x.md"] } ] }
+EOF
+check "合并 push 只落一条账" "OP-5=E" "$(landed_of "$TMP/push-merge.json")"
+check "落账身份是真正改文档的人（张三），不是合并的人（李四）" "1" \
+  "$(grep -c '"blocker":"OP-5".*"by":"张三"' "$TMP/ledger/events.jsonl" || true)"
+check "合并提交不额外落账（李四那条被认作重复投影）" "0" \
+  "$(grep -c '"blocker":"OP-5".*"by":"李四"' "$TMP/ledger/events.jsonl" || true)"
+
+# 同一 push 内真的改判（OP 的结论变了）则取最终状态——去重不能把改判也吃掉
+cat > "$TMP/gitlab/commit-diff-c0ffee03.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-6 | 改判 | 已裁决：X |
++| OP-6 | 改判 | 已裁决：Y |
+EOF
+cat > "$TMP/gitlab/commit-diff-c0ffee04.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-6 | 改判 | 已裁决：Y |
++| OP-6 | 改判 | 已裁决：Z |
+EOF
+curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' -d @- \
+  "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/push-revote.json" <<'EOF'
+{ "object_kind": "push", "ref": "refs/heads/main", "project": { "id": 1, "path": "demo" },
+  "user_name": "张三", "user_email": "zhangsan@corp.com",
+  "commits": [
+    { "id": "c0ffee03", "author": { "name": "张三", "email": "zhangsan@corp.com" },
+      "added": [], "modified": ["docs/01-requirements/RS-x.md"] },
+    { "id": "c0ffee04", "author": { "name": "张三", "email": "zhangsan@corp.com" },
+      "added": [], "modified": ["docs/01-requirements/RS-x.md"] } ] }
+EOF
+check "同一 push 里改判取最终结论" "OP-6=Z" "$(landed_of "$TMP/push-revote.json")"
+
 # 配了 approvers 就是 fail-closed：不是名单里的人改的，记 rejected 但不落账
 node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));j.notify.git_decision.approvers=["tech@corp.com"];fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n")' "$TMP/rules/harness.rules.json"
 curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
@@ -313,6 +368,22 @@ EOF
 node "$HERE/scripts/lib/notify.mjs" --event "$TMP/ev-mr.json" > "$TMP/card-mr.json" 2>/dev/null
 check "MR 卡「去处理」按钮自带 url" "http://gitlab.internal/demo/-/merge_requests/7" \
   "$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(c.card.elements.flatMap(e=>e.actions||[])[0].url||"")' "$TMP/card-mr.json")"
+
+echo "== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） =="
+# 文件头与 guides 写的启动命令都是相对路径 `node scripts/harness-broker.mjs`。
+# 原手拼 file:// 的主模块判定在相对路径下永不相等 → 静默退出 0：
+# 照文档敲命令，服务不启动、无报错——"配好了但点不动"的最安静形态。
+(cd "$HERE" && node scripts/lib/notify.mjs --event "$TMP/ev-decision.json" > "$TMP/rel-notify.out" 2>/dev/null)
+grep -q '"msg_type": "interactive"' "$TMP/rel-notify.out"; check "notify CLI 相对路径正常渲染（非静默空转）" "0" "$?"
+(cd "$HERE" && exec node scripts/harness-broker.mjs --port 0 > "$TMP/rel-broker.out" 2>/dev/null) &
+REL_PID=$!
+rel_port=""
+for _ in $(seq 1 50); do rel_port="$(sed -n 's/^PORT //p' "$TMP/rel-broker.out")"; [ -n "$rel_port" ] && break; sleep 0.1; done
+[ -n "$rel_port" ]; check "broker 相对路径能启动（PORT 行出现）" "0" "$?"
+curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${rel_port}/healthz" > "$TMP/code"
+check "相对路径 broker healthz → 200" "200" "$(cat "$TMP/code")"
+kill $REL_PID 2>/dev/null
+wait $REL_PID 2>/dev/null
 
 kill $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 wait $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null

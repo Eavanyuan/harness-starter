@@ -1,0 +1,18 @@
+# cmd: bash -c npm\ run\ check:skills\ \&\&\ npm\ run\ gate\ 2\>\&1\ \|\ tail\ -1\ \&\&\ echo\ GATE_OK
+# started: 2026-11-07T12:36:18Z
+# finished: 2026-11-07T12:36:56Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 check:skills
+> node scripts/check-skills.mjs
+
+.skills 校验
+  ✓ backend     67 行  stack=backend  refs=1  v1.0.0
+  ✓ e2e         66 行  stack=frontend  refs=1  v1.0.0
+  ✓ frontend    66 行  stack=frontend  refs=1  v1.0.0
+  ✓ harness     75 行  stack=harness  refs=1  v1.0.0
+  required_skills 已声明：backend, harness
+  结果：4 个 skill 通过
+结果：43 通过，0 失败
+GATE_OK

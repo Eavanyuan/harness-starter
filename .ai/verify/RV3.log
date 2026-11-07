@@ -1,0 +1,15 @@
+# cmd: npm run verify:state:local
+# started: 2026-11-07T11:54:14Z
+# finished: 2026-11-07T11:54:14Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 verify:state:local
+> node scripts/ci-verify.mjs --local
+
+[ci-verify] 提示（不判失败）：
+  ! ai-review-notify: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! harness-builder-hardening: 阶段 impl 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! harness-builder-hardening: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! 1 个改动文件未声明进任何 TODO（新鲜度比对不覆盖它们，收口前补进对应 TODO 的 files）：guides/自我改进闭环落地方案.md
+[ci-verify] 状态与证据链校验通过（口径 local）

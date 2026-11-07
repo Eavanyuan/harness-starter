@@ -26,7 +26,8 @@
  */
 import http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadRules, route } from './lib/review-rules.mjs';
 import { parseDecisionRowsFromDiff, createSeenKeys } from './lib/decision-from-git.mjs';
 import { renderDecisionCard, renderMrCard, renderPipelineCard, sendCard } from './lib/notify.mjs';
@@ -85,6 +86,33 @@ async function gl(cfg, path, init = {}) {
   });
   if (!res.ok) throw new Error(`GitLab ${path} HTTP ${res.status}`);
   return res.status === 204 ? null : res.json();
+}
+
+/**
+ * 启动时探一次 GitLab 令牌，把"能收事件但落不了账"提前喊出来。
+ *
+ * 真实踩到的坑：GITLAB_TOKEN 填了 OAuth access token（而不是 PAT），broker 用
+ * `private-token` 头调 API 一律 401。症状极隐蔽——webhook 收得到、200 也回得去、
+ * 飞书卡片照发，只有账本里一堆 decision_landed_failed，人以为"批过了"。
+ * 这里只报警不退：推卡片不依赖它，但决策落账一定会全挂，必须让人现在就知道。
+ */
+async function probeGitlab(cfg) {
+  if (!cfg.gitlabUrl || !cfg.gitlabToken) return;
+  try {
+    const res = await fetch(`${cfg.gitlabUrl}/api/v4/user`, {
+      headers: { 'private-token': cfg.gitlabToken }, signal: AbortSignal.timeout(8000),
+    });
+    if (res.status === 401 || res.status === 403) {
+      console.error(`[broker] GITLAB_TOKEN 不可用（HTTP ${res.status}）：private-token 头只认 PAT，OAuth access token 不行。` +
+        '推卡片不受影响，但所有决策都会记成 decision_landed_failed —— 现在换令牌还来得及。');
+      return;
+    }
+    if (!res.ok) { console.error(`[broker] GitLab 探测异常：HTTP ${res.status}（${cfg.gitlabUrl}）`); return; }
+    const u = await res.json();
+    console.error(`[broker] GitLab 身份 ${u.username}（${cfg.gitlabUrl}）`);
+  } catch (e) {
+    console.error(`[broker] 连不上 GitLab（${cfg.gitlabUrl}）：${e.message} —— 决策落账会全部失败`);
+  }
 }
 
 /** MR 变更文件。分页取全：只取首页 100 条时，改动多的 MR 会被静默少判（少判=少审）。 */
@@ -198,6 +226,7 @@ async function handleGitDecisions(cfg, body, rules) {
     ? gd.approvers.map((e) => String(e).trim().toLowerCase()).filter(Boolean)
     : [];
   const landed = [];
+  const picked = new Map(); // blocker -> 本次 push 里"真正生效"的那次改动（跨 commit 去重）
 
   for (const c of commits) {
     const sha = c.id || c.sha || '';
@@ -222,21 +251,34 @@ async function handleGitDecisions(cfg, body, rules) {
     const allowed = allow.length === 0 || allow.includes(by.email);
     for (const d of diffs) {
       for (const row of parseDecisionRowsFromDiff(d.diff)) {
-        const key = `${sha}:${row.blocker_id}`;
-        if (seenGitDecisions.has(key)) continue;
-        seenGitDecisions.add(key);
-        if (!allowed) {
-          recordEvent('broker', 'decision_rejected', {
-            reason: 'author_not_approver', blocker: row.blocker_id, by: by.name, email: by.email, via: 'git', commit: sha.slice(0, 8),
-          });
-          continue;
+        // 一次 push 里同一个 OP 可能被投多次：MR 合并时 push 既有原提交、又有合并提交，
+        // 而合并提交的 diff 相对第一父就是整条分支的净变更，会把原提交的结论再投影一遍。
+        // 全收的后果是"一次批红落两条账，还记成两个人批的"（实测见 L2）。
+        // 只在前者基础上更新，规则：
+        //   - 同结论的后一次出现 = 同一批变更的重复投影 → 忽略（保留真正动手那个人的身份）
+        //   - 不同结论 = 同一 push 内改判 → 后者覆盖前者（最终状态才是账该记的）
+        const prev = picked.get(row.blocker_id);
+        if (!prev || prev.row.choice !== row.choice) {
+          picked.set(row.blocker_id, { row, sha, file: d.new_path, by, allowed });
         }
-        recordEvent('broker', 'decision_landed', {
-          blocker: row.blocker_id, choice: row.choice, by: by.name, email: by.email, via: 'git', commit: sha.slice(0, 8), file: d.new_path,
-        });
-        landed.push({ blocker_id: row.blocker_id, choice: row.choice, file: d.new_path, commit: sha.slice(0, 8) });
       }
     }
+  }
+
+  for (const [blocker, v] of picked) {
+    const key = `${v.sha}:${blocker}`;
+    if (seenGitDecisions.has(key)) continue;
+    seenGitDecisions.add(key);
+    if (!v.allowed) {
+      recordEvent('broker', 'decision_rejected', {
+        reason: 'author_not_approver', blocker, by: v.by.name, email: v.by.email, via: 'git', commit: v.sha.slice(0, 8),
+      });
+      continue;
+    }
+    recordEvent('broker', 'decision_landed', {
+      blocker, choice: v.row.choice, by: v.by.name, email: v.by.email, via: 'git', commit: v.sha.slice(0, 8), file: v.file,
+    });
+    landed.push({ blocker_id: blocker, choice: v.row.choice, file: v.file, commit: v.sha.slice(0, 8) });
   }
   return { landed };
 }
@@ -370,11 +412,14 @@ export function startServer(userCfg = {}) {
         });
         cfg.runtime.feishuWs = feishuWs;
       }
+      probeGitlab(cfg); // 不 await：令牌问题只影响落账，不能把服务启动卡住
       resolve({ server, port: server.address().port, cfg, mode, feishuWs });
     });
   });
 }
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+// pathToFileURL(resolve(...))：argv[1] 相对路径时手拼 `file://<路径>` 永不相等 → 主模块判定
+// 失败、broker 静默退出 0——文件头与 guides 写的启动命令恰是相对路径（P1-10，第五轮审查）。
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isMain) {
   // 用 Promise.resolve 包一层：startServer 的配置校验是同步 throw，
   // 直接 startServer().catch 接不住，会被当成未捕获异常（exit 1），
