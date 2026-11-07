@@ -52,7 +52,8 @@
     "test:router": "bash test/review-router.test.sh",
     "test:ai-review": "bash test/ai-review.test.sh",
     "test:broker": "bash test/notify-broker.test.sh",
-    "test:feishu-ws": "bash test/feishu-ws.test.sh"
+    "test:feishu-ws": "bash test/feishu-ws.test.sh",
+    "e2e": "node test/e2e/gitlab-decision.e2e.mjs"
   },
   "engines": {
     "node": ">=18"

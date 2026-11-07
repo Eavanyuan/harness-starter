@@ -1,0 +1,68 @@
+
+== 0. 环境 http://127.0.0.1:8929 ==
+  [32m✓[0m 用 root 令牌能认出管理员身份
+
+== 1. 种子数据 ==
+  [32m✓[0m 项目建成，默认分支是 main
+  [32m✓[0m alice 是 Maintainer
+  [32m✓[0m bob 是 Developer
+  [32m✓[0m main 受保护（非 Maintainer 不能直推）
+  [32m✓[0m main 允许 Developer 合并（MR 路径通）
+  [32m✓[0m main 仍只允许 Maintainer 直推
+  [32m✓[0m alice 的 PAT 能通过 git-over-http 认证
+  [32m✓[0m 种子提交推送成功
+  [32m✓[0m bob 直推 main 被分支保护挡下（方案 D 的最后一道门）
+  [32m✓[0m 挡下时给的是 GitLab 的拒绝（不是网络错误）
+
+== 2. webhook → broker ==
+  [32m✓[0m broker 起来了
+  [32m✓[0m healthz 报 http 模式
+[broker] [broker] GitLab 身份 root（http://127.0.0.1:8929）
+  [32m✓[0m 实例已放行内网 webhook
+  [32m✓[0m webhook 指向 broker（容器可达地址 http://192.168.101.155）
+  [32m✓[0m 容器内能打到 broker（回连地址通）
+
+== 3. 默认分支：alice 改 OP-1 → 落账 ==
+  [32m✓[0m 真实 push 触发了 decision_landed
+  [32m✓[0m 落账结论是 A
+  [32m✓[0m 身份取 git author（Alice 甲）
+  [32m✓[0m 来源标 via=git
+  [32m✓[0m 落账带真实 sha 前 8 位
+  [32m✓[0m 落账带文件路径
+  [32m✓[0m GitLab 记到一次成功投递（broker 回 200）
+
+== 4. 真实 diff 形状（解析器的三个假设） ==
+  [32m✓[0m diff 有 new_path 字段
+  [32m✓[0m 新增行以 "+" 开头且能读出「已裁决」
+  [32m✓[0m 被改的旧行是 "-" 行（不能被当成结论）
+
+== 5. MR 合并（alice 改 → bob 合） ==
+  [32m✓[0m bob（Developer）能合这个 MR
+  [32m✓[0m 一次合并只落一条账（不因合并提交重复落账）
+  [32m✓[0m 身份是改文档的 alice，不是合并的 bob
+
+== 6. 特性分支：还没生效，不落账 ==
+  [32m✓[0m 特性分支的「已裁决」没有落账
+  [32m✓[0m 这批 push 一条 decision_landed 都没有（连摘要都不该升级成账）
+
+== 7. approvers 名单（fail-closed） ==
+  [32m✓[0m MR 无冲突（分支基线是最新 main）
+  [32m✓[0m bob 把这条 MR 合进了 main（名单外的人确实能合）
+  [32m✓[0m 名单外的人改的记 decision_rejected
+  [32m✓[0m 拒绝原因是 author_not_approver
+  [32m✓[0m 名单外的人改的没有落账
+
+== 8. 同一份真实 payload 重投 ==
+  [32m✓[0m 能从 GitLab 投递记录里取回真实 payload
+  [32m✓[0m 重投返回 200
+  [32m✓[0m 重投没有再落账（landed 为空）
+  [32m✓[0m 账本里的落账条数没变
+
+== 9. diff 读不到（真 404） ==
+  [32m✓[0m 不存在的 commit：仍回 200（不打 GitLab 重试风暴）
+  [32m✓[0m 读不到 diff 显式留痕 decision_landed_failed
+
+== 10. webhook 鉴权 ==
+  [32m✓[0m 不带 token 的 webhook 被拒
+
+== 结果：43 过 / 0 红 ==
