@@ -1,0 +1,6 @@
+# cmd: bash -c bash\ test/evidence.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ bash\ test/harness-cli.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ SUITES_OK
+# started: 2026-11-08T03:25:05Z
+# finished: 2026-11-08T03:25:22Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+SUITES_OK

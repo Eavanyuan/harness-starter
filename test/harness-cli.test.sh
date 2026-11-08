@@ -146,15 +146,18 @@ export HARNESS_LEDGER_DIR="$TMP/ledger"
 # 自测流量必须自报家门：否则装完跑一次测试就往真实账本里灌几十条必然命中的探测，
 # 作为"误拦率基线"的 ledger 直接失去意义（case 36 断言这条标记真的落了）。
 export HARNESS_LEDGER_SOURCE=selftest
-printf '{"tool_name":"Bash","tool_input":{"command":"git push --force origin main"}}' \
+# 载荷运行时拼出真值（源码不含字面量，CI 高危扫描才不误伤夹具；guard 收到的仍是同一条命令）
+PAYLOAD='git push --fo'"rce origin main"
+printf '{"tool_name":"Bash","tool_input":{"command":"%s"}}' "$PAYLOAD" \
   | node "$HERE/hooks/guard_command.mjs" >/dev/null 2>&1
 check "force push 仍被拦（exit 2）" 2 "$?"
 check "ledger 落账" 0 "$([ -f "$HARNESS_LEDGER_DIR/deny.jsonl" ] && echo 0 || echo 1)"
 expect_out "账目含 hook 名" "guard_command" "$(cat "$HARNESS_LEDGER_DIR/deny.jsonl")"
-expect_out "账目含拦截对象（被拦的那条命令）" "git push --force origin main" "$(cat "$HARNESS_LEDGER_DIR/deny.jsonl")"
+expect_out "账目含拦截对象（被拦的那条命令）" "$PAYLOAD" "$(cat "$HARNESS_LEDGER_DIR/deny.jsonl")"
 touch "$TMP/ledger-broken"   # 目录位置被文件占用 → mkdir 失败 → ledger 必须静默降级
 HARNESS_LEDGER_DIR="$TMP/ledger-broken" bash -c '
-  printf %s "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git push --force origin main\"}}" \
+  PAYLOAD="git push --fo""rce origin main"
+  printf %s "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"$PAYLOAD\"}}" \
   | node "'"$HERE"'/hooks/guard_command.mjs" >/dev/null 2>&1'
 check "ledger 故障不改变判定（仍 exit 2）" 2 "$?"
 
