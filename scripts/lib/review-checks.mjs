@@ -24,8 +24,8 @@ function readText(root, file) {
   }
 }
 
-/** RS 必填章节：模板小节标题形如 `## 1 背景与痛点`，按章节名子串命中标题行。 */
-function rsRequiredSections(check, root, files) {
+/** 必填章节（RS/FS 共用同一逻辑）：模板小节标题形如 `## 1 概述`，按章节名子串命中标题行。 */
+function requiredSections(check, root, files) {
   const out = [];
   const sections = check.sections || [];
   for (const file of files.filter((f) => f.endsWith('.md'))) {
@@ -86,7 +86,8 @@ function adrRefsExist(check, root, files) {
 }
 
 const REGISTRY = {
-  rs_required_sections: rsRequiredSections,
+  rs_required_sections: requiredSections,
+  fs_required_sections: requiredSections,
   rs_acceptance_testable: rsAcceptanceTestable,
   adr_refs_exist: adrRefsExist,
 };

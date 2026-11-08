@@ -1,0 +1,142 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "drill-gaps-fix",
+    "task_type": "feature",
+    "related_task": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-08T01:29:41Z",
+    "flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：四项小改各配回归用例，行为契约由 RS US-1/US-2 验收标准锚定，无 FS/WBS"
+  },
+  "stage": "done",
+  "stage_history": [
+    { "stage": "rs", "entered_at": "2026-11-08T01:30:00Z", "exited_at": "2026-11-08T01:40:00Z", "gate": "pass", "waived_by": null, "agent": "requirement-analyst", "model": "glm-5.3", "skill_versions": {} },
+    { "stage": "wbs", "entered_at": "2026-11-08T01:40:00Z", "exited_at": "2026-11-08T01:40:01Z", "gate": "deferred", "waived_by": "S 档裁剪：四个文件级 TODO 无拆分决策点", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "adr", "entered_at": "2026-11-08T01:40:01Z", "exited_at": "2026-11-08T01:40:02Z", "gate": "deferred", "waived_by": "S 档裁剪：方案已在演练报告定案（可见不阻断 / L0 优先 / env 走连接）", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "fs_review", "entered_at": "2026-11-08T01:40:02Z", "exited_at": "2026-11-08T01:40:03Z", "gate": "deferred", "waived_by": "S 档裁剪：无 FS", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "impl", "entered_at": "2026-11-08T01:41:00Z", "exited_at": "2026-11-08T02:20:00Z", "gate": "pass", "waived_by": null, "agent": "coder", "model": "glm-5.3", "skill_versions": { "harness": "1.0.0" } },
+    { "stage": "review", "entered_at": "2026-11-08T02:21:00Z", "exited_at": "2026-11-08T02:25:00Z", "gate": "pass", "waived_by": null, "agent": "code-reviewer", "model": "glm-5.3", "skill_versions": { "harness": "1.0.0" } },
+    { "stage": "ci", "entered_at": "2026-11-08T02:25:00Z", "exited_at": "2026-11-08T02:26:00Z", "gate": "pass", "waived_by": null, "agent": "ci-verify", "model": null, "skill_versions": {} },
+    { "stage": "retro", "entered_at": "2026-11-08T02:26:00Z", "exited_at": "2026-11-08T02:26:30Z", "gate": "deferred", "waived_by": "S 档：教训已记 CR 🟡4（heredoc 静默失败）与 cr.md，retro 候选同批已有文件", "agent": null, "model": null, "skill_versions": {} }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-演练缺口修复.md",
+    "fs": null,
+    "wbs": null,
+    "adr": null,
+    "matrix": null,
+    "review": ".ai/tasks/drill-gaps-fix/cr.md"
+  },
+  "todos": [
+    {
+      "id": "DG-T1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "无槽可见化：route() 返回 uncovered；router 提示+uncovered_code 入账；broker mr_routed 携带；卡片点名",
+      "files": [
+        "scripts/lib/review-rules.mjs",
+        "scripts/review-router.mjs",
+        "scripts/harness-broker.mjs",
+        "scripts/lib/notify.mjs",
+        "test/review-router.test.sh",
+        "test/notify-broker.test.sh"
+      ],
+      "required_skills": ["harness"],
+      "audit": {
+        "compile": "node --check 全过；route() 返回字段向后兼容（不读 uncovered 的旧消费者不受影响）",
+        "tests": "router 27/27（uncovered 命中/不阻断/stderr 提示/入账/md 不误报/fs 路由）；notify-broker 61/61（卡片点名 2 处 uncovered）",
+        "feature_complete": "演练 MR!4 形态（projects=backend + tools/x.mjs）在用例中原样复现并被点名",
+        "quality_clean": "扩展名清单在 rules.code_hints（H4）；只提示不阻断有专测"
+      },
+      "verify": { "log_path": ".ai/verify/DG-V1.log", "command": "bash test/review-router.test.sh && bash test/notify-broker.test.sh && npm run gate" }
+    },
+    {
+      "id": "DG-T2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "fs 审核类型补槽：rules fs 条目 + fs_required_sections 判据（RS/FS 共用逻辑）+ fs.md 清单",
+      "files": [
+        "harness.rules.json",
+        "scripts/lib/review-checks.mjs",
+        "scripts/reviews/fs.md",
+        "test/ai-review.test.sh",
+        "test/review-router.test.sh"
+      ],
+      "required_skills": ["harness"],
+      "audit": {
+        "compile": "node --check 过；harness.rules.json 合法 JSON；requiredSections 更名为 RS/FS 共用，注册表两个 id 指同一实现",
+        "tests": "ai-review 27/27（坏 FS 缺接口契约/测试要点/兼容与回滚 → exit 1 且 verdict 点名；修 mkdir 后机器判据真实触发而非 mock 假红）",
+        "feature_complete": "docs/02-features/** 从『无任何审核类型接住』变为 fs+evidence（演练 MR!3 形态用例锚定）",
+        "quality_clean": "语义审 FS-A1~A5 写在清单并声明 v1 不跑（无 key 环境），不造空转消费者"
+      },
+      "verify": { "log_path": ".ai/verify/DG-V1.log", "command": "bash test/ai-review.test.sh && bash test/review-router.test.sh" }
+    },
+    {
+      "id": "DG-T3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "doctor 门禁在场性：CI runner（无=阻塞）+ MR 批准规则（缺/版本不支持=提醒）；未配连接=明示未检查",
+      "files": [
+        "scripts/doctor.mjs",
+        "test/doctor-gates.test.sh"
+      ],
+      "required_skills": ["harness"],
+      "audit": {
+        "compile": "node --check 过；顶层 await 在 ESM 成立；连接走 env 不加配置键（H8）",
+        "tests": "doctor-gates 9/9：未配=提醒+exit0 / 无 runner=阻塞+exit 非0 / approval404=说明性提醒 / 全在场=ok（本地 mock GitLab，零真网）",
+        "feature_complete": "演练 B1/B2 两个断点在落地当天即可被 npm run doctor 看见",
+        "quality_clean": "网络抖动一律提醒不判红（checklist：检查工具不因外部抖动误杀）"
+      },
+      "verify": { "log_path": ".ai/verify/DG-V1.log", "command": "bash test/doctor-gates.test.sh" }
+    },
+    {
+      "id": "DG-T4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "guides：降级口径（无 key 显式 --machine-only / fail-closed）+ 门禁在场性用法 + API 工作流文件中转姿势",
+      "files": [
+        "guides/审核与通知自动化.md",
+        "docs/01-requirements/RS-演练缺口修复.md",
+        ".ai/tasks/drill-gaps-fix/cr.md",
+        ".ai/tasks/drill-gaps-fix/pending-wiring.md"
+      ],
+      "required_skills": ["harness"],
+      "audit": {
+        "compile": "纯文档；gate 的 completeness 组绿（DG-V1 内含）",
+        "tests": "无代码行为，验收=文档三段落落点对应 G2/B1B2/F1",
+        "feature_complete": "示例里「管道进解释器」形态用拼接写入——文档写被拦示例本身会被拦，实测记录在案",
+        "quality_clean": "无新配置键承诺"
+      },
+      "verify": { "log_path": ".ai/verify/DG-V1.log", "command": "npm run gate" }
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "test:doctor-gates 未注册进 package.json gate 与 CI workflow（考卷区，guard_write 拦截）",
+      "disposition": "acknowledged",
+      "by": "Yuan Yuan（放行条与 diff 备于 .ai/tasks/drill-gaps-fix/pending-wiring.md；连同 P2-11 两条补登记一并待加）"
+    }
+  ],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": "2026-11-08T02:27:00Z",
+    "stage": "done",
+    "checks": [
+      { "name": "todos_completed_with_evidence", "pass": true },
+      { "name": "stage_history_chain_legal", "pass": true },
+      { "name": "cr_record_with_s0", "pass": true },
+      { "name": "gate_green_real_exit_code", "pass": true }
+    ]
+  }
+}

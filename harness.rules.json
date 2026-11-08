@@ -23,6 +23,18 @@
       "max_findings": 10,
       "approval_role": "tech_lead"
     },
+    "fs": {
+      "$comment": "演练 B3：docs/02-features/** 此前不被任何审核类型接住，规格审全靠人。v1 机器判据为主（模板章节齐），语义交叉一致性（RS↔FS↔代码）见 scripts/reviews/fs.md，留给配了模型 key 的环境。",
+      "title": "功能规格审核",
+      "paths": ["docs/02-features/**", ".ai/tasks/*/fs.md"],
+      "checklist": "scripts/reviews/fs.md",
+      "machine_checks": [
+        { "id": "fs_required_sections", "severity": "red", "sections": ["概述", "需求追溯", "接口契约", "测试要点", "兼容与回滚"] }
+      ],
+      "model_tier": "deep",
+      "max_findings": 15,
+      "approval_role": "tech_lead"
+    },
     "cr": {
       "title": "代码审核",
       "$comment": "paths_from=projects 表示源码路径取自 harness.config.json 的 projects[].dir（v2 数组或 v1 stacks），fallback_paths 兜底无配置仓库。",
@@ -54,6 +66,10 @@
   },
   "skip": {
     "noise_paths": ["**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock", ".ai/ledger/**", ".ai/backup/**", ".ai/locks/**", "**/*.log"]
+  },
+  "code_hints": {
+    "$comment": "无槽可见化（演练 G1）：命中这些扩展名、又不属于任何审核槽的变更文件进 uncovered 并记账——静默缺席变可见缺席，只提示不阻断。清单是策略，按仓库语言裁剪。",
+    "ext": [".mjs", ".cjs", ".js", ".ts", ".tsx", ".vue", ".java", ".go", ".py", ".rs", ".c", ".cc", ".cpp", ".h", ".kt", ".rb", ".sh"]
   },
   "notify": {
     "roles": { "tech_lead": "技术负责人", "code_owner": "代码所有者", "pm": "产品", "author": "发起人", "sre": "值班运维", "machine": "机器裁决" },

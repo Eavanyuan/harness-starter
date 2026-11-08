@@ -325,6 +325,37 @@ if (stateDoc === null) {
   }
 }
 
+// ---- 门禁在场性（演练 B1/B2：无 runner、批红规则配不出时，落地现场没人检查门禁在不在线） ----
+// 走 env 而非配置键：这两项只在"这个仓库确实接着 GitLab"时才有意义，强制人人配置就是空转键（H8）。
+// 未配连接 = 提醒"未检查"，不是"通过"；缺 runner = 阻塞（CI 是证据链的兜底执行者）；
+// approval_rules 不可用 = 提醒（版本能力差异是事实，不是配置错误，处置见演练 B2 报告）。
+const GL_URL = process.env.HARNESS_GITLAB_URL || '';
+const GL_TOKEN = process.env.HARNESS_GITLAB_TOKEN || '';
+const GL_PROJECT = process.env.HARNESS_GITLAB_PROJECT || '';
+if (!GL_URL || !GL_TOKEN || !GL_PROJECT) {
+  warns.push('门禁在场性未检查：未配置 HARNESS_GITLAB_URL / HARNESS_GITLAB_TOKEN / HARNESS_GITLAB_PROJECT。无 CI runner、批红规则缺位是演练实证过的流程断点——配置后此处给出结论');
+} else {
+  const glHeaders = { 'private-token': GL_TOKEN };
+  const glGet = async (p) => {
+    const res = await fetch(`${GL_URL.replace(/\/+$/, '')}/api/v4${p}`, { headers: glHeaders, signal: AbortSignal.timeout(10_000) });
+    return { status: res.status, json: res.status === 204 ? null : await res.json().catch(() => null) };
+  };
+  try {
+    const r = await glGet('/runners?active=true&per_page=5');
+    const active = Array.isArray(r.json) ? r.json.length : 0;
+    if (r.status === 200 && active > 0) ok.push(`门禁在场性：CI runner 在场（${active} 个活跃）`);
+    else if (r.status === 200) errors.push('门禁在场性：CI 门禁缺位——没有活跃 runner，MR 无 pipeline，失败证据无机器拦截（演练 B1：失败日志标 completed 畅通进 MR）。先注册 runner 再谈"CI 兜底"');
+    else warns.push(`门禁在场性：runner 查询异常 HTTP ${r.status}（不因外部抖动判红）`);
+    const a = await glGet(`/projects/${encodeURIComponent(GL_PROJECT)}/approval_rules`);
+    if (a.status === 200 && Array.isArray(a.json) && a.json.length > 0) ok.push(`门禁在场性：MR 批准规则在场（${a.json.length} 条）`);
+    else if (a.status === 200) warns.push('门禁在场性：未配置 MR 批准规则——批红无机器强制，未批准也可合并（演练 B2）。建议 approvals_required ≥ 1');
+    else if (a.status === 404) warns.push('门禁在场性：该 GitLab 版本不支持 approval_rules API——批红门禁无法机器强制（演练 B2），依赖分支保护与人工纪律');
+    else warns.push(`门禁在场性：批准规则查询异常 HTTP ${a.status}`);
+  } catch (e) {
+    warns.push(`门禁在场性：连不上 GitLab（${e.message}）——检查不因网络抖动判红`);
+  }
+}
+
 // 输出
 console.log('[doctor] 配置体检\n');
 if (templateMode) {

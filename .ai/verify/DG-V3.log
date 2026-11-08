@@ -1,0 +1,22 @@
+# cmd: bash -c $'npm run gate 2>&1 | grep -E "�\223�\236\234�\232" ; npm run verify:state:local >/dev/null 2>&1 && echo LOCAL_STATE_PASS; npm run verify:state >/dev/null 2>&1 && echo CI_STATE_PASS || echo CI_STATE_FAIL_EXPECTED_UNCOMMITTED'
+# started: 2026-11-08T02:04:54Z
+# finished: 2026-11-08T02:05:34Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+结果：通过（4 个提醒）
+  结果：4 个 skill 通过
+结果：57 通过，0 失败
+结果：16 通过，0 失败
+结果：23 通过，0 失败
+结果：25 通过，0 失败
+结果：208 通过，0 失败
+结果：64 通过，0 失败
+结果：19 通过，0 失败
+结果：13 通过，0 失败
+结果：15 通过，0 失败
+结果：27 通过，0 失败
+结果：27 通过，0 失败
+结果：61 通过，0 失败
+结果：43 通过，0 失败
+LOCAL_STATE_PASS
+CI_STATE_PASS
