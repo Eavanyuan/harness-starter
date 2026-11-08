@@ -406,6 +406,11 @@ EOF
 node "$HERE/scripts/lib/notify.mjs" --event "$TMP/ev-mr.json" > "$TMP/card-mr.json" 2>/dev/null
 check "MR 卡「去处理」按钮自带 url" "http://gitlab.internal/demo/-/merge_requests/7" \
   "$(node -e 'const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(c.card.elements.flatMap(e=>e.actions||[])[0].url||"")' "$TMP/card-mr.json")"
+# 无槽可见化（演练 G1）：uncovered>0 时卡片必须点名覆盖洞，否则"路由成功"绿灯盖住 cr 缺席
+node -e 'const fs=require("fs");const e=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));e.uncovered=2;fs.writeFileSync(process.argv[1],JSON.stringify(e))' "$TMP/ev-mr.json"
+node "$HERE/scripts/lib/notify.mjs" --event "$TMP/ev-mr.json" > "$TMP/card-hole.json" 2>/dev/null
+grep -q "2 个代码文件不在任何审核槽" "$TMP/card-hole.json"; check "MR 卡点名无槽覆盖洞（G1）" "0" "$?"
+
 
 echo "== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） =="
 # 文件头与 guides 写的启动命令都是相对路径 `node scripts/harness-broker.mjs`。

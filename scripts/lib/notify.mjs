@@ -78,8 +78,13 @@ export function renderMrCard(evt) {
   const why = evt.degraded
     ? `\n\n<font color="orange">⚠ ${evt.degraded_reason || 'GitLab diff 接口不可用，路由降级为仅证据链校验'}</font>`
     : '';
+  // 无槽可见化（演练 G1）：代码文件落在审核槽外时卡片必须点名——
+  // 否则"路由成功"的绿灯会把 cr 缺席盖住。
+  const hole = evt.uncovered
+    ? `\n\n<font color="orange">⚠ ${evt.uncovered} 个代码文件不在任何审核槽——自动 CR 不会到场，这是覆盖洞不是通过</font>`
+    : '';
   return card(evt.findings && evt.findings.red > 0 ? 'red' : 'blue', `🤖 MR !${evt.mr.iid}：${evt.mr.title}`, [
-    md(`**作者**：${evt.author || '-'}　**分支**：${evt.ref || '-'}\n\n**自动审核路由**：\n${lines.join('\n') || '- （未命中 AI 审核，仅证据链机器校验）'}${counts}${why}`),
+    md(`**作者**：${evt.author || '-'}　**分支**：${evt.ref || '-'}\n\n**自动审核路由**：\n${lines.join('\n') || '- （未命中 AI 审核，仅证据链机器校验）'}${counts}${why}${hole}`),
     { tag: 'action', actions: [btn('去处理', { k: 'open', url: evt.mr.url }, true, evt.mr.url)] },
     md('<font color="grey">AI 审核是票拟不是判决；🔴 处置与 approve 归批红角色。</font>'),
   ]);

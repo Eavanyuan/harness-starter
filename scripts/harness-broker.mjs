@@ -345,10 +345,11 @@ async function handle(cfg, req, res) {
       }
       const reviews = (routed?.reviews || []).map((r) => ({ ...r, role_display: roles[r.approval_role] || r.approval_role }));
       const degraded = files == null || configError != null;
+      const uncovered = (routed && routed.uncovered) || [];
       const cardP = renderMrCard({
         mr: { iid: attr.iid, title: attr.title, url: attr.url },
         author: body.user?.name || attr.author?.name, ref: attr.source_branch,
-        reviews, degraded,
+        reviews, degraded, uncovered: uncovered.length,
         degraded_reason: configError
           ? `harness.config.json 有问题，自动路由失败 —— 请修配置后重跑 CR：${configError}`
           : (files == null ? '' : null),
@@ -357,7 +358,7 @@ async function handle(cfg, req, res) {
         try { await sendCard(cfg.feishuWebhook, cardP); } catch (e) { console.error(`[broker] 飞书发送失败（fail-open）：${e.message}`); }
       }
       recordEvent('broker', 'mr_routed', {
-        iid: attr.iid, reviews: reviews.map((r) => r.id), degraded, config_error: configError,
+        iid: attr.iid, reviews: reviews.map((r) => r.id), degraded, config_error: configError, uncovered,
         sent: cardEvents.includes('mr_open') && !!cfg.feishuWebhook,
       });
       return json(200, { ok: true, reviews: reviews.map((r) => r.id), degraded, config_error: configError });

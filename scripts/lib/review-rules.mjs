@@ -136,6 +136,7 @@ export function route(rules, root, changedFiles) {
   const real = all.filter((f) => !matchAny(noisePaths, f));
 
   const out = [];
+  const claimed = new Set();
   for (const [id, r] of Object.entries(rules.reviews)) {
     if (r.always) {
       if (real.length > 0) out.push({ id, title: r.title, files: real, via: 'always', approval_role: r.approval_role });
@@ -144,6 +145,12 @@ export function route(rules, root, changedFiles) {
     const { patterns, via } = patternsFor(r, root);
     const files = real.filter((f) => matchAny(patterns, f));
     if (files.length > 0) out.push({ id, title: r.title, files, via, approval_role: r.approval_role });
+    files.forEach((f) => claimed.add(f));
   }
-  return { changed: real.length, noise, reviews: out, trivial: real.length === 0 };
+  // 无槽可见化（演练 G1：MR 改了代码但落在 cr 槽外，静默缺席比没有审核更危险）。
+  // 只提示不阻断：命中 code_hints 扩展名、又不属于任何审核槽的文件进 uncovered，
+  // 由调用方报告/记账。扩展名清单是策略，写在 rules 里（H4），不写死在代码。
+  const hints = (rules.code_hints && rules.code_hints.ext) || [];
+  const uncovered = hints.length ? real.filter((f) => !claimed.has(f) && hints.some((e) => f.endsWith(e))) : [];
+  return { changed: real.length, noise, reviews: out, uncovered, trivial: real.length === 0 };
 }

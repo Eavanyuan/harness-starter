@@ -27,7 +27,7 @@ check() {
 REPO="$TMP/repo"
 mkdir -p "$REPO/docs/01-requirements" "$REPO/scripts/reviews" "$REPO/.ai/reviews"
 cp "$HERE/harness.rules.json" "$REPO/"
-cp "$HERE/scripts/reviews/rs.md" "$REPO/scripts/reviews/"
+cp "$HERE/scripts/reviews/rs.md" "$HERE/scripts/reviews/fs.md" "$REPO/scripts/reviews/"
 echo '{ "projects": [ { "id": "docs", "lang": "md", "dir": "docs" } ] }' > "$REPO/harness.config.json"
 
 cat > "$REPO/docs/01-requirements/RS-bad.md" <<'EOF'
@@ -181,6 +181,25 @@ AI_REVIEW_API_KEY="mock-key" node "$HERE/scripts/ai-review.mjs" --type rs --root
 rc=$?
 check "带 key + 机器判据有 🔴 → 模型 0 次调用" "$before" "$(reqs)"
 check "带 key + 机器判据有 🔴 → exit 1" "1" "$rc"
+
+echo "== 4c. fs 审核类型（演练 B3 补槽） =="
+# 目录必须先建：heredoc 写不存在的路径会静默失败（set -uo 无 -e 不拦），
+# 文件缺失时机器判据按「读不到→跳过」走 AI 路，断言就被 mock 罐头响应假绿/假红
+mkdir -p "$REPO/docs/02-features/demo"
+cat > "$REPO/docs/02-features/demo/FS-bad.md" <<'FSEOF'
+# FS-坏
+## 1 概述
+缺章节的坏规格。
+## 2 需求追溯
+| US | RS 锚点 |
+|---|---|
+| US-1 | rs#§2 |
+FSEOF
+FILES_FS="$TMP/files-fs.txt"; printf 'docs/02-features/demo/FS-bad.md\n' > "$FILES_FS"
+node "$HERE/scripts/ai-review.mjs" --type fs --root "$REPO" --files "$FILES_FS" --out "$REPO/.ai/reviews-fs" >/dev/null 2>&1
+check "坏 FS（缺接口契约/测试要点/兼容与回滚）→ exit 1" "1" "$?"
+V="$(ls "$REPO/.ai/reviews-fs"/fs-*.md | head -1)"
+grep -q '缺必填章节「接口契约」' "$V"; check "verdict 点名缺失章节" "0" "$?"
 
 echo "== 5. dry-run 与增量缓存 =="
 # 回到 RS-good.md：它在 reviews2 有成功轮的缓存（§3 红结论），才能测"沿用不重跑"

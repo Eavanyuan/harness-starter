@@ -12,6 +12,7 @@
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { loadRules, route, RulesError } from './lib/review-rules.mjs';
+import { recordEvent } from '../hooks/lib/ledger.mjs';
 
 function usage() {
   console.error('用法: node scripts/review-router.mjs --base <git-ref> | --files <清单文件> [--root <目录>]');
@@ -65,3 +66,10 @@ console.log(JSON.stringify(result, null, 2));
 const names = result.reviews.map((r) => `${r.id}(${r.files.length} 文件, via ${r.via})`).join('、');
 if (result.trivial) console.error(`[router] ${files.length} 个变更全是噪声文件，无审核触发（含 evidence：ci-verify 也跳过）`);
 else console.error(`[router] ${files.length} 个变更 → ${result.reviews.length} 类审核：${names || '仅 evidence 之外无命中'}`);
+// 无槽可见化（演练 G1）：代码文件落在所有审核槽之外时必须喊出来——
+// "没有审核"可以是决策，"看起来有审核其实没到场"是事故。只提示不阻断（退出码仍 0）。
+if (result.uncovered && result.uncovered.length > 0) {
+  const sample = result.uncovered.slice(0, 3).join('、');
+  console.error(`[router] ⚠ ${result.uncovered.length} 个代码文件不在任何审核槽（${sample}${result.uncovered.length > 3 ? ' 等' : ''}）——自动 CR 不会到场。补 projects[].dir 或 rules 路径，否则这里是审核覆盖的洞`);
+  recordEvent('router', 'uncovered_code', { count: result.uncovered.length, files: result.uncovered.slice(0, 20) });
+}

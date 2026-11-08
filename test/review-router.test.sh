@@ -102,7 +102,26 @@ shape_cfg '{"stacks":{"backend":{"dir":"backend"}}}'
 check "v1 stacks 写法仍被认（老配置不炸）" "0" "$(shape_exit)"
 rm -f "$TMP/badcfg/harness.config.json"
 
-echo "== 5. git 模式（--base 真实 diff） =="
+echo "== 5. 无槽可见化与 fs 路由（演练 G1/B3） =="
+export HARNESS_LEDGER_DIR="$TMP/ledger"
+# 演练 MR!4 形态：projects=backend，但代码落在 tools/ 下 —— cr 槽外必须被点名，且不阻断
+printf 'backend/src/A.java\ntools/x.mjs\ntools/y.sh\n' > "$TMP/list.txt"
+node "$HERE/scripts/review-router.mjs" --root "$TMP/repo" --files "$TMP/list.txt" > "$TMP/route5.json" 2>"$TMP/route5.err"
+rc=$?
+check "无槽代码不改变退出码（可见不阻断）" "0" "$rc"
+node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.uncovered.join(","))' "$TMP/route5.json" > "$TMP/u.txt"
+check "uncovered 列出槽外代码文件" "tools/x.mjs,tools/y.sh" "$(cat "$TMP/u.txt")"
+grep -q "不在任何审核槽" "$TMP/route5.err"; check "stderr 有覆盖洞提示" "0" "$?"
+grep -q '"type":"uncovered_code"' "$TMP/ledger/events.jsonl" 2>/dev/null; check "账本记 uncovered_code" "0" "$?"
+# 误报闸门：未匹配的非代码文件（md）不进 uncovered
+printf 'NOTICE2.md\n' > "$TMP/list.txt"
+node "$HERE/scripts/review-router.mjs" --root "$TMP/repo" --files "$TMP/list.txt" 2>/dev/null \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).uncovered.length))' > "$TMP/u2.txt"
+check "槽外 md 不误报 uncovered" "0" "$(cat "$TMP/u2.txt")"
+# fs 路由：docs/02-features/** 命中 fs 类型（此前无任何审核类型接住，规格审全靠人）
+check "FS 变更 → fs + evidence" "evidence,fs" "$(run_router 'docs/02-features/demo/fs-x.md')"
+
+echo "== 6. git 模式（--base 真实 diff） =="
 GT="$TMP/gitrepo"
 mkdir -p "$GT" && cp "$HERE/harness.rules.json" "$GT/" && cp "$TMP/repo/harness.config.json" "$GT/"
 git -C "$GT" init -q && git -C "$GT" config user.email t@t && git -C "$GT" config user.name t

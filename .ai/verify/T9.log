@@ -1,6 +1,6 @@
-# cmd: bash -c bash\ test/review-router.test.sh\ \>/dev/null\ \&\&\ bash\ test/ai-review.test.sh\ \>/dev/null\ \&\&\ bash\ test/notify-broker.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ T9_OK
-# started: 2026-11-07T12:42:40Z
-# finished: 2026-11-07T12:43:18Z
+# cmd: bash -c bash\ test/review-router.test.sh\ \>/dev/null\ \&\&\ bash\ test/ai-review.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ bash\ test/notify-broker.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ OK
+# started: 2026-11-08T01:41:43Z
+# finished: 2026-11-08T01:42:21Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-T9_OK
+OK
