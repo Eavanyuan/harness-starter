@@ -28,7 +28,7 @@ npm run doctor              # 先体检：模板态下会提示 stacks.*.dir 是
 npm run build:agents        # 从 agents/ 生成三套 CLI 产物
 npm run build:hooks         # 从 hooks/hooks.manifest.json 生成两套 CLI 的 hook 接线
 npm run check:skills        # 确认 .skills/ 结构完整、引用不断
-npm run gate                # 门禁 + 六套自测
+npm run gate                # 门禁 + 全部自测套件（14 组，含审核自动化与通知回投）
 bash scripts/init-harness.sh my-feature M   # 新功能（默认 --type feature）
 bash scripts/init-harness.sh my-change M --type change --related my-feature --baseline <commit>  # 需求变更
 bash scripts/init-harness.sh my-bug M --type bugfix --related my-feature                        # 缺陷修复
@@ -75,20 +75,27 @@ DeepSeek 或无 subagent 的 CLI：打开 `prompts/agents/orchestrator.md` 贴�
 ```text
 agents/                  ← 唯一事实源，11 个 <name>.agent.md
 harness.config.json      ← 三 CLI 能力映射 + 高危命令清单 + 技术栈命令 + skill 校验参数
+harness.rules.json       ← 审核路由与通知路由的机器可执行规则（rs/fs/adr/cr/evidence）
 AGENTS.md                ← 常驻规则（所有 CLI 都读）
 
 .skills/                 ← 领域知识层：怎么改这个栈的代码
   backend/SKILL.md       ←   Java：Stage 0 / 分流 / 8 条硬规则 / 交付
   frontend/SKILL.md      ←   Vue：7 条硬规则
   e2e/SKILL.md           ←   Playwright：6 条硬规则
-  harness/SKILL.md       ←   门禁与生成器自身：8 条硬规则 + 35 个已知失效点
+  harness/SKILL.md       ←   门禁与生成器自身：8 条硬规则 + 37 个已知失效点（references/checklist.md）
   SKILL.template.md      ←   加新栈时复制它
   references/            ←   长表（反例、检测命令、场景），SKILL.md ≤ 200 行，超了就拆到这里
 
 .claude/  .zcode/  prompts/     ← 生成物，不要手改
 scripts/build-agents.mjs        ← Agent 生成器；`--check` 即漂移检测，`--prune` 清理孤儿文件
 scripts/build-hooks.mjs         ← Hook 接线生成器：一份 manifest → .claude/settings.json + .zcode/config.json
-scripts/doctor.mjs              ← 配置体检：占位值、接线缺口、空转的配置键、僵尸任务
+scripts/doctor.mjs              ← 配置体检：占位值、接线缺口、空转配置键、僵尸任务、门禁在场性（runner/批准规则）
+scripts/review-router.mjs       ← MR 变更 → 该跑哪些审核（零 LLM；无槽代码可见化）
+scripts/ai-review.mjs           ← 模式 B 审核：L0 机器判据零 token 先行 + 预打包单发 + 🔴 退码 1
+scripts/harness-broker.mjs      ← 通知事件桥：GitLab webhook 入 / 方案 D 决策落账，不写 state 不合 MR
+scripts/feishu-ws.mjs           ← 飞书长连接入站（内网零开放端口），配 lib/ws-client + lib/feishu-frame
+scripts/reviews/                ← 各审核类型的判据清单（rs/fs/adr/cr，改判据改这里）
+scripts/lib/                    ← 共享库：review-rules（路由）/ review-checks（L0）/ notify（卡片）/ decision-from-git
 
 hooks/
   hooks.manifest.json    ← hook 接线的唯一源（哪个事件、匹配什么、跑哪个脚本）
@@ -99,20 +106,21 @@ hooks/
   session_start.mjs      ← 换人接手时注入当前进度 + 当前模型档位
   allowlist.txt          ← 命令例外（带到期日）
   write-allowlist.txt    ← 写入受保护区的例外（带到期日）
-test/hooks.test.sh       ← state 门禁 / 高危命令 / 敏感文件 / 追溯链，44 个场景
-test/evidence.test.sh    ← 证据链口径，24 个场景（含"干净检出不得误杀"回归）
-test/wiring.test.sh      ← hook 接线，14 个断言（含"ZCode 侧必须有接线"）
-test/writes.test.sh      ← 写入边界，15 个场景
-test/agents.test.sh      ← 产物契约，14 个断言
-test/skills.test.sh      ← skill 校验器能否拦住，17 个断言
-test/init.test.sh        ← init 脚本 slug 白名单 / JSON 合法性 / change·bugfix 参数，23 个断言
+test/                    ← 14 组自测：hooks / evidence / wiring / writes / agents / skills / init /
+                           harness-cli / verify-run / ledger / completeness / router / ai-review /
+                           notify-broker（含方案 D）/ feishu-ws；另有 e2e（真 GitLab，npm run e2e）
+                           与 regress-p2.sh（恒退 1 的缺陷复现器，不进 gate）
 
 .ai/
   rules/verification.md  ← L0 规则，永不裁剪
   tasks/<slug>/state.json ← 一个任务一份状态
   writes.json            ← 从 agents/*.agent.md 投影出的写入域，供人评审与 CI
-  verify/<todo-id>.log   ← 验证证据，入库
-templates/               ← 8 张文档模板（RS/FS/ADR/MATRIX/SR/WBS/CR/RETRO）
+  verify/<todo-id>.log   ← 验证证据，入库（跨任务同名会被 --task 归属检查拒覆盖）
+  review/                ← 手动/推送前审查记录（CR 模板全量条款）
+  ledger/                ← deny.jsonl（误拦率基线）+ events.jsonl（观测面，gitignore）
+templates/               ← 9 张文档模板（RS/FS/ADR/MATRIX/SR/WBS/CR/RETRO/TRACE）
+guides/                  ← 多人协作最佳实践 + 审核与通知自动化接入指南
+retro/                   ← 复盘沉淀（外部系统借鉴候选，各带触发条件）
 docs/                    ← 工件（需求、规格、ADR）
 ```
 
@@ -167,7 +175,39 @@ docs/                    ← 工件（需求、规格、ADR）
 mtime 只在**本地 hook** 里比：开发者工作树里它是真事实。CI 跑在全新 checkout 上，
 git 不保存 mtime，检出后所有文件同一时刻——所以 CI 只判 git 里可复现的事实
 （日志是否入库、exit_code 是否 0、声明文件是否存在）。假装 CI 也能判新鲜度，
-结果就是把合规 PR 判红，然后整套门禁被人关掉。
+结果就是把合规 PR 判红，然后整套门禁被人关掉。本地口径也承认 mtime 的弱处：
+clone / checkout 会把整棵树的 mtime 按检出顺序重排，所以与 HEAD 一致的文件有
+检出宽限窗（`gates.verifyFreshnessGraceSec`，默认 120s），工作树里有差异的文件零容忍。
+
+---
+
+## 审核与通知自动化（MR 触发，2026-11 起）
+
+会话内的门禁只拦"走 CLI 的那条路"；**MR 是个人纪律与团队纪律的分界线**，所以
+审核到场靠 MR 变更自动路由，不靠人记得发起：
+
+```bash
+node scripts/review-router.mjs --base origin/main...   # 变更文件 → 该跑哪些审核（零 LLM）
+node scripts/ai-review.mjs --type rs --base origin/main...  # L0 机器判据零 token 先行 + 单发语义审
+node scripts/ai-review.mjs --type cr --dry-run ...     # 打包统计，0 次 API 调用
+```
+
+- **路由规则全在 `harness.rules.json`**（rs / fs / adr / cr / evidence），改路由改数据不改代码。
+- **退出码即门禁**：0 过 / 1 有 🔴（pipeline 红 → 挡合入）/ 2 基础设施失败——失败绝不产出"通过"。
+- **省 token 分层**：机器判据（模板章节、引用存在、验收可测）零 token 先跑；预打包上下文
+  硬顶（文件数/行数）；未变更文件沿用上轮结论；每次运行的 token 用量入 `events.jsonl` 账本。
+- **无槽可见化**：代码文件不属于任何审核槽时，router 提示 + `uncovered_code` 入账 + 卡片点名
+  ——静默缺席比没有审核更危险，可见缺席才有得治。
+- **无模型 key 没有悄悄降级**：机器判据干净但无凭据时 exit 2（fail-closed）；要只跑机器判据须显式 `--machine-only`。
+
+通知侧是 `harness-broker`（薄事件桥）：GitLab webhook 入 → 路由 → 飞书卡片**票拟找人**（批红按钮）；
+决策可走**方案 D**——人在 RS 文档「开放问题」行写「已裁决：X」提交，broker 从 push diff 落账
+（身份取 commit author，内网零开放端口）。broker 不写 state、不跑 agent、不合 MR。
+`doctor` 另有**门禁在场性**体检：无活跃 CI runner = 阻塞、MR 批准规则缺位 = 提醒——
+演练实证过这两个缺位会让"CI 兜底 / 批红强制"变成空话，落地当天就要看得见。
+
+接入手册（env、`.gitlab-ci.yml` 样例、部署边界、L2 真 GitLab 演练坑）：
+[`guides/审核与通知自动化.md`](guides/审核与通知自动化.md)。
 
 ---
 
@@ -192,12 +232,18 @@ npm run test:agents      # 产物契约
 npm run test:skills      # 校验器自测（确认它真能拦住）
 npm run test:init        # init 脚本 slug 白名单与 JSON 合法性
 npm run test:harness-cli # 安装/探测/退出工具自测（夹具在 test/fixtures/）
-npm run test:verify-run  # 证据包装器：头部字段、计数聚合、退出码（#16/#17 的输入源）
+npm run test:verify-run  # 证据包装器：头部字段、计数聚合、退出码、--task 归属
 npm run test:ledger      # 账本读取端：误拦率分组 + events 在线记录
+npm run test:router      # 审核路由（含无槽可见化与 fs 补槽）
+npm run test:ai-review   # L0 判据 / 模式B / fail-closed / token 计量
+npm run test:broker      # 卡片渲染 / webhook 鉴权 / 方案 D 决策落账
+npm run test:feishu-ws   # 飞书长连接：握手 / 分片 / 去重 / 失败重投
+npm run e2e              # L2：真 GitLab 端到端（需本地实例，退出码 78 = 环境未起）
 npm run ledger:report    # 拦截面统计：哪条规则在拦、拦了谁、那段时间门禁在不在线
 npm run gate             # 上面全部一起跑（已含 doctor）
 
 bash scripts/verify-run.sh T1 -- mvn -q test -Dtest=FooTest
+bash scripts/verify-run.sh --task <任务名> T1 -- <命令>   # 声明证据归属，跨任务同名日志拒绝静默覆盖
 # 日志头固定 4 行（有 surefire 报告时第 5 行是计数）：
 #   # cmd / # started / # finished / # exit_code / # tests: total=N …
 # 校验器只认前 5 行——贴过来的 BUILD SUCCESS 不算证据，因为头部不是它写的。
@@ -345,4 +391,6 @@ CI 只判 git 里可复现的事实（日志入库、exit_code=0、声明文件�
 ---
 
 多人协作的完整方案（谁改什么、怎么避免互相踩、豁免怎么治理）见
-[`guides/多人协作最佳实践.md`](guides/多人协作最佳实践.md)。
+[`guides/多人协作最佳实践.md`](guides/多人协作最佳实践.md)；
+审核与通知自动化的接入手册见
+[`guides/审核与通知自动化.md`](guides/审核与通知自动化.md)。
