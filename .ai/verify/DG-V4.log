@@ -1,0 +1,6 @@
+# cmd: bash -c npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ verify:state:local\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ verify:state\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ COMMITTED_TREE_ALL_GREEN
+# started: 2026-11-08T03:05:38Z
+# finished: 2026-11-08T03:06:19Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+COMMITTED_TREE_ALL_GREEN
