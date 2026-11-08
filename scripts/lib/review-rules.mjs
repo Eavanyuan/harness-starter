@@ -58,32 +58,74 @@ export function loadRules(root) {
   return raw;
 }
 
-/** harness.config.json 的项目目录集合（v2 projects 数组 + v1 stacks 对象都认）。读不到返回 []。 */
+const kindOf = (v) => (v === null ? 'null' : Array.isArray(v) ? '数组' : typeof v === 'object' ? '对象' : typeof v);
+
+/**
+ * 校验 config 的**形状**，不只是"能不能 parse"。
+ *
+ * 只判 parse 是不够的：`{"projects":"backend"}` 能解析、`{"projects":[{"id":"a"}]}`
+ * 也能解析，两者都会让下面的 list 变成空数组 → cr 静默退到 fallback_paths，
+ * 配置手滑一次，审核覆盖面就悄悄变窄（实测两种写法都 exit 0）。所以形状错也抛。
+ */
+function dirOf(where, x) {
+  if (!x || typeof x !== 'object' || Array.isArray(x)) {
+    throw new RulesError(`harness.config.json 的 ${where} 必须是对象（当前是 ${kindOf(x)}）`);
+  }
+  if (typeof x.dir !== 'string' || !x.dir.trim()) {
+    throw new RulesError(`harness.config.json 的 ${where} 缺 dir（项目目录；仓库根目录写 "."）——cr 按项目槽路由依赖它`);
+  }
+  return x.dir;
+}
+
+/**
+ * harness.config.json 的项目目录集合（v2 projects 数组 + v1 stacks 对象都认）。
+ * 文件不存在返回 []（无配置仓库走 fallback，合法形态）；**存在但解析失败、或形状不对必须抛**
+ * ——吞掉的话 cr 路由会静默降级到 fallback_paths，配置手滑一次，审核覆盖面就悄悄变窄
+ * （checklist §2：失败不许退化成「没有变化」，P2-12 第五轮审查 / 第六轮补形状校验）。
+ */
 export function projectDirs(root) {
   const p = join(root, 'harness.config.json');
   if (!existsSync(p)) return [];
+  let c;
   try {
-    const c = JSON.parse(readFileSync(p, 'utf8'));
-    const list = Array.isArray(c.projects) ? c.projects : Object.values(c.stacks || {});
-    return list.map((x) => x && x.dir).filter((d) => typeof d === 'string');
-  } catch {
-    return [];
+    c = JSON.parse(readFileSync(p, 'utf8'));
+  } catch (e) {
+    throw new RulesError(`harness.config.json 存在但不是合法 JSON：${e.message}（cr 按项目槽路由依赖它）`);
   }
+  if (!c || typeof c !== 'object' || Array.isArray(c)) {
+    throw new RulesError(`harness.config.json 顶层必须是对象（当前是 ${kindOf(c)}）`);
+  }
+  if ('projects' in c) {
+    if (!Array.isArray(c.projects)) {
+      throw new RulesError(`harness.config.json 的 projects 必须是数组（当前是 ${kindOf(c.projects)}）；v1 的 stacks 对象写法仍然支持，但只能选一种`);
+    }
+    return c.projects.map((x, i) => dirOf(`projects[${i}]${x && x.id ? `（id=${x.id}）` : ''}`, x));
+  }
+  if ('stacks' in c) {
+    if (!c.stacks || typeof c.stacks !== 'object' || Array.isArray(c.stacks)) {
+      throw new RulesError(`harness.config.json 的 stacks 必须是对象（键=栈名，值含 dir）（当前是 ${kindOf(c.stacks)}）`);
+    }
+    return Object.entries(c.stacks).map(([k, v]) => dirOf(`stacks.${k}`, v));
+  }
+  return [];
 }
 
 /** cr 的源码模式：projects 目录优先，无配置仓库用 fallback_paths 兜底。 */
 function patternsFor(review, root) {
   if (review.paths_from !== 'projects') return { patterns: review.paths, via: 'paths' };
-  const dirs = projectDirs(root).filter((d) => d && d !== '.');
-  const dot = projectDirs(root).some((d) => d === '.');
+  // 只读一次配置：这个函数每类审核调一次，读两遍就是两倍 IO，也让"配置坏了"抛两次
+  const all = projectDirs(root);
+  const dirs = all.filter((d) => d && d !== '.');
   const patterns = [...dirs.map((d) => `${d}/**`)];
-  if (dot) patterns.push('**/*.java', '**/*.go', '**/*.py', '**/*.ts', '**/*.vue', '**/*.js');
+  if (all.includes('.')) patterns.push('**/*.java', '**/*.go', '**/*.py', '**/*.ts', '**/*.vue', '**/*.js');
   if (!patterns.length) return { patterns: review.fallback_paths || [], via: 'fallback' };
   return { patterns, via: 'projects' };
 }
 
 /**
- * 变更文件 → 该跑哪些审核。纯函数、零 LLM、零 IO（规则与配置由调用方先 load）。
+ * 变更文件 → 该跑哪些审核。零 LLM；**不是纯函数**：经 patternsFor 读 harness.config.json，
+ * 配置坏时抛 RulesError——三个入口都必须按 fail-closed 处理（router/ai-review exit 2，
+ * broker 拒不落 500 并显式告知配置错误）。
  * 返回 { changed, noise, reviews:[{id,title,files,via,approval_role}], trivial }。
  * trivial=true 表示全是噪声文件——任何审核（含 evidence）都不跑。
  */

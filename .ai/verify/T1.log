@@ -1,6 +1,6 @@
 # cmd: bash test/review-router.test.sh
-# started: 2026-11-06T08:28:23Z
-# finished: 2026-11-06T08:28:25Z
+# started: 2026-11-08T01:40:03Z
+# finished: 2026-11-08T01:40:03Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 命中与分流 ==
@@ -21,7 +21,20 @@
 == 4. fail-closed：规则坏了不许装没事 ==
   [32m✓[0m 规则缺失 → exit 2
   [32m✓[0m schema_version 越界 → exit 2
-== 5. git 模式（--base 真实 diff） ==
+  [32m✓[0m harness.config.json 解析失败 → exit 2（不静默降级 fallback）
+  [32m✓[0m projects 写成字符串 → exit 2（不静默退到 fallback）
+  [32m✓[0m 项目项漏 dir → exit 2
+  [32m✓[0m 项目 dir 是空白 → exit 2
+  [32m✓[0m v1 栈项漏 dir → exit 2
+  [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
+== 5. 无槽可见化与 fs 路由（演练 G1/B3） ==
+  [32m✓[0m 无槽代码不改变退出码（可见不阻断）
+  [32m✓[0m uncovered 列出槽外代码文件
+  [32m✓[0m stderr 有覆盖洞提示
+  [32m✓[0m 账本记 uncovered_code
+  [32m✓[0m 槽外 md 不误报 uncovered
+  [32m✓[0m FS 变更 → fs + evidence
+== 6. git 模式（--base 真实 diff） ==
   [32m✓[0m --base diff 只取新文件
 
-结果：15 通过，0 失败
+结果：27 通过，0 失败

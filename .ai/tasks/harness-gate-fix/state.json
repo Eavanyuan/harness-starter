@@ -1,0 +1,228 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "harness-gate-fix",
+    "task_type": "bugfix",
+    "created_at": "2026-11-07T13:50:00Z",
+    "flow_tier": "S",
+    "risk_tier": "LOW",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "三条都是判据/脚本自身的缺陷（误报、静默覆盖、缺自证），不新增产品能力，行为边界由既有 .ai/rules/verification.md 与指南承载；改动面 5 个文件 + 12 条断言，不需要 RS/FS/WBS。",
+    "related_task": "harness-doc-gate",
+    "affected_ids": [
+      "verification",
+      "gate",
+      "broker"
+    ]
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-07T13:50:00Z",
+      "exited_at": "2026-11-07T13:52:00Z",
+      "gate": "deferred",
+      "waived_by": "缺陷修复：需求就是复现出来的错误行为，已在各 TODO 的 text 里写清复现方式与期望",
+      "agent": null
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-07T13:52:00Z",
+      "exited_at": "2026-11-07T13:53:00Z",
+      "gate": "deferred",
+      "waived_by": "无选型空间：判据口径由既有 mode 分档决定，本次只是把『检出产物』这一类事实从『编辑』里摘出来",
+      "agent": null
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-07T13:53:00Z",
+      "exited_at": "2026-11-07T13:53:00Z",
+      "gate": "deferred",
+      "waived_by": "无接口/数据模型变更；新增的唯一配置项 verifyFreshnessGraceSec 已进 doctor 消费名录",
+      "agent": null
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-07T13:53:00Z",
+      "exited_at": "2026-11-07T13:54:00Z",
+      "gate": "deferred",
+      "waived_by": "三个修复互不依赖，改动文件已在 T1~T3 列全，无并行拆分点",
+      "agent": null
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-07T13:54:00Z",
+      "exited_at": "2026-11-07T14:02:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder"
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-07T14:02:00Z",
+      "exited_at": "2026-11-07T14:06:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer"
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-07T14:06:00Z",
+      "exited_at": "2026-11-07T14:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify"
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-07T14:10:00Z",
+      "exited_at": "2026-11-07T14:12:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    },
+    {
+      "stage": "done",
+      "entered_at": "2026-11-07T14:10:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    }
+  ],
+  "artifacts": {
+    "rs": null,
+    "fs": null,
+    "wbs": null,
+    "adr": null,
+    "review": null
+  },
+  "todos": [
+    {
+      "id": "GF0",
+      "stack": "harness",
+      "kind": "regression",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "先复现再修：为三条缺陷各写一条会红的断言（clone 后不误报 / mtime 变但内容没变不算改 / 撞名拒绝覆盖），修前必须红、修后必须绿",
+      "files": [
+        "test/evidence.test.sh",
+        "test/verify-run.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "测试脚本，语法由执行验证",
+        "tests": "修前变异：去掉检出窗口 → evidence 2 红；去掉拒绝分支 → verify-run 1 红；修后全绿",
+        "feature_complete": "三条缺陷各有对应断言，且都能被变异打断（不是照实现抄的断言）",
+        "quality_clean": "用例只构造最小现场（clone / touch / 同名日志），不依赖真实 GitLab 或网络"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GF1.log",
+        "command": "bash test/evidence.test.sh"
+      },
+      "red_log_path": ".ai/verify/GF0-RED.log"
+    },
+    {
+      "id": "GF1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "证据新鲜度判据在全新 clone 的仓库里整片误报：mtime 被检出顺序重排，14 个历史任务全被判「日志早于源码」，而 git status 是空的。改为按「时间差能不能用检出解释掉」分档：工作树有差异的文件零容忍，与 HEAD 一致的文件扣掉检出窗口（gates.verifyFreshnessGraceSec，默认 120s）再比",
+      "files": [
+        "hooks/lib/verify.mjs",
+        "test/evidence.test.sh",
+        "harness.config.json",
+        "scripts/doctor.mjs",
+        ".ai/rules/verification.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过（hooks/lib/verify.mjs 无新增依赖，只多引入 path.relative）",
+        "tests": "bash test/evidence.test.sh 64/64（原 61 + 新增 3 条）；新用例在变异（去掉检出窗口）后 2 条变红",
+        "feature_complete": "复现路径已消除：含修复的副本 clone 后 npm run ci-verify -- --local 由 14 条红降到 0；同时『真改了源码没重跑』仍然被拦",
+        "quality_clean": "只改本地口径分支，CI 口径与其余判据未动；新配置项进 doctor 的消费名录，不留死键"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GF1.log",
+        "command": "bash test/evidence.test.sh"
+      }
+    },
+    {
+      "id": "GF2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": ".ai/verify/<id>.log 是全局命名空间，跨任务用同一个 id 会静默覆盖别人的证据（实测：给新任务生成第一条证据时冲掉了另一个任务的 T1.log，门禁照样绿）。加 --task 归属检查：被别的任务引用时拒绝覆盖并说明怎么改",
+      "files": [
+        "scripts/verify-run.sh",
+        "test/verify-run.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 通过；未引入新依赖",
+        "tests": "bash test/verify-run.test.sh 16/16（原 11 + 新增 5 条）；变异（去掉拒绝分支）后 1 条变红",
+        "feature_complete": "三种情形都有断言：单任务引用未声明 → 放行并点名；声明了别的任务 → 拒绝 exit 2；声明占用者本人 → 允许重跑。在真实仓库试过 --task some-other-task T1 被拒",
+        "quality_clean": "向后兼容：不给 --task 时行为与路径不变；只对『已被 state.json 引用』的日志发火，未被引用的同名文件照旧覆盖"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GF2.log",
+        "command": "bash test/verify-run.test.sh"
+      }
+    },
+    {
+      "id": "GF3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "接入 GitLab 的两个坑无法自证：① broker 默认绑回环，容器里的 GitLab 打不进来，宿主 curl 却是 200——排查时缺的就是『它在回环上』这一句；② PUT /hooks/:id 不带 token 会把它清空，之后投递全 401/403。前者让 broker 打印实际绑定面并写进 healthz，后者写进指南与 e2e 注释",
+      "files": [
+        "scripts/harness-broker.mjs",
+        "test/notify-broker.test.sh",
+        "test/feishu-ws.test.sh",
+        "guides/审核与通知自动化.md",
+        "test/e2e/gitlab-decision.e2e.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；describeBind 只读 server.address()，无新依赖",
+        "tests": "bash test/notify-broker.test.sh 54/54（原 50 + 新增 4 条），含『对外监听时不再喊打不进来』的反向断言",
+        "feature_complete": "启动横幅与 /healthz.bind 都给出实际绑定面；回环时单独提示后果与改法；指南补两行坑表；e2e 建 hook 处注明改 hook 必须带回 token",
+        "quality_clean": "顺带修掉测试对 http_proxy 的隐性依赖（本地自测显式 NO_PROXY），否则机器上配了代理时 curl 得到 502、测的是代理不是代码"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GF3.log",
+        "command": "bash test/notify-broker.test.sh"
+      }
+    }
+  ],
+  "gate_result": {
+    "last_check": "2026-11-07T14:10:00Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "gate_green",
+        "pass": true,
+        "evidence": ".ai/verify/GF4.log"
+      },
+      {
+        "name": "assertions_not_vacuous",
+        "pass": true,
+        "evidence": "变异：去掉检出窗口 → 2 红；去掉拒绝分支 → 1 红"
+      },
+      {
+        "name": "reproduced_before_fix",
+        "pass": true,
+        "evidence": "全新 clone 跑 --local：修前 14 条红，修后 0 条"
+      }
+    ]
+  }
+}

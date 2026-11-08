@@ -11,7 +11,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { loadRules, route } from './lib/review-rules.mjs';
+import { loadRules, route, RulesError } from './lib/review-rules.mjs';
 
 function usage() {
   console.error('用法: node scripts/review-router.mjs --base <git-ref> | --files <清单文件> [--root <目录>]');
@@ -49,7 +49,17 @@ try {
   process.exit(2);
 }
 
-const result = route(rules, root, files);
+let result;
+try {
+  result = route(rules, root, files);
+} catch (e) {
+  // 路由期错误（如 harness.config.json 解析失败）与规则错误同口径：exit 2，fail-closed
+  if (e instanceof RulesError) {
+    console.error(`[router] ${e.message}`);
+    process.exit(2);
+  }
+  throw e;
+}
 
 console.log(JSON.stringify(result, null, 2));
 const names = result.reviews.map((r) => `${r.id}(${r.files.length} 文件, via ${r.via})`).join('、');

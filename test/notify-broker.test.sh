@@ -6,6 +6,11 @@
 # 用法：bash test/notify-broker.test.sh
 set -uo pipefail
 
+# 本地自测只连 127.0.0.1：显式绕过环境里的 http_proxy。
+# 否则机器上配了代理时，curl 会把发往临时端口的请求送给上游，结果是
+# "502 upstream connect failed"——测的成了代理通不通，不是被测代码对不对。
+export NO_PROXY='*' no_proxy='*'
+
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -18,7 +23,7 @@ check() {
     printf "  \033[32m✓\033[0m %s\n" "$1"
     pass=$((pass + 1))
   else
-    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"
+    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$2" "$3"
     fail=$((fail + 1))
   fi
 }
@@ -149,6 +154,24 @@ BPORT="$(sed -n 's/^PORT //p' "$TMP/broker.out")"
 curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BPORT}/healthz" > "$TMP/code"
 check "healthz → 200" "200" "$(cat "$TMP/code")"
 
+# 绑定面必须自证：排查"宿主 curl 200、GitLab 报 internal error"时，缺的正是这一句。
+bind="$(curl -s "http://127.0.0.1:${BPORT}/healthz" | sed -n 's/.*"bind":"\([^"]*\)".*/\1/p')"
+check "healthz 报出实际绑定面（默认回环）" "127.0.0.1:${BPORT}（仅本机回环）" "$bind"
+grep -q '只绑回环' "$TMP/broker.out" && r=ok || r=bad
+check "回环启动时日志点明后果（容器里的 GitLab 打不进来）" ok "$r"
+
+# 反过来：显式对外监听时不能再提示"打不进来"，否则这条提示就变成噪音被无视。
+HOST=0.0.0.0 GITLAB_WEBHOOK_SECRET=s3cret HARNESS_RULES_ROOT="$TMP/rules" FEISHU_VERIFY_TOKEN=fs-verify \
+  node "$HERE/scripts/harness-broker.mjs" --port 0 > "$TMP/broker-open.out" 2>/dev/null &
+OPEN_PID=$!
+for _ in $(seq 1 50); do [ -s "$TMP/broker-open.out" ] && break; sleep 0.1; done
+open_port="$(sed -n 's/^PORT //p' "$TMP/broker-open.out")"
+open_bind="$(curl -s "http://127.0.0.1:${open_port}/healthz" | sed -n 's/.*"bind":"\([^"]*\)".*/\1/p')"
+check "对外监听时报出所有 IPv4 网卡" "0.0.0.0:${open_port}（所有 IPv4 网卡）" "$open_bind"
+grep -q '只绑回环' "$TMP/broker-open.out" && r=bad || r=ok
+check "对外监听时不再喊「打不进来」" ok "$r"
+kill "$OPEN_PID" 2>/dev/null
+
 mr_payload() { cat <<EOF
 { "object_kind": "merge_request", "project": { "id": 1, "name": "demo" }, "user": { "name": "李四" },
   "object_attributes": { "action": "open", "iid": 7, "title": "RS: 新需求", "url": "http://gl/mr/7", "source_branch": "feat/rs" } }
@@ -196,17 +219,32 @@ check "diffs 接口 5xx → 通知降级仍送达（fail-open）" "$((cards_befo
 tail -1 "$TMP/feishu/cards.log" | grep -q '降级'; check "降级卡片含说明" "0" "$?"
 echo ok > "$TMP/gitlab/mode"
 
+# 配置坏了：router / ai-review 是 exit 2，broker 不能变成 HTTP 500。
+# 500 的后果是 GitLab 反复重投 + 这次连账都不记，排查时只剩对方日志里一串 500。
+# 正确姿态是「接住、但不装没事」：200 + 明确原因，卡片与账本都留痕。
+echo '{"projects":"backend"}' > "$TMP/rules/harness.config.json"
+curl -s -o "$TMP/resp-cfg.json" -w '%{http_code}' -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(mr_payload)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/code"
+check "config 形状错 → 200（不把 5xx 甩给 GitLab 反复重投）" "200" "$(cat "$TMP/code")"
+check "响应里点明配置错误" "1" \
+  "$(node -e 'const j=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(j.config_error?1:0)' "$TMP/resp-cfg.json")"
+tail -1 "$TMP/feishu/cards.log" | grep -q 'harness.config.json 有问题'; check "卡片写明是配置坏了（不是「没命中审核」）" "0" "$?"
+grep -q '"type":"mr_route_config_error"' "$TMP/ledger/events.jsonl"; check "账本单记一条 mr_route_config_error" "0" "$?"
+grep -q '"type":"mr_routed".*"config_error":"' "$TMP/ledger/events.jsonl"; check "mr_routed 也带 config_error（不漏记）" "0" "$?"
+rm -f "$TMP/rules/harness.config.json"
+cards_after_cfg=$(feishu_cards)
+
 echo "== 4. pipeline 失败与 digest =="
 curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
   -d '{ "object_kind": "pipeline", "project": { "name": "demo" }, "user": { "name": "王五" },
        "object_attributes": { "status": "failed", "ref": "main", "sha": "abc1234def" } }' \
   "http://127.0.0.1:${BPORT}/webhook/gitlab" > /dev/null
-check "pipeline 失败 → 失败卡片" "$((cards_before + 3))" "$(feishu_cards)"
+check "pipeline 失败 → 失败卡片" "$((cards_after_cfg + 1))" "$(feishu_cards)"
 curl -s -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
   -d '{ "object_kind": "push", "project": { "id": 1 } }' "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/resp.json"
 node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).digest)' "$TMP/resp.json" > "$TMP/d.txt"
 check "非卡片事件走 digest（不推飞书）" "true" "$(cat "$TMP/d.txt")"
-check "digest 不产生新卡片" "$((cards_before + 3))" "$(feishu_cards)"
+check "digest 不产生新卡片" "$((cards_after_cfg + 1))" "$(feishu_cards)"
 
 echo "== 5. 决策回投（批红落账） =="
 puts_before=$(gl_puts)
@@ -384,6 +422,13 @@ curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${rel_port}/healthz" > 
 check "相对路径 broker healthz → 200" "200" "$(cat "$TMP/code")"
 kill $REL_PID 2>/dev/null
 wait $REL_PID 2>/dev/null
+
+# 同一类缺陷的第二种姿势：路径本身经过软链（macOS 上 /tmp → /private/tmp）。
+# Node 把模块加载成真实路径写进 import.meta.url，argv[1] 却原样保留软链，
+# 两边对不上 → 又是"输出为空、退出 0"。实测：仓库放在 /tmp 下就复现。
+ln -s "$HERE" "$TMP/link-repo" 2>/dev/null
+node "$TMP/link-repo/scripts/lib/notify.mjs" --event "$TMP/ev-decision.json" > "$TMP/link-notify.out" 2>/dev/null
+grep -q '"msg_type": "interactive"' "$TMP/link-notify.out"; check "经软链路径调用也正常渲染（不是静默空转）" "0" "$?"
 
 kill $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 wait $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null

@@ -1,0 +1,71 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "apse-doctrine",
+    "task_type": "feature",
+    "related_task": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-07T12:33:18Z",
+    "flow_tier": "S",
+    "risk_tier": "LOW",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：纯教义/文档落地，无 FS/WBS 产出；验收标准即 RS US-1/US-2"
+  },
+  "stage": "done",
+  "stage_history": [
+    { "stage": "rs", "entered_at": "2026-11-07T12:35:00Z", "exited_at": "2026-11-07T12:45:00Z", "gate": "pass", "waived_by": null, "agent": "requirement-analyst", "model": "glm-5.3", "skill_versions": {} },
+    { "stage": "wbs", "entered_at": "2026-11-07T12:45:00Z", "exited_at": "2026-11-07T12:45:01Z", "gate": "deferred", "waived_by": "S 档裁剪：三个文件级改动，无拆分决策点", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "adr", "entered_at": "2026-11-07T12:45:01Z", "exited_at": "2026-11-07T12:45:02Z", "gate": "deferred", "waived_by": "S 档裁剪：无多方案取舍（用户会话定案）", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "fs_review", "entered_at": "2026-11-07T12:45:02Z", "exited_at": "2026-11-07T12:45:03Z", "gate": "deferred", "waived_by": "S 档裁剪：无 FS", "agent": null, "model": null, "skill_versions": {} },
+    { "stage": "impl", "entered_at": "2026-11-07T12:46:00Z", "exited_at": "2026-11-07T12:55:00Z", "gate": "pass", "waived_by": null, "agent": "coder", "model": "glm-5.3", "skill_versions": { "harness": "1.0.0" } },
+    { "stage": "review", "entered_at": "2026-11-07T12:56:00Z", "exited_at": "2026-11-07T13:00:00Z", "gate": "pass", "waived_by": null, "agent": "code-reviewer", "model": "glm-5.3", "skill_versions": { "harness": "1.0.0" } },
+    { "stage": "ci", "entered_at": "2026-11-07T13:00:00Z", "exited_at": "2026-11-07T13:02:00Z", "gate": "pass", "waived_by": null, "agent": "ci-verify", "model": null, "skill_versions": {} }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-Apse借鉴教义落地.md",
+    "fs": null,
+    "wbs": null,
+    "adr": null,
+    "matrix": null,
+    "review": ".ai/tasks/apse-doctrine/cr.md"
+  },
+  "todos": [
+    {
+      "id": "T1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "checklist 第 37 条（停机在边界）+ CR 模板验证阶梯教义段 + retro 借鉴候选清单",
+      "files": [
+        ".skills/harness/references/checklist.md",
+        "templates/CR-代码审查记录.md",
+        "retro/2026-11-07-apse-借鉴候选.md",
+        "docs/01-requirements/RS-Apse借鉴教义落地.md"
+      ],
+      "required_skills": ["harness"],
+      "audit": {
+        "compile": "纯文档改动，无代码变更（node --check 不适用）；check:skills 通过（references 行数不受 SKILL.md 200 行限约束，gate 历来如此）",
+        "tests": "npm run gate 全链 exit 0（含 agents.test.sh 的 CR 模板结构断言、check:skills），A1.log 留档",
+        "feature_complete": "RS 两条验收标准对应物齐：第 37 条含五条判据+外部来源标注；CR 模板教义段含伪造成本排序与「过滤器不是证据」；retro 六项候选均含触发条件与落点",
+        "quality_clean": "CR 模板编辑走既有放行条（2026-11-13 有效期内），无越权；候选项只记录不实现（防预防性建设）"
+      },
+      "verify": { "log_path": ".ai/verify/A1.log", "command": "npm run check:skills && npm run gate" }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": "2026-11-07T13:02:00Z",
+    "stage": "done",
+    "checks": [
+      { "name": "todos_completed_with_evidence", "pass": true },
+      { "name": "stage_history_chain_legal", "pass": true },
+      { "name": "cr_record_with_s0", "pass": true },
+      { "name": "gate_green", "pass": true }
+    ]
+  }
+}

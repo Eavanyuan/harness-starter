@@ -18,7 +18,7 @@ check() {
     printf "  \033[32m✓\033[0m %s\n" "$1"
     pass=$((pass + 1))
   else
-    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"
+    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$2" "$3"
     fail=$((fail + 1))
   fi
 }
@@ -73,6 +73,34 @@ sed 's/"schema_version": 1/"schema_version": 9/' "$HERE/harness.rules.json" > "$
 (cd "$TMP/repo" && echo x > list.txt && node "$HERE/scripts/review-router.mjs" --files list.txt >/dev/null 2>&1)
 check "schema_version 越界 → exit 2" "2" "$?"
 cp "$HERE/harness.rules.json" "$TMP/repo/"
+
+# P2-12 回归：config 存在但解析失败，必须显式红——吞掉的话 cr 静默降级 fallback，
+# 配置手滑一次，审核覆盖面就悄悄变窄（checklist §2）。
+mkdir -p "$TMP/badcfg"
+cp "$HERE/harness.rules.json" "$TMP/badcfg/"
+printf '{ broken json' > "$TMP/badcfg/harness.config.json"
+(cd "$TMP/badcfg" && echo 'backend/A.java' > list.txt && node "$HERE/scripts/review-router.mjs" --files list.txt >/dev/null 2>&1)
+check "harness.config.json 解析失败 → exit 2（不静默降级 fallback）" "2" "$?"
+
+# 解析通过但**形状**不对，同样是"配置手滑一次，审核覆盖面悄悄变窄"。
+# 实测这三行以前都 exit 0：projects 写成字符串 / 项目项漏 dir / 栈项漏 dir ——
+# 全被 map+filter 悄悄吞成空数组，然后 cr 走 fallback_paths，门禁还是绿的。
+shape_cfg() { printf '%s' "$1" > "$TMP/badcfg/harness.config.json"; }
+shape_exit() {
+  (cd "$TMP/badcfg" && echo 'backend/A.java' > list.txt && node "$HERE/scripts/review-router.mjs" --files list.txt >/dev/null 2>&1)
+  echo "$?"
+}
+shape_cfg '{"projects":"backend"}'
+check "projects 写成字符串 → exit 2（不静默退到 fallback）" "2" "$(shape_exit)"
+shape_cfg '{"projects":[{"id":"a"}]}'
+check "项目项漏 dir → exit 2" "2" "$(shape_exit)"
+shape_cfg '{"projects":[{"id":"a","dir":"  "}]}'
+check "项目 dir 是空白 → exit 2" "2" "$(shape_exit)"
+shape_cfg '{"stacks":{"backend":{"srcGlob":"**/*.java"}}}'
+check "v1 栈项漏 dir → exit 2" "2" "$(shape_exit)"
+shape_cfg '{"stacks":{"backend":{"dir":"backend"}}}'
+check "v1 stacks 写法仍被认（老配置不炸）" "0" "$(shape_exit)"
+rm -f "$TMP/badcfg/harness.config.json"
 
 echo "== 5. git 模式（--base 真实 diff） =="
 GT="$TMP/gitrepo"

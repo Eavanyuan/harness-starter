@@ -8,7 +8,9 @@
  * CLI：node scripts/lib/notify.mjs --event <event.json> [--webhook <url>]
  *   无 --webhook 时只渲染打印（dry），有则发送并记录 events.jsonl。
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { recordEvent } from '../../hooks/lib/ledger.mjs';
 
 const md = (content) => ({ tag: 'markdown', content });
@@ -72,8 +74,12 @@ export function renderDecisionCard(evt) {
 export function renderMrCard(evt) {
   const lines = (evt.reviews || []).map((r) => `- **${r.title}**（${r.id}）→ 批红：${r.role_display || r.approval_role}`);
   const counts = evt.findings ? `\n**结论**：🔴 ${evt.findings.red} ｜ 🟡 ${evt.findings.yellow} —— 🔴 未处置不可合入` : '';
+  // 降级不能只说"降级了"，要说**为什么**：diff 接口挂了和配置写坏了，处理人完全不同。
+  const why = evt.degraded
+    ? `\n\n<font color="orange">⚠ ${evt.degraded_reason || 'GitLab diff 接口不可用，路由降级为仅证据链校验'}</font>`
+    : '';
   return card(evt.findings && evt.findings.red > 0 ? 'red' : 'blue', `🤖 MR !${evt.mr.iid}：${evt.mr.title}`, [
-    md(`**作者**：${evt.author || '-'}　**分支**：${evt.ref || '-'}\n\n**自动审核路由**：\n${lines.join('\n') || '- （未命中 AI 审核，仅证据链机器校验）'}${counts}${evt.degraded ? '\n\n<font color="orange">⚠ GitLab diff 接口不可用，路由降级为仅证据链校验</font>' : ''}`),
+    md(`**作者**：${evt.author || '-'}　**分支**：${evt.ref || '-'}\n\n**自动审核路由**：\n${lines.join('\n') || '- （未命中 AI 审核，仅证据链机器校验）'}${counts}${why}`),
     { tag: 'action', actions: [btn('去处理', { k: 'open', url: evt.mr.url }, true, evt.mr.url)] },
     md('<font color="grey">AI 审核是票拟不是判决；🔴 处置与 approve 归批红角色。</font>'),
   ]);
@@ -97,7 +103,13 @@ export async function sendCard(webhookUrl, payload) {
 }
 
 /** ---- CLI ---- */
-const isMain = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
+// 两处都要折算：argv[1] 可能是相对路径（文档示例就是 `node scripts/lib/notify.mjs`），
+// 也可能落在软链目录里（macOS 的 /tmp → /private/tmp、/var → /private/var）。
+// Node 加载模块时会把软链解成真实路径写进 import.meta.url，而 argv[1] 原样保留，
+// 于是两边永远对不上 —— 主模块判定失败、CLI 静默空转退出 0，什么也不打印。
+// 实测：仓库放到软链路径下时，`node <abs>/scripts/lib/notify.mjs --event x.json` 输出为空但 exit 0。
+// （P1-10 第五轮只修了相对路径，这一轮补软链）
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(realpathSync(resolve(process.argv[1]))).href;
 if (isMain) {
   const a = process.argv.slice(2);
   const evIdx = a.indexOf('--event');

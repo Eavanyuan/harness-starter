@@ -18,7 +18,7 @@ check() {
     printf "  \033[32m✓\033[0m %s\n" "$1"
     pass=$((pass + 1))
   else
-    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"
+    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$2" "$3"
     fail=$((fail + 1))
   fi
 }
@@ -130,7 +130,9 @@ check "模型 🔴 → exit 1" "1" "$?"
 V="$(ls -t "$REPO/.ai/reviews2"/rs-*.md | head -1)"
 grep -q '^# findings: red=1 yellow=0' "$V"; check "verdict 红/黄计数正确" "0" "$?"
 
-sed -i '' 's|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|' "$FILES_GOOD"
+# sed -i.bak 是 GNU/BSD 双兼容写法（既有测试的约定）；`sed -i ''` 在 GNU sed 上会把 '' 当脚本、
+# 替换式当文件名——CI(ubuntu) 上退出 1 且不改测试输入（P1-9，第五轮审查）。
+sed -i.bak 's|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|' "$FILES_GOOD"
 cp "$REPO/docs/01-requirements/RS-good.md" "$REPO/docs/01-requirements/RS-good2.md"
 echo garbage > "$TMP/mock/mode"
 node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews3" >/dev/null 2>&1
@@ -150,6 +152,17 @@ sed 's/"rs_required_sections"/"no_such_check"/' "$HERE/harness.rules.json" > "$R
 node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES" >/dev/null 2>&1
 check "未知机器判据 id → exit 2（不静默跳过）" "2" "$?"
 cp "$HERE/harness.rules.json" "$REPO/"
+
+# 三个入口共用 route()，配置坏掉的处置也必须一致（P2-3）。
+# 这条以前只测过 router：ai-review 的 RulesError → exit 2 分支没有断言保护，
+# 而"没有断言的正确"下一次就会被改成"没有断言的不正确"。
+echo '{ "projects": "backend" }' > "$REPO/harness.config.json"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES" >/dev/null 2>&1
+check "config 形状错（projects 是字符串）→ exit 2" "2" "$?"
+echo '{ "projects": [ { "id": "docs", "lang": "md" } ] }' > "$REPO/harness.config.json"
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES" >/dev/null 2>&1
+check "config 形状错（项目漏 dir）→ exit 2" "2" "$?"
+echo '{ "projects": [ { "id": "docs", "lang": "md", "dir": "docs" } ] }' > "$REPO/harness.config.json"
 
 echo "== 4b. 显式降级路径必须真的不调模型 =="
 # 三处口径（RS US-2、指南 §一.1「🔴 直接出，模型都不用调」、CR §0 H6「合法绕过」）都说这两条路零调用。
@@ -171,7 +184,7 @@ check "带 key + 机器判据有 🔴 → exit 1" "1" "$rc"
 
 echo "== 5. dry-run 与增量缓存 =="
 # 回到 RS-good.md：它在 reviews2 有成功轮的缓存（§3 红结论），才能测"沿用不重跑"
-sed -i '' 's|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|' "$FILES_GOOD"
+sed -i.bak 's|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|' "$FILES_GOOD"
 echo '{"summary":"无问题","findings":[]}' > "$TMP/mock/response.json"
 before=$(reqs)
 node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" --dry-run 2>/dev/null \

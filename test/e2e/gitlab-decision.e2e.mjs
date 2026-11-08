@@ -327,6 +327,9 @@ async function main() {
     (await api('GET', '/application/settings')).json.allow_local_requests_from_web_hooks_and_services, true);
 
   const hookBase = hostForContainer();
+  // 要改这个 hook 的话必须把 token 一起写回：GitLab 的 PUT /hooks/:id 在请求体
+  // 不带 token 时会把已有 token **清空**，而响应里不返回 token，看不出被清了。
+  // 症状是之后每次投递都 401/403，而且容易误判成"broker 挂了"。
   const { json: hook } = await api('POST', `/projects/${proj.id}/hooks`, {
     url: `${hookBase}:${brokerPort}/webhook/gitlab`,
     token: SECRET, push_events: true, merge_requests_events: false, enable_ssl_verification: false,

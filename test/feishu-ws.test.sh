@@ -7,6 +7,9 @@
 # 用法：bash test/feishu-ws.test.sh
 set -uo pipefail
 
+# 只连 127.0.0.1：绕过环境里的 http_proxy（否则 curl 得到 502，测的是代理不是代码）
+export NO_PROXY='*' no_proxy='*'
+
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -19,7 +22,7 @@ check() {
     printf "  \033[32m✓\033[0m %s\n" "$1"
     pass=$((pass + 1))
   else
-    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"
+    printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$2" "$3"
     fail=$((fail + 1))
   fi
 }

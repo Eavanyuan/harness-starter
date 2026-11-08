@@ -360,6 +360,40 @@
         "log_path": ".ai/verify/T8.log",
         "command": "bash test/notify-broker.test.sh"
       }
+    },
+    {
+      "id": "T9",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "推送前审查（第五轮 CR）修复：sed 可移植性（P1-9）/ isMain 相对路径静默空转（P1-10）/ projectDirs 吞配置解析错（P2-12）",
+      "files": [
+        "test/ai-review.test.sh",
+        "test/notify-broker.test.sh",
+        "test/review-router.test.sh",
+        "scripts/lib/notify.mjs",
+        "scripts/harness-broker.mjs",
+        "scripts/lib/review-rules.mjs",
+        "scripts/review-router.mjs",
+        "scripts/ai-review.mjs",
+        ".ai/tasks/ai-review-notify/cr-代码审查记录.md",
+        "guides/自我改进闭环落地方案.md",
+        "test/e2e/gitlab-decision.e2e.mjs",
+        ".gitignore"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 五个改动脚本全通过；仍零依赖",
+        "tests": "router 16/16（+1：config 解析失败 exit 2）、ai-review 23/23（sed 改可移植写法后原用例全保）、notify-broker 46/46（+3：notify CLI 与 broker 相对路径启动回归）；全链 gate exit 0（RV2.log）",
+        "feature_complete": "两个 🔴 与 P2-12 按 CR §九处置落地：CI(ubuntu) 的 sed 兼容、文档写法的启动命令真实可用、配置解析失败显式红不静默降级",
+        "quality_clean": "修复各配一行注释指回 CR 条目编号；未改动任何判定语义之外的行为；P2-11（放行条补登记）留人执行未代办"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RV2.log",
+        "command": "bash test/review-router.test.sh && bash test/ai-review.test.sh && bash test/notify-broker.test.sh && npm run gate"
+      }
     }
   ],
   "blockers": [],

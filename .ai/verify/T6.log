@@ -1,6 +1,6 @@
 # cmd: bash test/harness-cli.test.sh
-# started: 2026-11-06T07:45:02Z
-# finished: 2026-11-06T07:46:17Z
+# started: 2026-11-08T01:40:06Z
+# finished: 2026-11-08T01:40:14Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
   [32m✓[0m 用户文件在 --force 下仍保留（不在 manifest）

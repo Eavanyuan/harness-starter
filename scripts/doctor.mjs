@@ -154,6 +154,7 @@ const CONSUMED = [
   'trustLevel',
   'requireVerifyLog',
   'verifyFreshnessHours',
+  'verifyFreshnessGraceSec',
   'blockedCommands',
   'sensitiveRead',
   'writeGuards',

@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { loadRules, route } from './lib/review-rules.mjs';
+import { loadRules, route, RulesError } from './lib/review-rules.mjs';
 import { runMachineChecks, CheckError } from './lib/review-checks.mjs';
 import { recordEvent } from '../hooks/lib/ledger.mjs';
 
@@ -65,7 +65,13 @@ if (opt.files) {
   } catch (e) { die(2, `git diff 失败：${e.message}`); }
 } else usage();
 
-const routed = route(rules, root, changedFiles);
+let routed;
+try {
+  routed = route(rules, root, changedFiles);
+} catch (e) {
+  if (e instanceof RulesError) die(2, e.message); // 如 harness.config.json 解析失败：fail-closed，不空跑
+  throw e;
+}
 const mine = routed.reviews.find((r) => r.id === opt.type);
 if (!mine || mine.files.length === 0) {
   console.log(`[ai-review] 本次变更未命中 ${opt.type}（${changedFiles.length} 个变更），无需审核`);

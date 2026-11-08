@@ -1,10 +1,6 @@
-# cmd: bash -c bash\ test/review-router.test.sh\ \|\ tail\ -1\ \&\&\ bash\ test/ai-review.test.sh\ 2\>/dev/null\ \|\ tail\ -1\ \&\&\ bash\ test/notify-broker.test.sh\ 2\>/dev/null\ \|\ tail\ -1\ \&\&\ npm\ run\ gate\ 2\>\&1\ \|\ tail\ -1\ \&\&\ echo\ GATE_EXIT_OK
-# started: 2026-11-07T11:52:13Z
-# finished: 2026-11-07T11:53:05Z
+# cmd: bash -c bash\ test/review-router.test.sh\ \>/dev/null\ \&\&\ bash\ test/ai-review.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ bash\ test/notify-broker.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ OK
+# started: 2026-11-08T01:43:04Z
+# finished: 2026-11-08T01:43:41Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-结果：16 通过，0 失败
-结果：23 通过，0 失败
-结果：46 通过，0 失败
-结果：43 通过，0 失败
-GATE_EXIT_OK
+OK

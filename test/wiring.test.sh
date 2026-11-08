@@ -16,7 +16,28 @@ TMP="$(mktemp -d)"
 cp .claude/settings.json "$TMP/claude.bak"
 cp .zcode/config.json "$TMP/zcode.bak" 2>/dev/null || true
 cp harness.config.json "$TMP/harness.config.bak"
-trap 'cp "$TMP/claude.bak" .claude/settings.json; [ -f "$TMP/zcode.bak" ] && cp "$TMP/zcode.bak" .zcode/config.json; cp "$TMP/harness.config.bak" harness.config.json; rm -rf "$TMP"' EXIT
+
+# 复原时连 mtime 一起复原。
+#
+# 这套用例要先把真配置改坏、再还原；`cp` 还原会把 mtime 刷成"现在"，
+# 而证据新鲜度判据（hooks/lib/verify.mjs）看的正是 mtime 与日志的先后。
+# 结果：每跑一次 gate（里面就有本套件），所有把 harness.config.json 写进 files 的
+# 任务（如 GF1）立刻被判"日志早于源码修改，请真的重跑一次"——测出来的红是套件自己造成的，
+# 与代码是否真改了毫无关系。`touch -r` 是这里唯一能保住"编辑时间"语义的做法。
+restore_mtime() { touch -r "$2" "$1"; }
+touch -r harness.config.json "$TMP/config.stamp"
+touch -r .claude/settings.json "$TMP/claude.stamp"
+[ -f .zcode/config.json ] && touch -r .zcode/config.json "$TMP/zcode.stamp"
+restore_config() { cp "$TMP/harness.config.bak" harness.config.json; restore_mtime harness.config.json "$TMP/config.stamp"; }
+restore() {
+  cp "$TMP/claude.bak" .claude/settings.json; restore_mtime .claude/settings.json "$TMP/claude.stamp"
+  if [ -f "$TMP/zcode.bak" ]; then
+    cp "$TMP/zcode.bak" .zcode/config.json; restore_mtime .zcode/config.json "$TMP/zcode.stamp"
+  fi
+  restore_config
+  rm -rf "$TMP"
+}
+trap restore EXIT
 
 pass=0
 fail=0
@@ -91,9 +112,14 @@ echo "== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 =
 node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync("harness.config.json","utf8"));c.stacks.backend.lint="mvn -q -DskipTests compile";fs.writeFileSync("harness.config.json",JSON.stringify(c,null,2))'
 node scripts/doctor.mjs >"$TMP/doctor-flag.out" 2>&1
 code=$?
-cp "$TMP/harness.config.bak" harness.config.json
+restore_config
 check "配置命令违反纪律被体检拦住" 1 "$code"
 verify "grep -q 'skipTests' \"$TMP/doctor-flag.out\"" "体检输出点名了违规 flag"
+
+# 复原必须连 mtime 一起复原，否则这套用例每跑一次就把相关任务的证据判成过期。
+# 断言写成"文件不比原始时间戳更新"（find -newer 是 POSIX，BSD/GNU 都有），
+# 比"记得用 touch -r"更可靠。
+verify "test -z \"\$(find harness.config.json -newer \"$TMP/config.stamp\")\"" "还原后 harness.config.json 没被这套用例改成\"刚写过\""
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

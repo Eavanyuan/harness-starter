@@ -165,3 +165,51 @@ content 里永远有 `| OP-3 |` 这行——于是第一次任意写入（OP-1�
   而 GitLab 的分支保护已经承担了第一道闸，先不做，等真有越权批红再补。
 
 证据：`.ai/verify/T8.log`（`bash test/notify-broker.test.sh`，43 断言）、`V1.log`（全链 gate）。
+
+## 九、第五轮：推送前全量审查（2026-11-07，人发起）
+
+范围：`origin/main..HEAD`（6 提交、47 文件、+4814/−125）——含第一轮的原始落地与后续三论的修复/重构。
+skill：harness（**注意**：`resolve-skills --diff` 只看已跟踪文件的 diff，本批以纯新增文件为主，
+前置步骤会静默空转——按 applies_to 人工确认命中，见 P2-13）。
+本地复跑：`RV1.log`（router 15 / ai-review 23 / notify-broker 43 / feishu-ws 43 / gate 全链 exit 0，darwin）。
+
+| # | 级别 | 问题 | 判据（怎么核实的） | 处置 |
+|---|---|---|---|---|
+| P1-9 | 🔴 | `test/ai-review.test.sh:133,174` 用 `sed -i ''`（BSD 专用写法）。GNU sed 把 `''` 当脚本、把替换表达式当文件名，退出 1 且**不修改测试输入**——§3/§5 断言随即失配。CI 是 ubuntu 且已接线 `test:ai-review`（quality-gate.yml:65），**推送即红** | 既有测试全部用可移植的 `sed -i.bak`（completeness/skills 共 17 处），仅两个新测试文件用了 `''` | **已修（T9）**：两行改 `sed -i.bak`；notify-broker:103 死 sed 已删 |
+| P1-10 | 🔴 | `isMain` 判定用 `new URL(\`file://${argv[1]}\`)`：**相对路径调用时永不相等 → 静默空转退出 0**。`scripts/lib/notify.mjs:100`、`scripts/harness-broker.mjs:377`。而 broker 文件头与 guides 两处（59/106 行）写的启动命令正是 `node scripts/harness-broker.mjs --port 8788`——照文档启动，服务不启动、无报错 | 最小复现已做：同构造的 lib.mjs，`node lib.mjs`（相对）输出 SILENT NO-OP，绝对路径正常 | **已修（T9）**：两处改 `pathToFileURL(resolve(argv[1]))`；notify-broker 增 3 条相对路径启动回归用例 |
+| P2-11 | 🟡 | `package.json` 与 `.github/workflows/quality-gate.yml` 的考卷区编辑（bbafef3 / 5a26e21）在 `hooks/write-allowlist.txt` 里**没有对应放行条**（该文件本批零 diff）——授权链缺痕。改动内容本身在 pending-wiring.md 记录且用户授权过，但"由人加行"这道程序没走 | `git log origin/main..HEAD -- hooks/write-allowlist.txt` 为空 | 补登记两条（内容 = pending-wiring.md 第一节），到期日自定 |
+| P2-12 | 🟡 | `review-rules.projectDirs()` 把 harness.config.json 解析失败吞成 `[]` → cr 静默降级 fallback_paths（checklist §2：失败不许退化成"没有变化"）。配置手滑打错 JSON 时，审核路由悄悄变窄 | 读源码 catch 块；无负向用例覆盖 | **已修（T9）**：解析失败抛 RulesError，router/ai-review 转 exit 2；router 增负向用例（16/16） |
+| P2-13 | 🟡 | `resolve-skills --diff` 看不到未跟踪文件——纯新增变更集（新功能最常见的形态）会让"审查前必须加载 skill"静默跳过。本次审查自己就踩到 | 本轮开头实测："没有改动文件，无需加载 skill"，而实际有 20+ 新文件 | 建议：`--diff` 未跟踪文件并入候选（`git ls-files --others --exclude-standard`） |
+| P2-14 | 🟡 | 决策卡 `options.slice(0, 4)` 静默丢弃第 5+ 个选项，卡片不注明——被丢的选项等于从未票拟 | `notify.mjs:51`；无断言 | 建议：超 4 个时卡片注明"另有 N 项见文档"或直接拒渲染 |
+| P2-15 | 🟡 | ws 层健壮性两处：`ws-client` 无最大帧上限（64 位长度声明可无限缓冲）；`feishu-frame.decodeHeader/decodeFrame` 长度字段越界时 `subarray` 静默给短切片而不是报错。对端是飞书网关，风险低但与"改写握手的代理"同级的防中间层姿态不一致 | 读源码；解码负向用例只覆盖了 varint 越界 | 可延后：帧上限（如 4MB）+ 越界 throw |
+
+### 核验过的修复与亮点（不是走过场）
+
+- 第一轮我留的三个怀疑全部被后续轮次修掉且**修复姿势正确**：blocker_id 正则转义（broker:110）、飞书回调无鉴权（token 短缺 503 而非降级、url_verification 回显）、diffs 分页（首页 100 条静默少判）。
+- `machine-only` 次序修正的注释把"为什么"写透了（有 key 的 CI 恰是这个开关唯一存在的理由）——同类改动的注释范本。
+- ws 三件套的**去重事务**（seen/forget 配对，处理失败撤回占位让重投真正生效）与**半开检测**（liveness×3）是这类代码最容易缺的两块，都有断言和变异验证背书（第四轮"孤立删除行"那条经验尤其好）。
+- 方案 D 的身份论证成立：commit author 由 Git 服务器记录，可信度高于回调体声明的 open_id；approvers 名单空/非空的两档语义在 rules 里写清了。
+
+### 结论
+
+🔴 ×2（P1-9/P1-10，合计约五行改动）→ **修改后推送**；🟡 ×5 已逐条表态（2 补登记、3 可延后立项）。
+
+### 修复落地（T9，2026-11-07）
+
+P1-9 / P1-10 / P2-12 当日修复，同批新增 4 条回归用例（router、notify-broker 两套，条数以
+`.ai/verify/T1.log`、`T8.log` 的"结果：N 通过"为准——写死数字会随用例增长漂移，这里只留套件名），
+全链复跑见 `.ai/verify/RV2.log`。P2-11（放行条补登记）留人执行；P2-13/14/15 立项延后。
+
+### 第三轮（review-p2-fix，2026-11-08）
+
+上一轮复审留下的三条 P2 已全部落地，判据与证据见 `.ai/tasks/review-p2-fix/state.json`：
+
+| # | 问题 | 处置 |
+|---|---|---|
+| P2-1 | config 只判 parse、不判形状：`{"projects":"backend"}`、项目漏 `dir` 都 exit 0，路由静默退 fallback | **已修**：`projectDirs` 逐层校验形状，形状错抛 RulesError；router 增 4 条负向 + 1 条"v1 老配置仍认"的防误伤用例 |
+| P2-2 | 证据链被管道洗绿：`套件 \| tail -1` 的退出码是 `tail` 的 0，日志照样写 `exit_code: 0` | **已修**：`verify-run.sh` 导出 `SHELLOPTS` 把 pipefail 传给子 bash；增 3 条用例；`RV2.log` 已用无管道命令重跑覆盖 |
+| P2-3 | 三个入口对 RulesError 口径不一：broker 落 HTTP 500（GitLab 反复重投且不记账） | **已修**：broker 接住 → 200 + `config_error`，卡片写明"配置坏了"、账本单记 `mr_route_config_error`；ai-review 的 exit 2 分支补用例 |
+
+顺带修掉同形态的一个静默空转：`notify.mjs` 的 `isMain` 用 `resolve` 比 `import.meta.url`，路径经软链
+（macOS `/tmp` → `/private/tmp`）时永不相等，CLI 输出为空却退出 0 → 改 `realpathSync`，并加软链路径用例。
+P3-4（写死断言数）也顺手改了：本节只引套件名与日志路径，不再写数字。

@@ -28,7 +28,7 @@ import http from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { loadRules, route } from './lib/review-rules.mjs';
+import { loadRules, route, RulesError } from './lib/review-rules.mjs';
 import { parseDecisionRowsFromDiff, createSeenKeys } from './lib/decision-from-git.mjs';
 import { renderDecisionCard, renderMrCard, renderPipelineCard, sendCard } from './lib/notify.mjs';
 import { startFeishuWs } from './feishu-ws.mjs';
@@ -292,6 +292,8 @@ async function handle(cfg, req, res) {
     const wsStats = rt.feishuWs && rt.feishuWs.stats;
     return json(200, {
       ok: true,
+      // 绑定面写进 healthz：判断"是不是只有本机能连"不用再去翻启动日志。
+      bind: rt.bind || null,
       feishu: wsStats
         ? { mode: 'ws', connected: !!wsStats.connected, connections: wsStats.connections, events: wsStats.events, duplicates: wsStats.duplicates, failures: wsStats.failures, lastError: wsStats.lastError }
         : { mode: rt.mode || 'http', connected: null },
@@ -326,18 +328,39 @@ async function handle(cfg, req, res) {
 
     if (body.object_kind === 'merge_request' && ['open', 'reopen', 'update'].includes(attr.action)) {
       const files = await mrFiles(cfg, body.project?.id, attr.iid);
-      const routed = files ? route(rules, cfg.rulesRoot, files) : null;
+      // 三个入口共读 route()，口径也必须一致：router / ai-review 是 exit 2 + 一行人话。
+      // 这里不接住就会落到外层 catch → HTTP 500，而 GitLab 把 5xx 当投递失败会反复重投，
+      // 且这一次连 mr_routed 都不记：卡片没发、账没有，只剩对方日志里一串 500。
+      // 所以接住，但**不许装没事**——卡片上写明配置坏了，账本单记一条，人看得见。
+      let routed = null;
+      let configError = null;
+      if (files) {
+        try {
+          routed = route(rules, cfg.rulesRoot, files);
+        } catch (e) {
+          if (!(e instanceof RulesError)) throw e;
+          configError = e.message;
+          recordEvent('broker', 'mr_route_config_error', { iid: attr.iid, error: e.message });
+        }
+      }
       const reviews = (routed?.reviews || []).map((r) => ({ ...r, role_display: roles[r.approval_role] || r.approval_role }));
+      const degraded = files == null || configError != null;
       const cardP = renderMrCard({
         mr: { iid: attr.iid, title: attr.title, url: attr.url },
         author: body.user?.name || attr.author?.name, ref: attr.source_branch,
-        reviews, degraded: files == null,
+        reviews, degraded,
+        degraded_reason: configError
+          ? `harness.config.json 有问题，自动路由失败 —— 请修配置后重跑 CR：${configError}`
+          : (files == null ? '' : null),
       });
       if (cardEvents.includes('mr_open') && cfg.feishuWebhook) {
         try { await sendCard(cfg.feishuWebhook, cardP); } catch (e) { console.error(`[broker] 飞书发送失败（fail-open）：${e.message}`); }
       }
-      recordEvent('broker', 'mr_routed', { iid: attr.iid, reviews: reviews.map((r) => r.id), degraded: files == null, sent: cardEvents.includes('mr_open') && !!cfg.feishuWebhook });
-      return json(200, { ok: true, reviews: reviews.map((r) => r.id) });
+      recordEvent('broker', 'mr_routed', {
+        iid: attr.iid, reviews: reviews.map((r) => r.id), degraded, config_error: configError,
+        sent: cardEvents.includes('mr_open') && !!cfg.feishuWebhook,
+      });
+      return json(200, { ok: true, reviews: reviews.map((r) => r.id), degraded, config_error: configError });
     }
 
     if (body.object_kind === 'pipeline' && attr.status === 'failed') {
@@ -365,6 +388,24 @@ async function handle(cfg, req, res) {
   }
 
   return json(404, { error: '未知路径' });
+}
+
+/**
+ * 把实际绑定地址翻译成"别人到底能不能打进来"。
+ *
+ * 这条日志存在的理由：排查"宿主 curl 得到 200、GitLab 却报 internal error"花了一整轮，
+ * 差别只在 broker 绑在回环上——GitLab 在容器里，`host.docker.internal` 是宿主在 docker
+ * 网桥上的地址（192.168.65.254），不是 127.0.0.1。配置没错，错在没人告诉我"它在回环上"。
+ * 启动横幅说清楚一句，比事后翻三次日志便宜。
+ */
+function describeBind(addr) {
+  if (!addr) return '未知（listen 回调里也拿不到地址）';
+  const { address: host, port } = addr;
+  const shown = host.includes(':') ? `[${host}]` : host;
+  if (host === '127.0.0.1' || host === '::1') return `${shown}:${port}（仅本机回环）`;
+  if (host === '0.0.0.0') return `${shown}:${port}（所有 IPv4 网卡）`;
+  if (host === '::') return `${shown}:${port}（所有网卡，IPv6 + IPv4 双栈）`;
+  return `${shown}:${port}（指定网卡）`;
 }
 
 export function startServer(userCfg = {}) {
@@ -395,6 +436,9 @@ export function startServer(userCfg = {}) {
   });
   return new Promise((resolve) => {
     server.listen(cfg.port, cfg.host, () => {
+      // 记的是**实际**绑定结果（server.address()），不是 env 里的愿望——
+      // HOST 写成 `::`/`0.0.0.0`/主机名时，真正的监听面只有这里知道。
+      cfg.runtime.bind = describeBind(server.address());
       let feishuWs = null;
       if (mode === 'ws') {
         feishuWs = startFeishuWs({
@@ -426,9 +470,13 @@ if (isMain) {
   // 让人分不清"配置错"和"崩了"。
   Promise.resolve()
     .then(() => startServer())
-    .then(({ server, port, mode, feishuWs }) => {
+    .then(({ server, port, cfg, mode, feishuWs }) => {
       console.log(`PORT ${port}`); // --port 0 时测试从这里拿实际端口
       console.log(`FEISHU_MODE ${mode}`); // 测试与运维都靠这行确认"入站到底怎么接的"
+      console.log(`[broker] 监听 ${cfg.runtime.bind}`);
+      if (/仅本机回环/.test(cfg.runtime.bind)) {
+        console.log('[broker] 只绑回环：宿主机 curl 通，但容器里的 GitLab（host.docker.internal）打不进来——接它们要 HOST=0.0.0.0');
+      }
       const stop = () => {
         if (feishuWs) feishuWs.stop();
         server.close(() => process.exit(0));

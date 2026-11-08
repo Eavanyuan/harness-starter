@@ -1,0 +1,40 @@
+# cmd: bash test/review-router.test.sh
+# started: 2026-11-08T01:44:27Z
+# finished: 2026-11-08T01:44:28Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+== 1. 命中与分流 ==
+  [32m✓[0m RS 文档 → rs + evidence
+  [32m✓[0m 任务目录 rs.md（单层 *）命中
+  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
+  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
+  [32m✓[0m 源码（projects 槽 backend）→ cr
+  [32m✓[0m RS + 源码混合 → 三类并存
+  [32m✓[0m 未匹配文件（README）→ 仅 evidence
+== 2. 噪声与 trivial ==
+  [32m✓[0m 纯噪声 → 无任何审核
+  [32m✓[0m 纯噪声 → trivial=true（evidence 也跳过）
+  [32m✓[0m 噪声+真实混合 → 噪声不进 rs
+== 3. projects 无配置时 fallback 兜底 ==
+  [32m✓[0m 无 config → cr 走 fallback
+  [32m✓[0m fallback 槽 src/** 命中 python 源码
+== 4. fail-closed：规则坏了不许装没事 ==
+  [32m✓[0m 规则缺失 → exit 2
+  [32m✓[0m schema_version 越界 → exit 2
+  [32m✓[0m harness.config.json 解析失败 → exit 2（不静默降级 fallback）
+  [32m✓[0m projects 写成字符串 → exit 2（不静默退到 fallback）
+  [32m✓[0m 项目项漏 dir → exit 2
+  [32m✓[0m 项目 dir 是空白 → exit 2
+  [32m✓[0m v1 栈项漏 dir → exit 2
+  [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
+== 5. 无槽可见化与 fs 路由（演练 G1/B3） ==
+  [32m✓[0m 无槽代码不改变退出码（可见不阻断）
+  [32m✓[0m uncovered 列出槽外代码文件
+  [32m✓[0m stderr 有覆盖洞提示
+  [32m✓[0m 账本记 uncovered_code
+  [32m✓[0m 槽外 md 不误报 uncovered
+  [32m✓[0m FS 变更 → fs + evidence
+== 6. git 模式（--base 真实 diff） ==
+  [32m✓[0m --base diff 只取新文件
+
+结果：27 通过，0 失败

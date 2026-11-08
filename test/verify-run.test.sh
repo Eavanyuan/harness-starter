@@ -103,6 +103,38 @@ code=0
 bash scripts/verify-run.sh T9 bash -c true >/dev/null 2>&1 || code=$?
 check "缺少 -- 分隔符 → 64" 64 "$code"
 
+echo "== 8. 日志 id 撞名 → 不静默覆盖别人的证据 =="
+# .ai/verify/<id>.log 是全局命名空间。两个任务都用 T1 时，后来者会静默冲掉前者，
+# 而门禁只看"有日志且 exit 0"，串台看不出来——证据被换成另一件事的输出，账还是绿的。
+mkdir -p .ai/tasks/other
+cat > .ai/tasks/other/state.json <<'EOF'
+{ "meta": { "task": "other" },
+  "todos": [ { "id": "T1", "verify": { "log_path": ".ai/verify/T1.log" } } ] }
+EOF
+
+code=0; bash scripts/verify-run.sh T1 -- bash -c 'true' >/dev/null 2>"$TMP/e8" || code=$?
+check "只被一个任务引用且未声明 --task → 放行（自己重跑）" 0 "$code"
+check "但把占用者点名说出来" 1 "$(grep -c 'other' "$TMP/e8")"
+
+code=0; bash scripts/verify-run.sh --task mine T1 -- bash -c 'true' >/dev/null 2>"$TMP/e9" || code=$?
+check "声明了别的任务名 → 拒绝覆盖（exit 2）" 2 "$code"
+check "拒绝时说明是谁的、怎么改" 1 "$(grep -c '拒绝覆盖' "$TMP/e9")"
+
+code=0; bash scripts/verify-run.sh --task other T1 -- bash -c 'true' >/dev/null 2>&1 || code=$?
+check "声明占用者自己的名字 → 允许重跑" 0 "$code"
+
+echo "== 9. 管道不许把红的洗成绿的（| tail -1 的退出码）=="
+# `false | tail -1` 的退出码是 tail 的 0。以前这条链会一路绿到底，日志写 exit_code: 0，
+# 而真正的套件已经红了——证据链最贵的错误是"它说自己跑过了"。
+code=0
+bash scripts/verify-run.sh T6 -- bash -c 'false | tail -1' >/dev/null 2>&1 || code=$?
+check "管道末段成功 ≠ 命令成功（pipefail 传到子 bash）" 1 "$code"
+grep -q '^# exit_code: 1$' .ai/verify/T6.log && r=0 || r=1
+check "日志头如实记 exit_code: 1" 0 "$r"
+code=0
+bash scripts/verify-run.sh T7 -- bash -c 'exit 0 | tail -1' >/dev/null 2>&1 || code=$?
+check "真的成功仍然记 0（不是一律判死）" 0 "$code"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

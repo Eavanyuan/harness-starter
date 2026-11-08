@@ -19,3 +19,7 @@ node_modules/
 
 # ai-review 增量缓存（键=文件内容 sha，属本机状态；结论 md 才入库）
 .ai/reviews/.cache-*.json
+
+# zcode 的文档导入缓存：原始 .docx 二进制副本（4MB 级），不是源，别一起提交。
+# .zcode 下的 agents/commands/config 是产物、要入库；只有这个导入缓存目录不要。
+.zcode/document-imports/

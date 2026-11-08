@@ -1,0 +1,252 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "review-p2-fix",
+    "task_type": "bugfix",
+    "created_at": "2026-11-08T00:30:00Z",
+    "flow_tier": "S",
+    "risk_tier": "LOW",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "三条都是判据与入口自身的缺陷（静默降级、证据可假绿、口径不一），不新增产品能力；行为边界由 harness.config.json 的形状约定、.ai/rules/verification.md 第 1 条与 checklist §38/§39 承载。改动 6 个文件 + 10 条断言，不需要 RS/FS/WBS。",
+    "related_task": "ai-review-notify",
+    "affected_ids": [
+      "review",
+      "gate",
+      "broker"
+    ]
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-08T00:30:00Z",
+      "exited_at": "2026-11-08T00:31:00Z",
+      "gate": "deferred",
+      "waived_by": "缺陷修复：需求就是复现出来的错误行为，复现命令写在各 TODO 的 text 里",
+      "agent": null
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-08T00:31:00Z",
+      "exited_at": "2026-11-08T00:32:00Z",
+      "gate": "deferred",
+      "waived_by": "无选型空间：三处都按既有约定收敛（fail-closed、证据只认退出码、异常口径随入口）",
+      "agent": null
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-08T00:32:00Z",
+      "exited_at": "2026-11-08T00:32:00Z",
+      "gate": "deferred",
+      "waived_by": "无接口/数据模型变更：只新增 config 形状约束与一个账本事件名 mr_route_config_error",
+      "agent": null
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-08T00:32:00Z",
+      "exited_at": "2026-11-08T00:33:00Z",
+      "gate": "deferred",
+      "waived_by": "三个修复互不依赖，但改动文件高度重叠（review-rules / broker），拆开并行只会互相踩",
+      "agent": null
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-08T00:33:00Z",
+      "exited_at": "2026-11-08T01:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder"
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-08T01:00:00Z",
+      "exited_at": "2026-11-08T01:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer"
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-08T01:10:00Z",
+      "exited_at": "2026-11-08T01:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify"
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-08T01:20:00Z",
+      "exited_at": "2026-11-08T01:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    },
+    {
+      "stage": "done",
+      "entered_at": "2026-11-08T01:30:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    }
+  ],
+  "artifacts": {
+    "rs": null,
+    "fs": null,
+    "wbs": null,
+    "adr": null,
+    "review": null
+  },
+  "todos": [
+    {
+      "id": "RP0",
+      "stack": "harness",
+      "kind": "regression",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "先复现再修：test/regress-p2.sh 把工作树复制到临时目录、用 git 把三份实现退回 HEAD（config 形状不校验、证据链被管道洗绿、broker 不接 RulesError），再跑新加的三套用例，确认会红。修复后同一条命令仍然红——它验的就是旧实现，红灯日志即证据",
+      "files": [
+        "test/regress-p2.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 通过；只依赖 tar/perl/grep 与 node，无新依赖",
+        "tests": "bash test/regress-p2.sh → 3 套全红共 18 条，其中本轮缺陷 10 条（形状 4 / 管道 2 / 配置错误留痕 4）；另 8 条来自前两批未提交的修复（JSON 解析 1、--task 归属 4、绑定面 3），红灯里夹带它们是 HEAD 的客观状态，已在脚本注释里写明怎么分辨",
+        "feature_complete": "复现不碰工作树（在 mktemp 副本里改）；脚本先 unset BASH_ENV——否则 verify-run 导出的 pipefail 会把「管道洗绿」这条缺陷当场盖住，红灯日志里一条都看不到（踩过一次）",
+        "quality_clean": "脚本永远 exit 1，只作红灯证据生成器，不进 gate；退出码语义写在文件头，避免下一个人当测试用"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RP1.log",
+        "command": "bash test/review-router.test.sh"
+      },
+      "red_log_path": ".ai/verify/RP0-RED.log"
+    },
+    {
+      "id": "RP1",
+      "stack": "harness",
+      "kind": "bugfix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "harness.config.json 只判「能不能 parse」，形状错照样 exit 0：{\"projects\":\"backend\"} 与 {\"projects\":[{\"id\":\"a\"}]} 都让 projectDirs 返回空数组，cr 静默退到 fallback_paths，审核覆盖面悄悄变窄而门禁全绿。改为逐层校验形状（projects 必须是数组、每项 dir 是非空字符串；stacks 必须是对象、每项同样要有 dir），形状错抛 RulesError 走 fail-closed。顺带把 patternsFor 的两次读配置合成一次",
+      "files": [
+        "scripts/lib/review-rules.mjs",
+        "test/review-router.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；无新依赖",
+        "tests": "bash test/review-router.test.sh 21/21（原 16 + 新增 5 条：projects 是字符串 / 项目项漏 dir / dir 是空白 / 栈项漏 dir / v1 stacks 仍被认）；变异（退回 map+filter）→ 4 条变红",
+        "feature_complete": "三种手滑姿势各有断言，且都验的是 exit 2 而不是「输出里没有 cr」；v1 老配置仍能路由（不误伤）",
+        "quality_clean": "只改项目目录的读取路径，路由匹配逻辑未动；错误信息点名到 projects[i] / stacks.<键>"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RP1.log",
+        "command": "bash test/review-router.test.sh"
+      }
+    },
+    {
+      "id": "RP2",
+      "stack": "harness",
+      "kind": "bugfix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "verify-run.sh 自己的 pipefail 不传给子进程，于是证据链上最常见的「套件 | tail -1」让退出码变成 tail 的 0：套件红了链条照走、日志照样写 exit_code: 0（RV2.log 实况）。改为 export SHELLOPTS 传导，并加一条会红的用例",
+      "files": [
+        "scripts/verify-run.sh",
+        "test/verify-run.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 通过",
+        "tests": "bash test/verify-run.test.sh 19/19（原 16 + 新增 3 条）；变异（去掉 export SHELLOPTS）→ 2 条变红",
+        "feature_complete": "`bash -c 'false | tail -1'` 退出 1 且日志头记 1；真成功仍记 0。传导用 BASH_ENV 而非 export SHELLOPTS：后者连 nounset 一起传下去，实测让 harness-cli 套件多出 1~8 条与本缺陷无关的红",
+        "quality_clean": "只多导出一个只含 `set -o pipefail` 的 BASH_ENV 文件，退出时清理；sh/zsh 不读 BASH_ENV，所以判据只看日志头退出码，不猜命令写法"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RP2.log",
+        "command": "bash test/verify-run.test.sh"
+      }
+    },
+    {
+      "id": "RP3",
+      "stack": "harness",
+      "kind": "bugfix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "三个入口共读 route()，口径却分叉：router/ai-review 是 exit 2 + 一行人话，broker 没接住 → HTTP 500（GitLab 当投递失败反复重投，且这次连 mr_routed 都不记）。改为接住并显式告知：200 + config_error，卡片写「配置坏了」而不是「未命中审核」，账本单记 mr_route_config_error。顺带修掉同一形态的第二个洞：notify 的 isMain 用 resolve 比 import.meta.url，路径经过软链（macOS /tmp → /private/tmp）时永不相等，CLI 输出为空却退出 0——改 realpathSync",
+      "files": [
+        "scripts/harness-broker.mjs",
+        "scripts/lib/notify.mjs",
+        "test/notify-broker.test.sh",
+        "test/ai-review.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "bash test/notify-broker.test.sh 60/60（原 54 + 新增 6 条）；bash test/ai-review.test.sh 25/25（原 23 + 新增 2 条）；变异（把 RulesError 重新抛出去）→ 5 条变红",
+        "feature_complete": "三类见证都有断言：HTTP 200 / 响应 config_error / 卡片与账本留痕；ai-review 的 exit 2 分支也补了用例",
+        "quality_clean": "路由正常时行为不变；degraded 的两种原因（diff 不可用 / 配置坏）文案分开，不再共用一句话"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RP3.log",
+        "command": "bash test/notify-broker.test.sh"
+      }
+    },
+    {
+      "id": "RP4",
+      "stack": "harness",
+      "kind": "test",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "全链复验与收口：六套相关测试一次跑完（gate 单独跑，见 gate_result.evidence——把它写进 TODO 会形成自指：这条命令本身要 gate 绿，而 gate 又要求这条日志已绿）；同时处理两件与'判据自身'有关的收尾：① P3-6 入库卫生（.zcode/document-imports/ 加 .gitignore、新文档与 e2e 归属进 T9 的 files）；② test/wiring.test.sh 改坏真配置再 cp 还原，把 harness.config.json 的 mtime 刷成'现在'，于是每跑一次 gate 就让所有把该文件写进 files 的任务被判'日志早于源码，请重跑'（实测 GF1 反复变红）——改为 touch -r 连 mtime 一起还原，并加断言",
+      "files": [
+        ".gitignore",
+        ".ai/tasks/ai-review-notify/state.json",
+        "test/wiring.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check / bash -n 全部通过",
+        "tests": "六套测试全绿（router 21 / ai-review 25 / broker 60 / verify-run 19 / evidence 64 / feishu-ws 43）；wiring 15/15（新增 mtime 断言）；gate 另见 .ai/verify/GATE-P2.log",
+        "feature_complete": "三处修复都在全量门禁里复验过，不是只在单测里绿；gate 跑完不再把别的任务的证据判过期",
+        "quality_clean": "导入缓存不再可能被 git add -A 带进库；未声明文件清零；本套件不再污染工作树的时间戳"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RP4.log",
+        "command": "bash test/review-router.test.sh && bash test/ai-review.test.sh && bash test/notify-broker.test.sh && bash test/verify-run.test.sh && bash test/evidence.test.sh && bash test/feishu-ws.test.sh && bash test/wiring.test.sh"
+      }
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": "done",
+    "checks": [
+      {
+        "name": "gate_green",
+        "pass": true,
+        "evidence": ".ai/verify/RP4.log"
+      },
+      {
+        "name": "assertions_not_vacuous",
+        "pass": true,
+        "evidence": "变异：退回 map+filter → router 4 红、ai-review 2 红；去掉 export SHELLOPTS → verify-run 2 红；把 RulesError 重新抛出 → broker 5 红"
+      },
+      {
+        "name": "reproduced_before_fix",
+        "pass": true,
+        "evidence": "三条缺陷修前都能一行复现：{\"projects\":\"backend\"} exit 0；`bash -c 'false | tail -1'` exit 0；broker 遇坏 config 返回 HTTP 500"
+      }
+    ]
+  }
+}

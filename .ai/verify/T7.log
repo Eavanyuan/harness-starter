@@ -1,6 +1,6 @@
 # cmd: bash test/feishu-ws.test.sh
-# started: 2026-11-06T08:28:33Z
-# finished: 2026-11-06T08:28:42Z
+# started: 2026-11-08T01:40:14Z
+# finished: 2026-11-08T01:40:20Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 声明走长连接但缺凭据 / 模式拼错 → 拒启动（fail-closed） ==

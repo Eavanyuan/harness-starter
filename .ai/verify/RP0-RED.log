@@ -1,0 +1,33 @@
+# cmd: bash test/regress-p2.sh
+# started: 2026-11-08T00:44:17Z
+# finished: 2026-11-08T00:44:33Z
+# exit_code: 1
+# ---- output tail (last 200 lines) ----
+WorkBuddy: file rollback is not tracked for these tar options.
+[复现] 已退回旧实现：scripts/lib/review-rules.mjs
+[复现] 已退回旧实现：scripts/harness-broker.mjs
+[复现] 已退回旧实现：scripts/verify-run.sh
+[复现] review-router.test.sh 变红，失败用例：
+       ✗ harness.config.json 解析失败 → exit 2（不静默降级 fallback）  (期望 2，实际 0)
+       ✗ projects 写成字符串 → exit 2（不静默退到 fallback）  (期望 2，实际 0)
+       ✗ 项目项漏 dir → exit 2  (期望 2，实际 0)
+       ✗ 项目 dir 是空白 → exit 2  (期望 2，实际 0)
+       ✗ v1 栈项漏 dir → exit 2  (期望 2，实际 0)
+[复现] verify-run.test.sh 变红，失败用例：
+       ✗ 但把占用者点名说出来  (期望 1，实际 0)
+       ✗ 声明了别的任务名 → 拒绝覆盖（exit 2）  (期望 2，实际 64)
+       ✗ 拒绝时说明是谁的、怎么改  (期望 1，实际 0)
+       ✗ 声明占用者自己的名字 → 允许重跑  (期望 0，实际 64)
+       ✗ 管道末段成功 ≠ 命令成功（pipefail 传到子 bash）  (期望 1，实际 0)
+       ✗ 日志头如实记 exit_code: 1  (期望 0，实际 1)
+[复现] notify-broker.test.sh 变红，失败用例：
+       ✗ healthz 报出实际绑定面（默认回环）  (期望 127.0.0.1:56359（仅本机回环），实际 )
+       ✗ 回环启动时日志点明后果（容器里的 GitLab 打不进来）  (期望 ok，实际 bad)
+       ✗ 对外监听时报出所有 IPv4 网卡  (期望 0.0.0.0:56363（所有 IPv4 网卡），实际 )
+       ✗ 响应里点明配置错误  (期望 1，实际 0)
+       ✗ 卡片写明是配置坏了（不是「没命中审核」）  (期望 0，实际 1)
+       ✗ 账本单记一条 mr_route_config_error  (期望 0，实际 1)
+       ✗ mr_routed 也带 config_error（不漏记）  (期望 0，实际 1)
+
+[复现] 三套里 3 套变红（期望 3）
+[复现] 这是修复前的失败记录，exit 1 是本次运行的结论

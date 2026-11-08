@@ -1,6 +1,6 @@
 # cmd: bash test/ai-review.test.sh
-# started: 2026-11-06T05:45:35Z
-# finished: 2026-11-06T05:45:39Z
+# started: 2026-11-08T01:40:03Z
+# finished: 2026-11-08T01:40:04Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. L0 机器判据：零 token 先阻断 ==
@@ -15,22 +15,27 @@
 == 3. 模型返回 🔴 / 垃圾 / 5xx ==
   [32m✓[0m 模型 🔴 → exit 1
   [32m✓[0m verdict 红/黄计数正确
-sed: s|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|: No such file or directory  [32m✓[0m 非法 JSON 重试仍败 → exit 2
+  [32m✓[0m 非法 JSON 重试仍败 → exit 2
   [32m✓[0m 端点 5xx（机器无红）→ exit 2 fail-closed
 == 4. 降级与防御 ==
   [32m✓[0m 未知类型 → exit 2
   [32m✓[0m 机器裁决型（evidence）拒绝走 AI → exit 2
   [32m✓[0m 未知机器判据 id → exit 2（不静默跳过）
+  [32m✓[0m config 形状错（projects 是字符串）→ exit 2
+  [32m✓[0m config 形状错（项目漏 dir）→ exit 2
 == 4b. 显式降级路径必须真的不调模型 ==
   [32m✓[0m 带 key + --machine-only → 模型 0 次调用
   [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
   [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
   [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
+== 4c. fs 审核类型（演练 B3 补槽） ==
+  [32m✓[0m 坏 FS（缺接口契约/测试要点/兼容与回滚）→ exit 1
+  [32m✓[0m verdict 点名缺失章节
 == 5. dry-run 与增量缓存 ==
-sed: s|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|: No such file or directory  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
+  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
   [32m✓[0m dry-run 零 API 调用
   [32m✓[0m 沿用上轮红结论仍阻断（exit 1）
   [32m✓[0m 未变更文件不重复调模型
   [32m✓[0m 缓存生效：打包文件数归零
 
-结果：23 通过，0 失败
+结果：27 通过，0 失败

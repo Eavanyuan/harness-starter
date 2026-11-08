@@ -1,45 +1,8 @@
 # cmd: npm run gate
-# started: 2026-11-06T08:24:48Z
-# finished: 2026-11-06T08:28:06Z
+# started: 2026-11-08T01:40:59Z
+# finished: 2026-11-08T01:41:34Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-> bash test/wiring.test.sh
-
-== 1. 接线与 manifest 一致 ==
-  [32m✓[0m 无漂移
-== 2. 两个 CLI 都有接线文件 ==
-  [32m✓[0m Claude 接线存在
-  [32m✓[0m ZCode 接线存在
-== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
-  [32m✓[0m hooks.enabled = true
-== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
-  [32m✓[0m 全部 hook 已接线（缺 0 处）
-== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
-  [32m✓[0m Claude 为 command 字符串
-  [32m✓[0m ZCode 为 process + args
-== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
-  [32m✓[0m ZCode 全部 matcher 已锚定
-== 7. 手改接线 → --check 必须发现漂移 ==
-  [32m✓[0m 漂移被检出
-== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
-  [32m✓[0m doctor 对缺失接线报红
-  [32m✓[0m 体检输出点名了 zcode
-== 9. hooks.enabled=false → doctor 必须报阻塞 ==
-  [32m✓[0m 关闭 hook 被体检拦住
-== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
-  [32m✓[0m 配置命令违反纪律被体检拦住
-  [32m✓[0m 体检输出点名了违规 flag
-
-结果：14 通过，0 失败
-
-> harness-starter@1.1.0 test:router
-> bash test/review-router.test.sh
-
-== 1. 命中与分流 ==
-  [32m✓[0m RS 文档 → rs + evidence
-  [32m✓[0m 任务目录 rs.md（单层 *）命中
-  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
-  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
   [32m✓[0m 源码（projects 槽 backend）→ cr
   [32m✓[0m RS + 源码混合 → 三类并存
   [32m✓[0m 未匹配文件（README）→ 仅 evidence
@@ -53,10 +16,23 @@
 == 4. fail-closed：规则坏了不许装没事 ==
   [32m✓[0m 规则缺失 → exit 2
   [32m✓[0m schema_version 越界 → exit 2
-== 5. git 模式（--base 真实 diff） ==
+  [32m✓[0m harness.config.json 解析失败 → exit 2（不静默降级 fallback）
+  [32m✓[0m projects 写成字符串 → exit 2（不静默退到 fallback）
+  [32m✓[0m 项目项漏 dir → exit 2
+  [32m✓[0m 项目 dir 是空白 → exit 2
+  [32m✓[0m v1 栈项漏 dir → exit 2
+  [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
+== 5. 无槽可见化与 fs 路由（演练 G1/B3） ==
+  [32m✓[0m 无槽代码不改变退出码（可见不阻断）
+  [32m✓[0m uncovered 列出槽外代码文件
+  [32m✓[0m stderr 有覆盖洞提示
+  [32m✓[0m 账本记 uncovered_code
+  [32m✓[0m 槽外 md 不误报 uncovered
+  [32m✓[0m FS 变更 → fs + evidence
+== 6. git 模式（--base 真实 diff） ==
   [32m✓[0m --base diff 只取新文件
 
-结果：15 通过，0 失败
+结果：27 通过，0 失败
 
 > harness-starter@1.1.0 test:ai-review
 > bash test/ai-review.test.sh
@@ -73,30 +49,35 @@
 == 3. 模型返回 🔴 / 垃圾 / 5xx ==
   [32m✓[0m 模型 🔴 → exit 1
   [32m✓[0m verdict 红/黄计数正确
-sed: s|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|: No such file or directory  [32m✓[0m 非法 JSON 重试仍败 → exit 2
+  [32m✓[0m 非法 JSON 重试仍败 → exit 2
   [32m✓[0m 端点 5xx（机器无红）→ exit 2 fail-closed
 == 4. 降级与防御 ==
   [32m✓[0m 未知类型 → exit 2
   [32m✓[0m 机器裁决型（evidence）拒绝走 AI → exit 2
   [32m✓[0m 未知机器判据 id → exit 2（不静默跳过）
+  [32m✓[0m config 形状错（projects 是字符串）→ exit 2
+  [32m✓[0m config 形状错（项目漏 dir）→ exit 2
 == 4b. 显式降级路径必须真的不调模型 ==
   [32m✓[0m 带 key + --machine-only → 模型 0 次调用
   [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
   [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
   [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
+== 4c. fs 审核类型（演练 B3 补槽） ==
+  [32m✓[0m 坏 FS（缺接口契约/测试要点/兼容与回滚）→ exit 1
+  [32m✓[0m verdict 点名缺失章节
 == 5. dry-run 与增量缓存 ==
-sed: s|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|: No such file or directory  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
+  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
   [32m✓[0m dry-run 零 API 调用
   [32m✓[0m 沿用上轮红结论仍阻断（exit 1）
   [32m✓[0m 未变更文件不重复调模型
   [32m✓[0m 缓存生效：打包文件数归零
 
-结果：23 通过，0 失败
+结果：27 通过，0 失败
 
 > harness-starter@1.1.0 test:broker
 > bash test/notify-broker.test.sh
 
-sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==
+== 1. 卡片渲染（纯函数） ==
   [32m✓[0m 决策卡片 msg_type=interactive
   [32m✓[0m 每个选项一个按钮（票拟）
   [32m✓[0m 按钮 value 携带回投上下文
@@ -105,6 +86,10 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m events.jsonl 记 card_sent
 == 2. broker：健康与认证 ==
   [32m✓[0m healthz → 200
+  [32m✓[0m healthz 报出实际绑定面（默认回环）
+  [32m✓[0m 回环启动时日志点明后果（容器里的 GitLab 打不进来）
+  [32m✓[0m 对外监听时报出所有 IPv4 网卡
+  [32m✓[0m 对外监听时不再喊「打不进来」
   [32m✓[0m webhook token 不匹配 → 403
   [32m✓[0m 飞书 URL 校验回显 challenge
   [32m✓[0m 回投未带校验 token → 403
@@ -116,6 +101,11 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m 卡片含审核类型与批红角色
   [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
   [32m✓[0m 降级卡片含说明
+  [32m✓[0m config 形状错 → 200（不把 5xx 甩给 GitLab 反复重投）
+  [32m✓[0m 响应里点明配置错误
+  [32m✓[0m 卡片写明是配置坏了（不是「没命中审核」）
+  [32m✓[0m 账本单记一条 mr_route_config_error
+  [32m✓[0m mr_routed 也带 config_error（不漏记）
 == 4. pipeline 失败与 digest ==
   [32m✓[0m pipeline 失败 → 失败卡片
   [32m✓[0m 非卡片事件走 digest（不推飞书）
@@ -135,6 +125,10 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m 作废的旧结论（-行）不被采纳
   [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
   [32m✓[0m 非默认分支的改动不算结论（还没生效）
+  [32m✓[0m 合并 push 只落一条账
+  [32m✓[0m 落账身份是真正改文档的人（张三），不是合并的人（李四）
+  [32m✓[0m 合并提交不额外落账（李四那条被认作重复投影）
+  [32m✓[0m 同一 push 里改判取最终结论
   [32m✓[0m approvers 名单外的人改的不落账
   [32m✓[0m 名单外记 decision_rejected 留痕
   [32m✓[0m 名单内的人改的照常落账
@@ -146,8 +140,14 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m link 模式不再生成 decision value（没有回调可回）
   [32m✓[0m 正文点名要改哪一行（OP-1）
   [32m✓[0m MR 卡「去处理」按钮自带 url
+  [32m✓[0m MR 卡点名无槽覆盖洞（G1）
+== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） ==
+  [32m✓[0m notify CLI 相对路径正常渲染（非静默空转）
+  [32m✓[0m broker 相对路径能启动（PORT 行出现）
+  [32m✓[0m 相对路径 broker healthz → 200
+  [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
 
-结果：43 通过，0 失败
+结果：61 通过，0 失败
 
 > harness-starter@1.1.0 test:feishu-ws
 > bash test/feishu-ws.test.sh

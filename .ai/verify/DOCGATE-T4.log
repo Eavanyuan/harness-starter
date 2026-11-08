@@ -1,6 +1,6 @@
 # cmd: bash test/evidence.test.sh
-# started: 2026-11-06T06:01:16Z
-# finished: 2026-11-06T06:01:30Z
+# started: 2026-11-08T00:18:17Z
+# finished: 2026-11-08T00:18:31Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
@@ -96,5 +96,9 @@ nothing to commit, working tree clean
 == 22b. verify 字符串形态 → 拦截并给出正确示例（license-center-sms 实测） ==
   [32m✓[0m verify 是字符串 → 拦
   [32m✓[0m 拦截信息含对象形态示例
+== 26. 全新 clone（mtime 被检出重排）→ 本地口径也不能误杀 ==
+  [32m✓[0m clone 后本地口径通过（不再整片误报）
+  [32m✓[0m 只有 mtime 变（内容无差异）不算改动
+  [32m✓[0m 真改了源码没重跑 → 照样拦住
 
-结果：61 通过，0 失败
+结果：64 通过，0 失败

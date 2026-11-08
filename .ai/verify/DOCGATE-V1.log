@@ -1,108 +1,8 @@
-# cmd: npm run gate
-# started: 2026-11-06T06:07:24Z
-# finished: 2026-11-06T06:11:03Z
+# cmd: bash -c npm\ run\ gate
+# started: 2026-11-08T00:32:13Z
+# finished: 2026-11-08T00:35:08Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-  [32m✓[0m 自测流量不进真实基线
-== 3. 同一条规则反复拦 → 要提示回看原话 ==
-  [32m✓[0m ≥5 次时提示核对是否规则写宽
-== 4. 没有 events → 明确说无法证明门禁在线 ==
-  [32m✓[0m 点名没法证明在线
-== 5. 有 events → 报在线条数、覆盖整点、最近一次 ==
-  [32m✓[0m 报出在线条数与整点数
-  [32m✓[0m 说明它的用途是有分母
-  [32m✓[0m 有 events 后不再说'无法证明在线'
-== 6. 坏行不猜内容，也不崩 ==
-  [32m✓[0m 坏行后仍 exit 0
-  [32m✓[0m 坏行计数提示
-== 7. --json 里要有 events（给自动化用）==
-  [32m✓[0m --json 里 events.total / by_type / online_hours 齐备
-
-结果：13 通过，0 失败
-
-> harness-starter@1.1.0 test:completeness
-> bash test/completeness.test.sh
-
-== 1. 完备文档 → 必须通过（不误杀） ==
-  [32m✓[0m 三份文档齐备时门禁放行
-== 2. 模板占位符残留 → 拦截 ==
-  [32m✓[0m 占位符残留判红
-  [32m✓[0m 报错点名占位符
-== 3. 章节只剩表头 → 拦截 ==
-  [32m✓[0m 空表章节判红
-  [32m✓[0m 报错点名 §9
-== 4. 追溯表漏条目 → 拦截 ==
-  [32m✓[0m RS 覆盖率不足判红
-  [32m✓[0m 报错点名 US-2
-== 5. WBS 指向不存在的 FS 小节 → 拦截 ==
-  [32m✓[0m 悬空 spec_ref 判红
-  [32m✓[0m 报错说明悬空
-== 6. FS 小节没有任务对应 → 拦截 ==
-  [32m✓[0m 漏做判定为红
-  [32m✓[0m 报错点名 §4.2
-== 7. WBS 缺 spec_ref 列 → 拦截 ==
-  [32m✓[0m 缺列判红
-  [32m✓[0m 报错点名 spec_ref
-== 8. 声明了不存在的路径 → 拦截 ==
-  [32m✓[0m 声明与事实不符判红
-  [32m✓[0m 报错说明文件不存在
-== 8b. 中文/空格文件名 → 必须真检（不许静默跳过） ==
-  [32m✓[0m 中文+空格路径指向存在的文件 → 放行（不误杀）
-  [32m✓[0m 同一路径指向不存在的文件 → 判红
-  [32m✓[0m 报错点名那份不存在的文件
-== 8c. 登记写成了说明文字 → 判红（不是提示，不再放行） ==
-  [32m✓[0m 读不出路径的登记判红
-  [32m✓[0m 报错说清为什么算没登记
-== 8d. 路径后面跟说明 → 抠出路径照检 ==
-  [32m✓[0m 带后缀说明的登记仍按路径检（存在则放行）
-== 9. 阶段没越过产出阶段 → 不判（写到一半是常态） ==
-  [32m✓[0m fs_review 阶段不判 FS 完备性
-  [32m✓[0m 同一份文档到 impl 就判红
-== 10. 未登记的产物 → 提示但不判死 ==
-  [32m✓[0m 未登记不判红
-  [32m✓[0m 提示点了 WBS
-== 11. review-packet 首版 ==
-  [32m✓[0m 完备时 review-packet 退出 0
-  [32m✓[0m 首版标注
-  [32m✓[0m 给出该谁签
-  [32m✓[0m 有缺口时 review-packet 退出 1
-  [32m✓[0m 评审包列出待补项
-== 12. review-packet 列表模式 ==
-  [32m✓[0m 列表模式退出 0
-  [32m✓[0m 列出任务名
-== 13. review-packet 变更版 ==
-  [32m✓[0m 识别为变更版
-  [32m✓[0m 按小节报改动（不是只报标题）
-
-通过 34，失败 0
-
-> harness-starter@1.1.0 test:wiring
-> bash test/wiring.test.sh
-
-== 1. 接线与 manifest 一致 ==
-  [32m✓[0m 无漂移
-== 2. 两个 CLI 都有接线文件 ==
-  [32m✓[0m Claude 接线存在
-  [32m✓[0m ZCode 接线存在
-== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
-  [32m✓[0m hooks.enabled = true
-== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
-  [32m✓[0m 全部 hook 已接线（缺 0 处）
-== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
-  [32m✓[0m Claude 为 command 字符串
-  [32m✓[0m ZCode 为 process + args
-== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
-  [32m✓[0m ZCode 全部 matcher 已锚定
-== 7. 手改接线 → --check 必须发现漂移 ==
-  [32m✓[0m 漂移被检出
-== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
-  [32m✓[0m doctor 对缺失接线报红
-  [32m✓[0m 体检输出点名了 zcode
-== 9. hooks.enabled=false → doctor 必须报阻塞 ==
-  [32m✓[0m 关闭 hook 被体检拦住
-== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
-  [32m✓[0m 配置命令违反纪律被体检拦住
-  [32m✓[0m 体检输出点名了违规 flag
 
 结果：14 通过，0 失败
 
@@ -127,10 +27,16 @@
 == 4. fail-closed：规则坏了不许装没事 ==
   [32m✓[0m 规则缺失 → exit 2
   [32m✓[0m schema_version 越界 → exit 2
+  [32m✓[0m harness.config.json 解析失败 → exit 2（不静默降级 fallback）
+  [32m✓[0m projects 写成字符串 → exit 2（不静默退到 fallback）
+  [32m✓[0m 项目项漏 dir → exit 2
+  [32m✓[0m 项目 dir 是空白 → exit 2
+  [32m✓[0m v1 栈项漏 dir → exit 2
+  [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
 == 5. git 模式（--base 真实 diff） ==
   [32m✓[0m --base diff 只取新文件
 
-结果：15 通过，0 失败
+结果：21 通过，0 失败
 
 > harness-starter@1.1.0 test:ai-review
 > bash test/ai-review.test.sh
@@ -147,30 +53,32 @@
 == 3. 模型返回 🔴 / 垃圾 / 5xx ==
   [32m✓[0m 模型 🔴 → exit 1
   [32m✓[0m verdict 红/黄计数正确
-sed: s|docs/01-requirements/RS-good.md|docs/01-requirements/RS-good2.md|: No such file or directory  [32m✓[0m 非法 JSON 重试仍败 → exit 2
+  [32m✓[0m 非法 JSON 重试仍败 → exit 2
   [32m✓[0m 端点 5xx（机器无红）→ exit 2 fail-closed
 == 4. 降级与防御 ==
   [32m✓[0m 未知类型 → exit 2
   [32m✓[0m 机器裁决型（evidence）拒绝走 AI → exit 2
   [32m✓[0m 未知机器判据 id → exit 2（不静默跳过）
+  [32m✓[0m config 形状错（projects 是字符串）→ exit 2
+  [32m✓[0m config 形状错（项目漏 dir）→ exit 2
 == 4b. 显式降级路径必须真的不调模型 ==
   [32m✓[0m 带 key + --machine-only → 模型 0 次调用
   [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
   [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
   [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
 == 5. dry-run 与增量缓存 ==
-sed: s|docs/01-requirements/RS-good2.md|docs/01-requirements/RS-good.md|: No such file or directory  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
+  [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
   [32m✓[0m dry-run 零 API 调用
   [32m✓[0m 沿用上轮红结论仍阻断（exit 1）
   [32m✓[0m 未变更文件不重复调模型
   [32m✓[0m 缓存生效：打包文件数归零
 
-结果：23 通过，0 失败
+结果：25 通过，0 失败
 
 > harness-starter@1.1.0 test:broker
 > bash test/notify-broker.test.sh
 
-sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such file or directory== 1. 卡片渲染（纯函数） ==
+== 1. 卡片渲染（纯函数） ==
   [32m✓[0m 决策卡片 msg_type=interactive
   [32m✓[0m 每个选项一个按钮（票拟）
   [32m✓[0m 按钮 value 携带回投上下文
@@ -179,6 +87,10 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m events.jsonl 记 card_sent
 == 2. broker：健康与认证 ==
   [32m✓[0m healthz → 200
+  [32m✓[0m healthz 报出实际绑定面（默认回环）
+  [32m✓[0m 回环启动时日志点明后果（容器里的 GitLab 打不进来）
+  [32m✓[0m 对外监听时报出所有 IPv4 网卡
+  [32m✓[0m 对外监听时不再喊「打不进来」
   [32m✓[0m webhook token 不匹配 → 403
   [32m✓[0m 飞书 URL 校验回显 challenge
   [32m✓[0m 回投未带校验 token → 403
@@ -190,6 +102,11 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m 卡片含审核类型与批红角色
   [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
   [32m✓[0m 降级卡片含说明
+  [32m✓[0m config 形状错 → 200（不把 5xx 甩给 GitLab 反复重投）
+  [32m✓[0m 响应里点明配置错误
+  [32m✓[0m 卡片写明是配置坏了（不是「没命中审核」）
+  [32m✓[0m 账本单记一条 mr_route_config_error
+  [32m✓[0m mr_routed 也带 config_error（不漏记）
 == 4. pipeline 失败与 digest ==
   [32m✓[0m pipeline 失败 → 失败卡片
   [32m✓[0m 非卡片事件走 digest（不推飞书）
@@ -201,5 +118,88 @@ sed: s|req.on('end', => {}).on('end', () => {|req.on('end', () => {|: No such fi
   [32m✓[0m commit message 带身份与结论
   [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
   [32m✓[0m 失败回投不产生新提交
+== 6. 方案 D：决策走 git（零入站口） ==
+  [32m✓[0m push 里的「已裁决」被读成决策
+  [32m✓[0m 账本记 decision_landed via git
+  [32m✓[0m 落账带 commit author 身份
+  [32m✓[0m 读 git 的决策不写仓库（commit 本身就是账）
+  [32m✓[0m 作废的旧结论（-行）不被采纳
+  [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
+  [32m✓[0m 非默认分支的改动不算结论（还没生效）
+  [32m✓[0m 合并 push 只落一条账
+  [32m✓[0m 落账身份是真正改文档的人（张三），不是合并的人（李四）
+  [32m✓[0m 合并提交不额外落账（李四那条被认作重复投影）
+  [32m✓[0m 同一 push 里改判取最终结论
+  [32m✓[0m approvers 名单外的人改的不落账
+  [32m✓[0m 名单外记 decision_rejected 留痕
+  [32m✓[0m 名单内的人改的照常落账
+  [32m✓[0m diff 接口 5xx 时 push 仍返回 200
+  [32m✓[0m 读不到 diff 显式留痕（不静默当没决策）
+== 7. link 模式卡片：不依赖任何回调 ==
+  [32m✓[0m link 模式只给一个按钮（不是 N 个都跳同一页）
+  [32m✓[0m 按钮自带 url（点了直接开编辑页，不经 broker）
+  [32m✓[0m link 模式不再生成 decision value（没有回调可回）
+  [32m✓[0m 正文点名要改哪一行（OP-1）
+  [32m✓[0m MR 卡「去处理」按钮自带 url
+== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） ==
+  [32m✓[0m notify CLI 相对路径正常渲染（非静默空转）
+  [32m✓[0m broker 相对路径能启动（PORT 行出现）
+  [32m✓[0m 相对路径 broker healthz → 200
+  [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
 
-结果：26 通过，0 失败
+结果：60 通过，0 失败
+
+> harness-starter@1.1.0 test:feishu-ws
+> bash test/feishu-ws.test.sh
+
+== 1. 声明走长连接但缺凭据 / 模式拼错 → 拒启动（fail-closed） ==
+  [32m✓[0m ws 模式缺 app 凭据 → exit 64
+  [32m✓[0m 报错指明缺哪个 env
+  [32m✓[0m FEISHU_MODE 拼错 → exit 64（不猜）
+  [32m✓[0m 报错原样带出错误取值
+== 2. 长连接建立：换端点 → 握手 → 心跳 ==
+  [32m✓[0m 启动日志声明入站模式
+  [32m✓[0m 换端点带 AppID
+  [32m✓[0m 换端点带 AppSecret
+  [32m✓[0m 换端点带 locale（网关按它回中文错误）
+  [32m✓[0m WebSocket 握手成功（网关记录到连接）
+  [32m✓[0m 连的是网关下发的 device_id/service_id
+  [32m✓[0m 收到应用层心跳
+  [32m✓[0m 心跳 method=control(0)
+  [32m✓[0m 心跳 service 用网关下发的 service_id
+  [32m✓[0m 心跳按 PingInterval 持续发（≥2 次）
+== 3. 事件处理：单片 / 分片 / 重投 / 失败重试 / 账实不符 ==
+  [32m✓[0m 单片事件回投 OP-1（只落一次）
+  [32m✓[0m 分片事件回投 OP-2（合并成功才有 choice）
+  [32m✓[0m GitLab 抖过一次的事件重投后落账（应答 500 请重投 → 撤回去重占位）
+  [32m✓[0m RS 里 OP-1 那行状态列被改写（其余列不动）
+  [32m✓[0m 三次回投互不覆盖（后写的没顶掉先写的）
+  [32m✓[0m 账本 decision_written_back 全带 via:ws
+  [32m✓[0m 网关因应答 500 重投了一次
+  [32m✓[0m 回投失败记为可重试
+  [32m✓[0m 账实不符不应答 5xx（不诱发无谓重投）
+  [32m✓[0m 账实不符把原因回给点按钮的人
+  [32m✓[0m 账实不符记为不可重试
+  [32m✓[0m 账实不符一次都没写进仓库
+== 4. 应答帧：原帧回吐 + base64 结果 ==
+  [32m✓[0m 单片事件有 200 应答
+  [32m✓[0m 应答 method=data(1)
+  [32m✓[0m 应答回吐同一 SeqID（网关靠它对号）
+  [32m✓[0m 应答带 biz_rt 耗时头
+  [32m✓[0m 应答 data 是 base64(JSON(toast))
+  [32m✓[0m 分片事件也有应答（拼齐后才处理，不吞掉）
+  [32m✓[0m 重投的应答标记 duplicated（网关可据此停投）
+== 5. 断线重连 ==
+  [32m✓[0m 连接被掐断后自动重连
+  [32m✓[0m 重连不产生重复回投
+  [32m✓[0m 长连接运行中 HTTP 面仍可用（healthz 报出入站模式）
+  [32m✓[0m healthz 报出通道是活的（不只是进程在）
+  [32m✓[0m healthz 累计处置过的事件数
+  [32m✓[0m healthz 报出去重挡下的重投数
+== 6. http 模式不回退成 ws：两种接法互不干扰 ==
+  [32m✓[0m 显式 http 模式即使有凭据也不建长连接
+  [32m✓[0m http 模式下没有新增连接
+  [32m✓[0m http 模式的 healthz 不谎报长连接
+  [32m✓[0m http 模式仍能回显 challenge
+
+结果：43 通过，0 失败

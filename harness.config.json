@@ -133,6 +133,7 @@
   "gates": {
     "requireVerifyLog": true,
     "verifyFreshnessHours": 72,
+    "verifyFreshnessGraceSec": 120,
     "blockedCommands": [
       {
         "pattern": "rm\\s+-[A-Za-z]*r[A-Za-z]*f[A-Za-z]*\\s+(/|~|\\$HOME|\\.\\.)(?!\\w)",

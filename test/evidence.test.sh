@@ -555,6 +555,22 @@ check "verify 是字符串 → 拦" 1 "$(ci)"
 check "拦截信息含对象形态示例" 1 "$(node scripts/ci-verify.mjs 2>&1 | grep -c '必须是对象')"
 git checkout -q HEAD~1 -- .ai/tasks/demo/state.json && git commit -qm "restore-22"
 
+echo "== 26. 全新 clone（mtime 被检出重排）→ 本地口径也不能误杀 =="
+# 真实现象：clone 会把整棵树的 mtime 按检出顺序重排，"日志早于源码"于是成了排序的
+# 副产品。上一版本地口径在新克隆的仓库里把 14 个历史任务全判红，而 git status 是空的。
+# 判据只该对"与 HEAD 有差异"的文件发火——mtime 只是它的旁证，不是事实本身。
+git clone -q "$TMP/repo" "$TMP/clone"
+cl() { local code=0; ( cd "$TMP/clone" && node scripts/ci-verify.mjs "$@" >/dev/null 2>"$TMP/err2" ) || code=$?; echo "$code"; }
+check "clone 后本地口径通过（不再整片误报）" 0 "$(cl --local)"
+
+# touch 只改 mtime、不改内容：git 里没有任何差异，判据必须当作"没改过"。
+touch "$TMP/clone/src/A.java"
+check "只有 mtime 变（内容无差异）不算改动" 0 "$(cl --local)"
+
+# 反面：内容真变了且日志在那之前 → 必须红（别把上面两条修成永久绿）
+printf 'changed\n' >> "$TMP/clone/src/A.java"
+check "真改了源码没重跑 → 照样拦住" 1 "$(cl --local)"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

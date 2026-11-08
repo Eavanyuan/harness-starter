@@ -12,7 +12,7 @@
  *
  * 所以按 mode 分两套判据，而不是让 CI 去猜：
  *
- *   local：存在 + exit_code=0 + 日志晚于源码 + 未超时效（verifyFreshnessHours）
+ *   local：存在 + exit_code=0 + 日志晚于**与 HEAD 有差异的**源码 + 未超时效（verifyFreshnessHours）
  *   ci   ：存在 + exit_code=0 + 声明文件存在 + 日志已入库（git 可复现的事实）
  *
  * CI **不判新鲜度**。这不是妥协，是承认边界：git 里没有"什么时候跑的"这个事实，
@@ -24,7 +24,7 @@
  */
 import { existsSync, statSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve, dirname, join } from 'node:path';
+import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   checkCompleteness as checkDocCompleteness,
@@ -331,37 +331,59 @@ export function checkVerify(todo, repo, opts = {}) {
     return { ok: true, reason: 'ok（CI 口径：存在 + exit_code=0 + 已入库）' };
   }
 
-  // 以下仅本地：工作树里 mtime 是真实事实。
+  // 以下仅本地：mtime 是这里唯一可观测的事实，但它比看上去弱得多。
   //
   // 候选集 = TODO 自报的 files ∪ 栈内被改动的源码（srcGlob 命中）。
   // 只取自报的 files 会被"少报一个文件"绕过：日志只要晚于那一个文件就算新鲜，
   // 而另一个真正改了源码的文件比日志还新。取并集，任一新于日志就重跑。
-  const changed = gitChangedFiles(repo);
+  //
+  // 关键修正（新克隆的仓库实测）：文件的 mtime 不是"上次编辑时间"，是"上次写到
+  // 磁盘的时间"。clone / checkout / switch 会把整棵树的 mtime 按检出顺序重排一遍，
+  // 于是"日志比源码旧"变成排序的副产品——上一版在全新 clone 的仓库里把 14 个历史
+  // 任务全判成"日志早于最后一次源码修改"，而 git status 是空的，文件一个字节没变。
+  //
+  // 判据的分界不是"谁比谁新"，而是"这个时间差能不能用检出解释掉"：
+  //   · 工作树里有差异（M/A/R/??）= 真改过，mtime 就是编辑时间，**零容忍**；
+  //   · 与 HEAD 一致的文件 = mtime 可能是检出产物，落在检出窗口内的差不作数，
+  //     只有超出窗口（默认 120s，gates.verifyFreshnessGraceSec）才算"之后被写过"。
+  // 这样 clone 的毫秒级乱序不再误报，而"改完提交了却没重跑"（分钟级以上）照样拦得住。
+  const dirty = gitStatusEntries(repo);
+  const dirtyRel = new Set(dirty.map((e) => e.path));
   const globs = stackSourceGlobs(config);
-  const globMatched = globs.length ? changed.filter((f) => globs.some((g) => globToRe(g).test(f))) : [];
+  const graceMs = Math.max(0, Number(gates.verifyFreshnessGraceSec ?? 120)) * 1000;
 
   const candidates = [
     ...new Set([
-      ...declared.map((f) => resolve(repo, f)).filter((p) => existsSync(p)),
-      ...globMatched.map((f) => resolve(repo, f)).filter((p) => existsSync(p)),
+      ...declared,
+      ...dirty.map((e) => e.path).filter((f) => globs.some((g) => globToRe(g).test(f))),
     ]),
-  ];
+  ]
+    .map((f) => resolve(repo, f))
+    .filter((p) => existsSync(p));
 
+  // 统一验证类 TODO（files: []）没有自报文件，此时任何未提交改动都算嫌疑对象；
+  // 但只在"它确实什么都没声明"时才这样兜——否则一个无关的 README 改动
+  // 会让所有历史任务一起变红，等于换个姿势制造同一类误报。
   const pool = candidates.length
     ? candidates
-    : changed.map((f) => resolve(repo, f)).filter((p) => existsSync(p));
-
-  if (pool.length === 0) {
-    return { ok: false, reason: '找不到任何已改动的源码文件，无法证明证据新鲜度' };
-  }
+    : declared.length === 0
+      ? dirty.map((e) => resolve(repo, e.path)).filter((p) => existsSync(p))
+      : [];
 
   const logStat = statSync(abs);
-  const newest = pool.reduce((acc, p) => Math.max(acc, statSync(p).mtimeMs), 0);
-  if (logStat.mtimeMs <= newest) {
-    return {
-      ok: false,
-      reason: 'verify 日志早于最后一次源码修改，疑似复述历史输出（请真的重跑一次）',
-    };
+  if (pool.length > 0) {
+    const newest = pool.reduce((acc, p) => {
+      const mtime = statSync(p).mtimeMs;
+      const rel = relative(repo, p);
+      // 干净文件：扣掉检出窗口，只有"窗口之外还被写过"才算数
+      return Math.max(acc, dirtyRel.has(rel) ? mtime : mtime - graceMs);
+    }, 0);
+    if (logStat.mtimeMs <= newest) {
+      return {
+        ok: false,
+        reason: 'verify 日志早于最后一次源码修改，疑似复述历史输出（请真的重跑一次）',
+      };
+    }
   }
 
   const hours = Number(gates.verifyFreshnessHours || 0);
@@ -373,6 +395,12 @@ export function checkVerify(todo, repo, opts = {}) {
         reason: `verify 日志已是 ${Math.round(ageH)} 小时前（上限 ${hours}h），重跑一次再标完成`,
       };
     }
+  }
+
+  if (pool.length === 0) {
+    // 工作树里没有与本任务相关的未提交改动：没有可比较的事实，不是"不新鲜"。
+    // 判 ok 但把依据说清楚——否则下一个人会以为这里漏判了。
+    return { ok: true, reason: 'ok（工作树无相关未提交改动，mtime 无信息量，只校验时效）' };
   }
 
   return { ok: true, reason: 'ok' };
