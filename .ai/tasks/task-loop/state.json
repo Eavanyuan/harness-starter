@@ -138,28 +138,51 @@
     {
       "id": "T4a",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "失败指纹归一化(✗剥参+文案并轨+step:*) + merge-base 基线实跑 + 集合差",
-      "files": [],
+      "files": [
+        "scripts/lib/fingerprint.mjs",
+        "scripts/lib/baseline.mjs",
+        "test/task-loop.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 全过",
+        "tests": "task-loop 17/17（形态层：剥参/剥色/全角/无例名文案/重试去重；端到端：真仓库双树，引入=B 继承=A 在参数随机化下身份稳定）",
+        "feature_complete": "✗ 行→指纹（尾部参数括号剥除、ANSI 剥除、截断 100 字符）；merge-base worktree 实跑；集合差三分（引入/继承/顺手修好）",
+        "quality_clean": "环境等价教训已修：基线不注入 HARNESS_LEDGER=off（有套件断言验账本写入，环境差异≠引入失败）；套件段进指纹隔离"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL3.log",
+        "command": "bash test/task-loop.test.sh"
+      }
     },
     {
       "id": "T4b",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "CI 三分流决策 + 豁免三道闸 + MR 附证",
-      "files": [],
+      "files": [
+        "scripts/lib/attribution.mjs",
+        "test/task-loop.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "task-loop 17/17（三分流 REWORK/EXEMPT_REQUIRED/PASS_TO_REVIEW + 三道闸：过期豁免失效/指纹不同不可豁免/豁免率超阈值告警/flaky 翻转检测）",
+        "feature_complete": "纯函数决策核心（T5 接线到 runner 时直接消费）；豁免到期在判定入口失效（不靠清理任务）",
+        "quality_clean": "flippyFailures Set.filter 低级错测试当场抓住；豁免率阈值默认 0.3 且 ≥3 条才告警（防小样本误报）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL3.log",
+        "command": "bash test/task-loop.test.sh"
+      }
     },
     {
       "id": "T5",
