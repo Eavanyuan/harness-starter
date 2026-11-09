@@ -44,7 +44,8 @@
 | `created_at` | **判据** | `checkStage()` — 决定这个任务适用哪条阶段链：`created_at` 早于某条退休链的 `retired_on`（含当天）才允许走旧链序。缺这个字段 = 不给豁免（判不了就不放宽），所以它不是装饰性时间戳 |
 | `task` | 索引 | 任务名，`session_start` / `resume` 展示用 |
 | `task_type` | 判据 | `checkTaskTraceability()`；`feature` / `change` / `bugfix` |
-| `related_task` / `baseline` / `affected_ids` / `change_tier` | 判据 | change/bugfix 追溯链（完成态复核） |
+| `related_task` / `baseline` / `affected_ids` / `change_tier` | 判据 | change/bugfix 追溯链（完成态复核）。`related_task` 支持外部来源形态 `feishu:<单号>`（task-loop 剖面 B） |
+| `remote_id` | 判据 | 外部来源双向锚 `{source, id}`。related_task 为外部形态时必填且两者一致（checkTaskTraceability 复核：两处各写各的等于没有锚，回写找不到平台实例）；仓库内关联时为 null |
 | `flow_tier` | 判据（弱） | `checkStage()` 只判枚举 `S/M/L/XL`。**档位不改变判据强度**——它记录"这套流程被裁剪过"，裁剪本身靠 `stage_history.waived_by` 记名 |
 | `risk_tier` | 判据（弱） | `checkStage()` 判枚举 `LOW/MEDIUM/HIGH`。风险等级如何影响流程由人按 `guides/` 决定，机器不据此加减门禁 |
 | `no_todo_reason` | 判据 | `checkStageExit()` — `stage=done` 且 `todos` 为空时必须写清理由 |

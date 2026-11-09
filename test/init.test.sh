@@ -101,6 +101,17 @@ ok=0
 node -e 'const s=require("./.ai/tasks/selftest-chg/state.json");process.exit(s.meta.task_type==="change"&&s.meta.baseline===process.argv[1]&&s.meta.change_tier===null?0:1)' "$BASE_HASH" || ok=$?
 check "change state 基线与档位字段正确" 0 "$ok"
 
+echo "== 6b. 外部来源 --related（task-loop 剖面 B / 评审 M2） =="
+bash "$HERE/scripts/init-harness.sh" feishu-bug S --type bugfix --related feishu:7161559257 >/dev/null 2>&1
+check "feishu:<单号> 建档成功（bugfix）" 0 "$?"
+ok=0
+node -e 'const s=require("./.ai/tasks/feishu-bug/state.json");process.exit(s.meta.related_task==="feishu:7161559257"&&s.meta.remote_id&&s.meta.remote_id.source==="feishu"&&s.meta.remote_id.id==="7161559257"?0:1)' || ok=$?
+check "remote_id 双向锚正确（source+id）" 0 "$ok"
+bash "$HERE/scripts/init-harness.sh" feishu-feat S --related feishu:123 >/dev/null 2>&1
+check "feature 拒绝外部来源" 64 "$?"
+bash "$HERE/scripts/init-harness.sh" bad-ext S --type bugfix --related "feishu:<script>" >/dev/null 2>&1
+check "外部单号含非法字符被拒" 64 "$?"
+
 echo "== 7. 类型与参数的其他拒绝路径 =="
 bash "$HERE/scripts/init-harness.sh" selftest-ok M --type hotfix >/dev/null 2>&1
 check "未知 --type 被拒" 64 "$?"

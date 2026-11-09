@@ -877,6 +877,14 @@ export function checkTaskTraceability(state, repo = REPO_ROOT) {
   const related = meta.related_task;
   if (!related || typeof related !== 'string') {
     failures.push({ id: '(task)', rule: 'trace', reason: 'change/bugfix 任务缺 related_task（未关联原任务或发现来源，追溯链无从建立）' });
+  } else if (/^[a-z][a-z0-9-]*:[A-Za-z0-9._/-]{1,64}$/.test(related)) {
+    // 外部来源（feishu:<单号>，task-loop 剖面 B）：锚在 meta.remote_id 而非 .ai/tasks/。
+    // 校验降为"remote_id 与 related_task 前后一致"——两个地方各写各的等于没有锚。
+    const r = meta.remote_id;
+    const expect = /^([a-z][a-z0-9-]*):([A-Za-z0-9._/-]{1,64})$/.exec(related);
+    if (!r || typeof r !== 'object' || r.source !== expect[1] || r.id !== expect[2]) {
+      failures.push({ id: '(task)', rule: 'trace', reason: `外部来源锚不一致：related_task=${related} 与 meta.remote_id（${JSON.stringify(r)}）对不上——回写找不到平台实例` });
+    }
   } else if (!existsSync(join(repo, '.ai/tasks', related, 'state.json'))) {
     // init 建档时验证过一次，但 meta 之后可以被改写——每次落盘都复核，防关联被改断。
     failures.push({ id: '(task)', rule: 'trace', reason: `关联任务不存在：${related}（related_task 被改错或原任务已删，追溯链断裂）` });

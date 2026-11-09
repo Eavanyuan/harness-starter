@@ -92,21 +92,40 @@ case "$TYPE" in
     ;;
 esac
 
-# 关联任务本身也要过 slug 白名单（它同样会被拼进路径与 JSON）。
-if [ -n "$RELATED" ] && ! printf '%s' "$RELATED" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
-  echo "--related 只允许小写字母 / 数字 / 连字符的 slug，收到：$RELATED" >&2
-  exit 64
+# 关联任务两种形态（task-loop 剖面 B / 评审 M2）：
+#   仓库内 slug：^[a-z0-9][a-z0-9-]{0,63}$——会被拼进路径，存在性必须验证；
+#   外部来源：^[a-z][a-z0-9-]*:[A-Za-z0-9._/-]{1,64}$（如 feishu:7161559257）——
+#     飞书单不在仓库里，追溯锚走 state.meta.remote_id（双向锚），格式校验替代存在性校验。
+RELATED_IS_EXT=0
+if [ -n "$RELATED" ]; then
+  if printf '%s' "$RELATED" | grep -Eq '^[a-z][a-z0-9-]*:[A-Za-z0-9._/-]{1,64}$'; then
+    RELATED_IS_EXT=1
+  elif ! printf '%s' "$RELATED" | grep -Eq '^[a-z0-9][a-z0-9-]{0,63}$'; then
+    echo "--related 只允许仓库内 slug（小写字母/数字/连字符）或外部来源（feishu:<单号> 等），收到：$RELATED" >&2
+    exit 64
+  fi
 fi
 
 # change/bugfix 必须挂到已有任务上：没有关联的变更是无法追溯的，
 # 而"关联一个不存在的任务"和"没填"一样不可审计，宁可建档时就被打回。
+# 外部来源跳过存在性检查（它锚在 remote_id，不在 .ai/tasks/ 里），但只对 change/bugfix 开放。
 case "$TYPE" in
   change | bugfix)
     [ -n "$RELATED" ] || { echo "--type $TYPE 必须用 --related 指定关联任务（原任务或发现来源）" >&2; exit 64; }
-    [ -f ".ai/tasks/${RELATED}/state.json" ] || {
-      echo "关联任务不存在：.ai/tasks/${RELATED}/state.json（--related 必须指向本仓库已有任务）" >&2
+    if [ "$RELATED_IS_EXT" -eq 0 ]; then
+      [ -f ".ai/tasks/${RELATED}/state.json" ] || {
+        echo "关联任务不存在：.ai/tasks/${RELATED}/state.json（--related 必须指向本仓库已有任务，或用 feishu:<单号> 外部来源）" >&2
+        exit 64
+      }
+    fi
+    ;;
+  *)
+    if [ "$RELATED_IS_EXT" -eq 1 ]; then
+      # ${RELATED} 必须带花括号：macOS bash 3.2 对多字节字符（全角括号）后的 $VAR
+      # 解析有 bug，会把中文字符的尾字节当变量名首字符（实测 unbound variable）
+      echo "外部来源 --related（${RELATED}）只用于 change/bugfix，feature 不接受" >&2
       exit 64
-    }
+    fi
     ;;
 esac
 
@@ -148,12 +167,17 @@ mkdir -p "$DIR" .ai/verify .ai/locks
 node -e '
   const fs = require("fs");
   const [slug, tier, trust, type, related, baseline] = process.argv.slice(1);
+  // 外部来源（feishu:7161559257）：related_task 保留原串（人可读），
+  // remote_id 拆出系统与单号——收尾回写按它找平台上的实例（task-loop 剖面 B 的双向锚）。
+  const mExt = related ? /^([a-z][a-z0-9-]*):([A-Za-z0-9._/-]{1,64})$/.exec(related) : null;
   const state = {
     meta: {
       schema_version: 1,
       task: slug,
       task_type: type,
       related_task: related || null,
+      // 外部来源锚：source=系统前缀，id=单号。仓库内关联时为 null（锚就是 .ai/tasks/<slug>）。
+      remote_id: mExt ? { source: mExt[1], id: mExt[2] } : null,
       baseline: baseline || null,
       affected_ids: type === "change" || type === "bugfix" ? [] : null,
       change_tier: null,

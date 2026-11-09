@@ -62,6 +62,50 @@ rc=$?
 check "退出码 0" "0" "$rc"
 grep -q "批准规则在场" <<<"$out"; check "approval 在场计为 ok" "0" "$?"
 
+echo "== 5. 飞书项目 MCP 通道三档探测（task-loop 前提在场性） =="
+# mock MCP：只实现 initialize/initialized/tools/call 的协议骨架，call 行为可切换（ok/perm/protocol）
+mkdir -p "$TMP/fmcp"; echo perm > "$TMP/fmcp/mode"
+cat > "$TMP/fmcp/server.mjs" <<'FSEOF'
+import http from 'node:http';
+import fs from 'node:fs';
+const dir = process.env.MOCK_DIR;
+const srv = http.createServer((req, res) => {
+  let body = '';
+  req.on('data', (c) => { body += c; });
+  req.on('end', () => {
+    const mode = fs.readFileSync(`${dir}/mode`, 'utf8').trim();
+    const send = (code, obj, sid) => { res.writeHead(code, { 'content-type': 'application/json', ...(sid ? { 'mcp-session-id': sid } : {}) }); res.end(JSON.stringify(obj)); };
+    const j = body ? JSON.parse(body) : {};
+    if (j.method === 'initialize') return send(200, { jsonrpc: '2.0', id: j.id, result: { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 'mock-meego' } } }, 'sess-1');
+    if (j.method === 'notifications/initialized') return send(200, {});
+    if (j.method === 'tools/call') {
+      if (mode === 'protocol') { res.writeHead(500); res.end('boom'); return; }
+      const text = mode === 'ok' ? '[{"x":1}]' : 'error=ErrOapiCallCheckTokenPermFailed,message=Check Token Perm Failed,retriable=false';
+      return send(200, { jsonrpc: '2.0', id: j.id, result: { content: [{ type: 'text', text }] } });
+    }
+    send(404, {});
+  });
+});
+srv.listen(0, '127.0.0.1', () => fs.writeFileSync(`${dir}/port`, String(srv.address().port)));
+FSEOF
+MOCK_DIR="$TMP/fmcp" node "$TMP/fmcp/server.mjs" & FMCP_PID=$!
+for _ in $(seq 1 50); do [ -f "$TMP/fmcp/port" ] && break; sleep 0.1; done
+FEP="http://127.0.0.1:$(cat "$TMP/fmcp/port")"
+probe_level() { node -e '
+  const m = await import(process.argv[1] + "/scripts/lib/feishu-project-mcp.mjs");
+  const r = await m.probe(process.argv[2], { projectKey: "any" });
+  console.log(r.level);
+' --input-type=module "$HERE" "$FEP"; }
+echo perm > "$TMP/fmcp/mode"; check "数据档未配 → perm 档（提示后台勾选，不判死）" "perm" "$(probe_level)"
+echo ok > "$TMP/fmcp/mode"; check "数据档已配 → ok 档" "ok" "$(probe_level)"
+echo protocol > "$TMP/fmcp/mode"; check "协议错 → error 档（不吞）" "error" "$(probe_level)"
+node -e '
+  const m = await import(process.argv[1] + "/scripts/lib/feishu-project-mcp.mjs");
+  const r = await m.probe(null);
+  console.log(r.level);
+' --input-type=module "$HERE" | xargs -I{} check "无凭据 → off 档（未配置≠故障）" "off" "{}"
+kill $FMCP_PID 2>/dev/null; wait $FMCP_PID 2>/dev/null
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

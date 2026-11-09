@@ -165,6 +165,28 @@ git add -A && git commit -qm "premature done"
 check "stage=done 退出条件不满足被拦" 1 "$(ci)"
 git checkout -q HEAD~1 -- .ai/tasks/demo/state.json && git commit -qm "restore6" >/dev/null
 
+echo "== 6c. 外部来源锚一致性（task-loop 剖面 B） =="
+# related_task=feishu:<id> 时不要求仓库内存在，但 meta.remote_id 必须与之前后一致——
+# 两处各写各的等于没有锚，回写找不到平台实例。
+node -e '
+  const fs=require("fs");const p=".ai/tasks/demo/state.json";
+  const s=JSON.parse(fs.readFileSync(p,"utf8"));
+  s.meta.task_type="bugfix"; s.meta.related_task="feishu:7161559257";
+  s.meta.remote_id={source:"feishu",id:"9999999"};
+  fs.writeFileSync(p, JSON.stringify(s,null,2));
+'
+git add -A && git commit -qm "mismatched remote anchor" >/dev/null
+check "锚不一致 → CI 拦截" 1 "$(ci)"
+node -e '
+  const fs=require("fs");const p=".ai/tasks/demo/state.json";
+  const s=JSON.parse(fs.readFileSync(p,"utf8"));
+  s.meta.remote_id={source:"feishu",id:"7161559257"};
+  fs.writeFileSync(p, JSON.stringify(s,null,2));
+'
+git add -A && git commit -qm "fixed anchor" >/dev/null
+check "锚一致 → 放行" 0 "$(ci)"
+git checkout -q HEAD~2 -- .ai/tasks/demo/state.json && git commit -qm "restore6c" >/dev/null
+
 echo "== 6d. change 任务完成态缺追溯字段 → CI 拦截 =="
 CHG_BASE="$(git rev-parse HEAD)"
 node -e '
