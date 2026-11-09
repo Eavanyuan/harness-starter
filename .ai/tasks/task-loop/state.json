@@ -1,0 +1,47 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "task-loop",
+    "task_type": "feature",
+    "related_task": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-09T06:20:42Z",
+    "flow_tier": "M",
+    "risk_tier": "HIGH",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "fs_review",
+  "stage_history": [
+    { "stage": "rs", "entered_at": "2026-11-09T06:22:00Z", "exited_at": "2026-11-09T06:35:00Z", "gate": "pass", "waived_by": null, "agent": "requirement-analyst", "model": "glm-5.3", "skill_versions": {} },
+    { "stage": "adr", "entered_at": "2026-11-09T06:35:00Z", "exited_at": "2026-11-09T06:55:00Z", "gate": "pass", "waived_by": null, "agent": "tech-selector", "model": "glm-5.3", "skill_versions": {} }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-task-loop.md",
+    "adr": "docs/06-reference/adr/ADR-010-task-loop.md",
+    "fs": null,
+    "wbs": "docs/02-features/task-loop/task-loop.wbs.md",
+    "matrix": null,
+    "review": null
+  },
+  "todos": [
+    { "id": "T0", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "仓库税预算：本任务文档自身过门工时（RS/FS/WBS/CR 打回预期）", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T1", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "追溯门禁扩展：--related feishu:<id> + EXT-<id> + 模板与套件（评审 M2/边界5）", "files": ["scripts/init-harness.sh", "hooks/lib/doc_completeness.mjs"], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T2", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "订阅三档投递 + broker 评估器 + aging 巡检 + digest 模板 + 批准下限", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T3", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "runner 核心：双剖面触发 + git CAS 认领(heads/claims)+TTL + worktree + runtime.headless(hook 必接线) + pause/resume + 预算(D7 口径) + kill switch + 审批三条件", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T4a", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "失败指纹归一化(✗剥参+文案并轨+step:*) + merge-base 基线实跑 + 集合差", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T4b", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "CI 三分流决策 + 豁免三道闸 + MR 附证", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T5", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "剖面 A 影子周(零写入可证+触发/漏触发双列,N≥30) → 单任务 → 小批；P1 准入=K1 runner", "files": [], "required_skills": ["harness"], "audit": null, "verify": null },
+    { "id": "T6", "stack": "harness", "status": "pending", "ooda_stage": "observe", "text": "剖面 B：飞书事件源(或降级形态双测) + 收尾回写读回 + doctor task-loop 前提在场性", "files": [], "required_skills": ["harness"], "audit": null, "verify": null }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

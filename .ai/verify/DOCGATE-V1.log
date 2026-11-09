@@ -1,19 +1,8 @@
-# cmd: bash -c npm\ run\ gate
-# started: 2026-11-08T00:32:13Z
-# finished: 2026-11-08T00:35:08Z
+# cmd: npm run gate
+# started: 2026-11-09T06:27:54Z
+# finished: 2026-11-09T06:28:36Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-
-结果：14 通过，0 失败
-
-> harness-starter@1.1.0 test:router
-> bash test/review-router.test.sh
-
-== 1. 命中与分流 ==
-  [32m✓[0m RS 文档 → rs + evidence
-  [32m✓[0m 任务目录 rs.md（单层 *）命中
-  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
-  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
   [32m✓[0m 源码（projects 槽 backend）→ cr
   [32m✓[0m RS + 源码混合 → 三类并存
   [32m✓[0m 未匹配文件（README）→ 仅 evidence
@@ -33,10 +22,17 @@
   [32m✓[0m 项目 dir 是空白 → exit 2
   [32m✓[0m v1 栈项漏 dir → exit 2
   [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
-== 5. git 模式（--base 真实 diff） ==
+== 5. 无槽可见化与 fs 路由（演练 G1/B3） ==
+  [32m✓[0m 无槽代码不改变退出码（可见不阻断）
+  [32m✓[0m uncovered 列出槽外代码文件
+  [32m✓[0m stderr 有覆盖洞提示
+  [32m✓[0m 账本记 uncovered_code
+  [32m✓[0m 槽外 md 不误报 uncovered
+  [32m✓[0m FS 变更 → fs + evidence
+== 6. git 模式（--base 真实 diff） ==
   [32m✓[0m --base diff 只取新文件
 
-结果：21 通过，0 失败
+结果：27 通过，0 失败
 
 > harness-starter@1.1.0 test:ai-review
 > bash test/ai-review.test.sh
@@ -66,6 +62,9 @@
   [32m✓[0m 带 key + --machine-only → exit 0（机器判据干净即通过）
   [32m✓[0m 带 key + 机器判据有 🔴 → 模型 0 次调用
   [32m✓[0m 带 key + 机器判据有 🔴 → exit 1
+== 4c. fs 审核类型（演练 B3 补槽） ==
+  [32m✓[0m 坏 FS（缺接口契约/测试要点/兼容与回滚）→ exit 1
+  [32m✓[0m verdict 点名缺失章节
 == 5. dry-run 与增量缓存 ==
   [32m✓[0m dry-run 打包统计（§3 已建缓存 → 本轮全沿用）
   [32m✓[0m dry-run 零 API 调用
@@ -73,7 +72,7 @@
   [32m✓[0m 未变更文件不重复调模型
   [32m✓[0m 缓存生效：打包文件数归零
 
-结果：25 通过，0 失败
+结果：27 通过，0 失败
 
 > harness-starter@1.1.0 test:broker
 > bash test/notify-broker.test.sh
@@ -141,13 +140,14 @@
   [32m✓[0m link 模式不再生成 decision value（没有回调可回）
   [32m✓[0m 正文点名要改哪一行（OP-1）
   [32m✓[0m MR 卡「去处理」按钮自带 url
+  [32m✓[0m MR 卡点名无槽覆盖洞（G1）
 == 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） ==
   [32m✓[0m notify CLI 相对路径正常渲染（非静默空转）
   [32m✓[0m broker 相对路径能启动（PORT 行出现）
   [32m✓[0m 相对路径 broker healthz → 200
   [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
 
-结果：60 通过，0 失败
+结果：61 通过，0 失败
 
 > harness-starter@1.1.0 test:feishu-ws
 > bash test/feishu-ws.test.sh

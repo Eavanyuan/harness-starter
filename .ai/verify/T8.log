@@ -1,6 +1,6 @@
 # cmd: bash test/notify-broker.test.sh
-# started: 2026-11-08T01:40:20Z
-# finished: 2026-11-08T01:40:21Z
+# started: 2026-11-09T06:24:57Z
+# finished: 2026-11-09T06:24:59Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 卡片渲染（纯函数） ==
