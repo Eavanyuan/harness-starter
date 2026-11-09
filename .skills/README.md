@@ -106,6 +106,17 @@ npm run check:skills        # 先看它骂什么，按提示填
 `> 素材来源：<owner>/<repo>@<sha>`。与 `spec_ref` 用 blob 锚是同一个思路——
 半年后要能回答「这段是从哪来的、对应哪个版本」，而不是靠记忆。
 
+这条**不只是约定，`check:skills` 会强制**：references 头部出现「素材来源：」却没写
+`@<7+ 位 hex>` 即报错。只借鉴思路、未复制原文的，写「参考：」不强制——
+**区分「改写原文」与「只借思路」，是为了不逼人编造 sha**。
+
+**跨栈知识放哪**：`test-quality.md`（断言有效性）、后续可能的 `logging.md` 这类
+同时管 `test/`、`backend/src/test`、`frontend/**/*.spec.ts` 的内容，**放在 `harness/references/`**，
+由 `backend` / `frontend` 的 SKILL.md 用文件路径引用。理由两条：
+
+- skill 之间禁止引用入口（`check:skills` 会拦），但引用一份 reference 不产生级联
+- 复制到两个栈必然漂移。一份 reference + 两处引用，改一次全生效
+
 **多份上游不要各建一个 skill**。同一 `applies_to` 命中多份会**全部加载**，
 三份 150 行的规则就是每个任务多读 450 行。合并成一份 reference，按域分节。
 

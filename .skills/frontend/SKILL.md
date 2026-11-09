@@ -52,6 +52,10 @@ debug 路径不得新增或修改对外 props、emit、路由。**一旦要改�
 | F6 | HTTP 调用集中在 `api/` 层，组件内不裸写 `axios`/`fetch` | `rg -n 'axios\|fetch\(' --glob '*.vue' frontend/src` |
 | F7 | 列表接口必须有分页或上限，不做无界查询 | 对照新增 API：请求参数里有 `page`/`limit`/`size` |
 
+> F1 只要求「补了测试」，不保证「补的测试会不会永远为真」——恒真断言、注释掉的断言、
+> 吞异常的 `try/catch` 都能让测试绿着而什么都没测。断言有效性的判据（T1–T7 + 变异检验）见
+> `.skills/harness/references/test-quality.md`。**跨栈共用一份，不复制**：两处各写一套必然漂移。
+
 ## 交付
 
 1. 验证命令 + 原始输出落 `.ai/verify/<todo>.log`

@@ -14,6 +14,7 @@
 //   6. 单文件行数不超过上限（默认 200）
 //   7. 不得引用其他 skill 的 SKILL.md（禁止级联）
 //   8. .ai/ 下出现的 required_skills 必须能解析到真实 skill
+//   9. 声明了外部素材来源的，必须写 commit 锚（owner/repo@<sha7+>）
 //
 // 用法：node scripts/check-skills.mjs [--json]
 
@@ -33,6 +34,8 @@ const warn = (m) => warns.push(m);
 const config = JSON.parse(readFileSync(join(ROOT, 'harness.config.json'), 'utf8'));
 const cfg = config.skills || {};
 const MAX_LINES = cfg.maxLines || 200;
+// owner/repo@<7–40 位 hex>。只认十六进制，避免把邮箱、@test-anti-patterns 这类当锚。
+const SHA_ANCHOR = /@[0-9a-f]{7,40}\b/i;
 const REQUIRED_SECTIONS = cfg.requiredSections || ['## Stage 0', '## 硬规则', '## 交付'];
 // v2 projects 数组 + v1 stacks 对象统一提取 id 集合
 const stackKeys = Array.isArray(config.projects)
@@ -153,6 +156,27 @@ if (!existsSync(SKILLS_DIR)) {
     }
     if (refs.length > 3) {
       warn(`${dir}/SKILL.md 的 references 有 ${refs.length} 个，Stage 0 超过 3 个文件就会开始被跳过`);
+    }
+
+    // 外部素材的版本锚：声明了来源却没写 commit，半年后无法回答「这段是哪一版」
+    // 与 spec_ref 用 blob 锚是同一个思路——来源要能被机器查，不靠记忆。
+    // 只认「素材来源」这个声明（意为复制或改写原文）；只借鉴思路的写「参考」，不强制。
+    if (fm.upstream && !SHA_ANCHOR.test(String(fm.upstream))) {
+      err(`${dir}/SKILL.md 的 upstream「${fm.upstream}」缺 commit 锚（应形如 owner/repo@<sha7+>）`);
+    }
+    const refDir = join(SKILLS_DIR, dir, 'references');
+    if (existsSync(refDir)) {
+      for (const n of rd(refDir)) {
+        if (!n.endsWith('.md')) continue;
+        const p = join(refDir, n);
+        if (!statSync(p).isFile()) continue;
+        // 只看头部：正文里提到某个仓库不算声明来源
+        const head = readFileSync(p, 'utf8').split(/\r?\n/).slice(0, 15).join('\n');
+        if (!/素材来源\s*[:：]/.test(head)) continue;
+        if (!SHA_ANCHOR.test(head)) {
+          err(`${dir}/references/${n} 声明了「素材来源」但没写 commit 锚（应形如 owner/repo@<sha7+>）`);
+        }
+      }
     }
 
     for (const sec of REQUIRED_SECTIONS) {

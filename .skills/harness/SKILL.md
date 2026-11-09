@@ -1,19 +1,21 @@
 ---
 name: harness
 stack: harness
-version: 1.0.0
+version: 1.1.0
 stage0: true
 applies_to:
   - "hooks/**"
   - "scripts/**"
   - "agents/**"
   - "templates/**"
+  - "test/**"
   - "harness.config.json"
   - ".claude/settings.json"
   - ".zcode/config.json"
   - ".github/workflows/**"
 references:
   - references/checklist.md
+  - references/test-quality.md
 ---
 
 # Harness 自身开发
@@ -61,6 +63,7 @@ references:
 | H6 | 新增拦截规则时，同一批必须给出「如何合法绕过」，否则第一次误报就会被整体关掉 | 看 PR 描述里有没有写 allowlist 用法 |
 | H7 | 新增 hook 必须同时接进两个 CLI（ZCode 需 `hooks.enabled: true`），只接一个按"没接"计 | `bash test/wiring.test.sh` |
 | H8 | 配置里新增的功能键必须有消费者，否则 doctor 报红 | `npm run doctor` 的「配置键均有消费者」一项 |
+| H9 | 新增或修改的断言必须可证伪：能说出「改坏什么它就会红」，并附一次变异结果 | 交付说明里有没有写变异方式与红的位置；`test/skills.test.sh` 的 `mut` 已强制「变异失败即判红」 |
 
 ## 交付
 
@@ -72,4 +75,5 @@ references:
 ## 按需加载
 
 - 写新 hook 前的失效模式自查 → `references/checklist.md` §常见失效点
+- **写或改测试断言**（H9 的判据、T1–T7 反模式、变异检验怎么做）→ `references/test-quality.md`
 - 门禁与 CI 的分工 → `guides/多人协作最佳实践.md` §三层分治

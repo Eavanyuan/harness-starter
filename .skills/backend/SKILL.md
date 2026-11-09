@@ -63,6 +63,10 @@ debug 路径只允许改方法体内部。**一旦要动签名、SQL、配置或
 > R9–R11 的判据、反例与「哪些不可机判」写在 `references/backend-quality.md`。
 > 这三条与 R1–R8 分工不同：R1–R8 管**代码写在哪**，R9–R11 管**写出来会不会在越权/并发/迁移上炸**。
 
+> R7 只要求「补了测试」，不保证断言有效。恒真断言、注释掉的断言、吞异常的 `try/catch`
+> 都能让测试绿着而什么都没测（上周实测 3 条）。判据见 `.skills/harness/references/test-quality.md`
+> ——跨栈共用一份，**不要在本文另写一套**，否则两处必然漂移。
+
 ## 交付
 
 1. 验证命令 + 原始输出落 `.ai/verify/<todo>.log`，`exit_code: 0` 且 mtime 晚于源码

@@ -52,6 +52,20 @@ mut() {
         if (end < 0) throw new Error("这份 fixture 没有可砍的 frontmatter");
         fs.writeFileSync(p, t.slice(end + 3));
       ' ;;
+    upstream-nosha)   # 声明了「素材来源」却不写 commit 锚
+      node -e '
+        const fs = require("fs");
+        const p = ".skills/backend/references/checklist.md";
+        const t = fs.readFileSync(p, "utf8");
+        fs.writeFileSync(p, "> 素材来源：foo/bar（MIT）\n\n" + t);
+      ' ;;
+    upstream-sha)     # 声明来源且带锚 —— 必须放行，否则规则会把合法的也拦掉
+      node -e '
+        const fs = require("fs");
+        const p = ".skills/backend/references/checklist.md";
+        const t = fs.readFileSync(p, "utf8");
+        fs.writeFileSync(p, "> 素材来源：foo/bar@abc1234（MIT）\n\n" + t);
+      ' ;;
     *) echo "未知形态：$shape" >&2; return 1 ;;
   esac
 }
@@ -134,6 +148,10 @@ expect "超过行数上限" 1 "超过上限" "mut longline"
 expect "required_skills 无法解析" 1 "没有这个 skill" "mut ghost"
 
 expect "缺 frontmatter" 1 "缺少 frontmatter" "mut nofront"
+
+expect "外部素材声明了来源却没写 commit 锚" 1 "没写 commit 锚" "mut upstream-nosha"
+
+expect "外部素材带 commit 锚则放行" 0 "-" "mut upstream-sha"
 
 echo
 echo "resolve-skills 自测"
