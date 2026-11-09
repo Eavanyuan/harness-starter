@@ -88,17 +88,29 @@ if [ -f "$LOG" ] && [ ${#claimers[@]} -gt 0 ]; then
   fi
 fi
 OUT="$(mktemp)"
-BENCH="$(mktemp)"   # 跑之前的基准时间点：只统计比它新的 surefire 报告
+BENCH="$(mktemp)"   # 运行起点（毫秒时间戳）：本次运行写过的报告才计入
 trap 'rm -f "$OUT" "$BENCH" "$PIPEFAIL_ENV"' EXIT
 
 START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# 判据是"本次运行写过这份报告"，实现方式是运行起点的毫秒时间戳 vs 文件 mtime。
+#
+# 为什么不用 `find -newer`：busybox（alpine CI 镜像）的 -newer 只比较到**秒**，
+# 同一秒内生成的 surefire 报告会被判成"不新"，计数静默变成 0、`# tests` 行整条消失，
+# audit.tests 随即对不上账（实测：7+5 聚合在 alpine 上得到空值，macOS 正常）。
+#
+# 为什么也不用"运行前后文件清单差集"：mvn 重跑会把 target/surefire-reports/TEST-Foo.txt
+# **原地重写**，路径不变，差集就当它没动过 —— 那是更常见的主场景，计数同样会丢。
+# 文件身份回答不了"这份报告这次写过没有"，只有时间能回答；要换掉的是不可靠的
+# 时间来源（find -newer 的秒级比较），不是时间语义本身。
+node -e 'process.stdout.write(String(Date.now()))' >"$BENCH"
+
 "${CMD[@]}" >"$OUT" 2>&1
 CODE=$?
 END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # 从 surefire-reports 聚合测试计数写进头部（#17）：mvn -q 会把 Tests run 从 stdout 吞掉，
 # 成功日志里若没有数字，audit.tests 的 N/M 就永远无法对账（实测同一事实出过 27/6/16 三个版本）。
-# 只统计本次运行新生成的报告（比 BENCH 新），跨次运行不重复计数。
+# 只统计本次运行写过的报告（mtime >= 运行起点毫秒），跨次运行不重复计数。
 TESTS_TOTAL=0; TESTS_FAIL=0; TESTS_ERR=0; TESTS_SKIP=0
 while IFS= read -r txt; do
   line="$(grep -m1 '^Tests run:' "$txt" 2>/dev/null || true)"
@@ -109,7 +121,30 @@ while IFS= read -r txt; do
   read -r t f e s <<<"$parsed"
   TESTS_TOTAL=$((TESTS_TOTAL + t)); TESTS_FAIL=$((TESTS_FAIL + f))
   TESTS_ERR=$((TESTS_ERR + e)); TESTS_SKIP=$((TESTS_SKIP + s))
-done < <(find . -path '*/target/surefire-reports/*.txt' -newer "$BENCH" 2>/dev/null)
+done < <(
+  # 用 node 取 mtime：fs 侧给的是浮点毫秒，精度取决于文件系统，不取决于 find 的实现。
+  # 只找 */target/surefire-reports/*.txt，跳过 .git / node_modules 免得在仓库根上白走。
+  node -e '
+    const fs = require("fs"), path = require("path");
+    const start = Number(fs.readFileSync(process.argv[1], "utf8"));
+    const hits = [];
+    (function walk(dir) {
+      let ents;
+      try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const e of ents) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          if (e.name === ".git" || e.name === "node_modules") continue;
+          walk(p);
+        } else if (e.name.endsWith(".txt") &&
+                   p.split(path.sep).join("/").includes("/target/surefire-reports/")) {
+          try { if (fs.statSync(p).mtimeMs >= start) hits.push(p); } catch { /* 跑完被删掉的报告不计数 */ }
+        }
+      }
+    })(".");
+    for (const h of hits) console.log(h);
+  ' "$BENCH" | sort
+)
 
 {
   echo "# cmd: ${CMDLINE}"
