@@ -72,6 +72,43 @@ npm run check:skills        # 先看它骂什么，按提示填
 4. 长内容进 `references/checklist.md`。
 5. 跑 `npm run build:agents`，让新 stack 进入产物里的加载提示。
 
+## 引入外部 skill 包：只借鉴，不整包搬
+
+上游（`awesome-agent-skills`、`superpowers`、`addyosmani/agent-skills`、`globalmpc/backendskills` 等）
+是按「`description` 语义匹配、自动激活」设计的。**本仓库不是那个模型**：
+`resolve-skills.mjs` 靠 `applies_to` 的 glob 命中文件路径，命中几份加载几份。
+所以原样搬进来有两个必然后果——**一次都不会被命中**，且过不了 `check:skills` 的 key/章节校验。
+
+过一遍三道闸，任何一道不过就不要装：
+
+| 闸 | 判据 | 不过怎么办 |
+|---|---|---|
+| 能不能被命令或 diff 判定 | 有一条检测形态，且命中语义明确 | 进 `references/` 当建议，标「非阻断」 |
+| 会不会被 glob 命中 | 有真实存在的路径可写进 `applies_to` | 不装。指向不存在的目录 = 纯装饰 |
+| 与现有规则是否重复 | 与已有 R#/维度不重叠 | 不装，只在 `references` 里留一句差异 |
+
+**落点映射**（`globalmpc/backendskills` 是首个用例）：
+
+| 上游内容 | 本仓库落点 | 形态 |
+|---|---|---|
+| 可检测的阻断项 | `SKILL.md` 的「硬规则」表，新编号 R# | 一行规则 + 一条命令 |
+| 判断型原则（可读性、架构取舍） | `references/<domain>.md` | 明标「建议，非阻断」 |
+| 上游脚本、多语言实现 | **丢弃，用 node 重写** | 不引入新运行时依赖 |
+| 上游的安装说明 | **忽略** | 见下 |
+
+**三条禁止**（都是踩过的）：
+
+1. **不许 append 到 `AGENTS.md`**。它是 `build-agents.mjs` 的生成物，手改会被 `--check` 判漂移。
+2. **不许 copy 上游的 `.cursor/` 等产物**。`.cursor/rules` 不在生成目标里，等于绕开 wiring 测试盯的那条接线。
+3. **不许引入非 node 的脚本**。CI 镜像里没有 python3——这一类缺失不会报错，只会静默把判据变成恒真断言。
+
+**来源要能被机器查**：`references/` 里抄了上游内容时，文件头写
+`> 素材来源：<owner>/<repo>@<sha>`。与 `spec_ref` 用 blob 锚是同一个思路——
+半年后要能回答「这段是从哪来的、对应哪个版本」，而不是靠记忆。
+
+**多份上游不要各建一个 skill**。同一 `applies_to` 命中多份会**全部加载**，
+三份 150 行的规则就是每个任务多读 450 行。合并成一份 reference，按域分节。
+
 ## 反模式（都是真踩过的）
 
 **级联加载。** IDMP 的 backend skill 要求先连读 12 个文件，其中 6 个是子 skill 的子 skill。实际效果是模型读 3 个就开始写码，剩下 9 个在自检表里被打了勾——而且是编造的。改成 `1 + 1`（入口 + checklist）。

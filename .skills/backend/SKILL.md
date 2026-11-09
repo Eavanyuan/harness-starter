@@ -1,12 +1,13 @@
 ---
 name: backend
 stack: backend
-version: 1.0.0
+version: 1.1.0
 stage0: true
 applies_to:
   - "backend/src/**"
 references:
   - references/checklist.md
+  - references/backend-quality.md
 ---
 
 # Java 后端开发
@@ -18,9 +19,12 @@ references:
 
 | # | 读什么 | 为什么非读不可 |
 |---|---|---|
-| 0.1 | `references/checklist.md` | 8 条阻断级规则的反例与正例，违反即打回 |
+| 0.1 | `references/checklist.md` | R1–R8 的反例与正例，违反即打回 |
 | 0.2 | 要改的类 + 它的直接调用方 | 不知道谁在调它，改出来就是回归 |
 | 0.3 | `harness.config.json` → `stacks.backend` | 验证命令以它为准，不凭记忆 |
+
+> 改到**查询、写操作、迁移**时，先读 `references/backend-quality.md`（R9–R11）。
+> 不改这三类就不用读——它是按需的，不在 Stage 0 必读里。
 
 前置自检（全 ✅ 才允许 Edit / Write）：
 
@@ -50,8 +54,14 @@ debug 路径只允许改方法体内部。**一旦要动签名、SQL、配置或
 | R6 | 抛领域异常或既有错误码，不抛裸 `RuntimeException` | `rg -n 'throw new RuntimeException' backend/src` |
 | R7 | 改了行为必须同次补测试；要改存量测试先问人 | diff 里源码与测试的文件数——只有源码、没有测试即违规 |
 | R8 | 不许用变通参数让构建变绿（`-DskipTests`、`failOnError=false`、`failure.ignore=true`） | `rg -n 'skipTests\|skip\.tests\|failure\.ignore\|failOnError' --glob '!*.md'` |
+| R9 | 查询/更新必须限定调用者可见范围：`selectById` 拿到就返回、不校验归属 = 越权（IDOR） | `rg -n 'selectById\|getById\|findById\|selectOne' backend/src/main/java`，逐个确认有无 owner/tenant 过滤。**这条不可机判，不进 CI**，只在 `/cr` 必答 |
+| R10 | 对外写操作必须幂等（幂等键 / 唯一索引 / 状态机前置校验三选一）；读改写必须有 `@Version` 或行锁 | `rg -n 'Idempotent\|Idempotency\|request_id\|@Version\|for update' backend/src/main/java`；再扫「先查后改」：`rg -n -U 'selectById[\s\S]{0,400}?updateById'` |
+| R11 | 迁移必须有配对 down；破坏性变更（删列/改类型/加非空无默认）必须 expand-then-contract 分两步 | 迁移目录 up/down 文件配对数不符即违规；`rg -n 'DROP COLUMN\|MODIFY COLUMN\|NOT NULL' backend/src/main/resources/db` 命中即要两步方案 |
 
 > R8 在 `.ai/rules/verification.md` 第 2 条已经声明。**同一规则出现两处不算重复**：L0 是纪律，这里是本栈的查法。但检测命令只写在这里，别在别处再抄一份。
+
+> R9–R11 的判据、反例与「哪些不可机判」写在 `references/backend-quality.md`。
+> 这三条与 R1–R8 分工不同：R1–R8 管**代码写在哪**，R9–R11 管**写出来会不会在越权/并发/迁移上炸**。
 
 ## 交付
 
@@ -62,6 +72,7 @@ debug 路径只允许改方法体内部。**一旦要动签名、SQL、配置或
 
 ## 按需加载
 
-- 表结构 / 迁移脚本 → 必走 ADR（`docs/06-reference/adr/`），不直接改
+- 表结构 / 迁移脚本 → 必走 ADR（`docs/06-reference/adr/`），不直接改；落地前先按 R11 判 up/down 配对与是否需两步
 - 新增权限点、鉴权排查 → `references/checklist.md` 末尾「按需场景」
 - 并发 / 事务隔离 / 缓存失效 → 同上，先读完再动
+- 越权（IDOR）/ 幂等键 / 迁移 expand-contract → `references/backend-quality.md`
