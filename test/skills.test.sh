@@ -138,13 +138,15 @@ expect "缺 frontmatter" 1 "缺少 frontmatter" "mut nofront"
 echo
 echo "resolve-skills 自测"
 
-expect_resolve "后端文件只命中 backend" "backend  v1.0.0" "e2e  v" \
+# 断言不写死版本号：这几条验的是「命中哪个 skill」，不是「版本是多少」。
+# 写死 v1.0.0 会让「升版」这个正常动作变成红灯，与证据里写死动态数字同类。
+expect_resolve "后端文件只命中 backend" "backend  v" "e2e  v" \
   backend/src/main/java/demo/Foo.java
 
-expect_resolve "e2e 文件只命中 e2e（不命中 frontend/src）" "e2e  v1.0.0" "frontend  v" \
+expect_resolve "e2e 文件只命中 e2e（不命中 frontend/src）" "e2e  v" "frontend  v" \
   frontend/tests/e2e/specs/login.spec.ts
 
-expect_resolve "前端业务文件命中 frontend（不命中 e2e）" "frontend  v1.0.0" "e2e  v" \
+expect_resolve "前端业务文件命中 frontend（不命中 e2e）" "frontend  v" "e2e  v" \
   frontend/src/components/Foo.vue
 
 expect_resolve "多栈改动命中多个 skill" "命中 2 个 skill" "-" \
