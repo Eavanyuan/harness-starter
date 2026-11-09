@@ -82,6 +82,18 @@ t2="$(grep -m1 '^# tests:' .ai/verify/T4.log | sed -n 's/.*total=\([0-9]*\).*/\1
 check "首次计入本次新报告" 3 "$t1"
 check "同一批报告不重复计入（第二次没有新报告 → 无计数行）" "" "$t2"
 
+echo "== 4b. 同一路径被**重写**也要计数 =="
+# mvn 重跑不会新建文件，它把 target/surefire-reports/TEST-Foo.txt 原地重写。
+# 用"运行前后文件清单差集"判新旧时，路径没变 → 被判成没动过 → 计数整条丢失。
+# fixture 必须走"同一路径改内容"这条路径，才算测到这个坑（前一组每次都是新文件，抓不住）。
+rm -rf d
+bash scripts/verify-run.sh T4b -- bash -c 'mkdir -p d/target/surefire-reports; printf "Tests run: 4, Failures: 0, Errors: 0, Skipped: 0\n" > d/target/surefire-reports/r.txt' >/dev/null 2>&1
+r1="$(grep -m1 '^# tests:' .ai/verify/T4b.log | sed -n 's/.*total=\([0-9]*\).*/\1/p')"
+bash scripts/verify-run.sh T4b -- bash -c 'printf "Tests run: 6, Failures: 0, Errors: 0, Skipped: 0\n" > d/target/surefire-reports/r.txt' >/dev/null 2>&1
+r2="$(grep -m1 '^# tests:' .ai/verify/T4b.log | sed -n 's/.*total=\([0-9]*\).*/\1/p')"
+check "首次 4" 4 "$r1"
+check "同路径重写后按新内容计数 6（不是空）" 6 "$r2"
+
 echo "== 5. 失败运行的 exit_code 要如实写，脚本退出码同步 =="
 code=0
 bash scripts/verify-run.sh T5 -- bash -c 'echo boom; exit 7' >/dev/null 2>&1 || code=$?
