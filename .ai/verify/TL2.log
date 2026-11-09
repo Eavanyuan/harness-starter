@@ -1,0 +1,6 @@
+# cmd: bash -c bash\ test/notify-broker.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ bash\ test/task-loop.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ TL2_OK
+# started: 2026-11-09T10:38:47Z
+# finished: 2026-11-09T10:39:32Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+TL2_OK

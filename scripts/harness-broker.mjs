@@ -25,12 +25,14 @@
  * 用法：node scripts/harness-broker.mjs [--port 8788]   # --port 0 时打印实际端口（测试用）
  */
 import http from 'node:http';
+import fsMod from 'node:fs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadRules, route, RulesError } from './lib/review-rules.mjs';
 import { parseDecisionRowsFromDiff, createSeenKeys } from './lib/decision-from-git.mjs';
 import { renderDecisionCard, renderMrCard, renderPipelineCard, sendCard } from './lib/notify.mjs';
+import { personSub, classify, createNotifyQueue, renderDigestCard } from './lib/subscriptions.mjs';
 import { startFeishuWs } from './feishu-ws.mjs';
 import { recordEvent } from '../hooks/lib/ledger.mjs';
 
@@ -218,6 +220,24 @@ const seenGitDecisions = createSeenKeys();
  * 这里 broker **不写仓库**——commit 本身就是账。所以这个函数没有"失败重试"的概念，
  * 读不到 diff 就记一条 failed 走人，不会造成账实不符。
  */
+/**
+ * 订阅三档投递（T2）：对"卡片级事件"按订阅分类——card 即推、digest 入 aging 队列、ledger 只入账。
+ * 观测 fail-open：发送失败不抛（记 stderr），降档/升级决策全部落 subscription_matched 事件。
+ */
+async function deliver(cfg, evt) {
+  const sub = personSub(cfg.rulesCache, cfg.subscriberKey || 'default');
+  const d = classify(evt, sub);
+  recordEvent('broker', 'subscription_matched', { type: evt.type, tier: d.tier, reason: d.reason, audience: cfg.subscriberKey || 'default' });
+  if (d.tier === 'ledger' || !cfg.feishuWebhook) return d;
+  if (d.tier === 'card') {
+    try { await sendCard(cfg.feishuWebhook, evt.payload); } catch (e) { console.error(`[broker] 卡片发送失败（fail-open）：${e.message}`); }
+    return d;
+  }
+  // digest：降档入队；到 escalateAt 仍未处理由 aging 巡检升回 card（延迟不吞）
+  cfg.notifyQueue?.add(evt, { tier: 'digest', escalateAfterMs: d.escalateAfterMs });
+  return d;
+}
+
 async function handleGitDecisions(cfg, body, rules) {
   const gd = (rules.notify && rules.notify.git_decision) || {};
   if (gd.enabled === false) return { landed: [], skipped: 'disabled' };
@@ -311,6 +331,7 @@ async function handle(cfg, req, res) {
   if (req.url === '/webhook/gitlab') {
     if (!tokenOk(req.headers['x-gitlab-token'], cfg.secret)) return json(403, { error: 'webhook token 不匹配' });
     const rules = loadRules(cfg.rulesRoot); // 缺/坏 → 抛给外层 500：路由没有规则 = fail-closed
+    cfg.rulesCache = rules; // deliver() 按当前规则分类（订阅改了即生效，无需重启）
     const cardEvents = rules.notify?.card_events || [];
     const roles = rules.notify?.roles || {};
     const attr = body.object_attributes || {};
@@ -354,24 +375,25 @@ async function handle(cfg, req, res) {
           ? `harness.config.json 有问题，自动路由失败 —— 请修配置后重跑 CR：${configError}`
           : (files == null ? '' : null),
       });
-      if (cardEvents.includes('mr_open') && cfg.feishuWebhook) {
-        try { await sendCard(cfg.feishuWebhook, cardP); } catch (e) { console.error(`[broker] 飞书发送失败（fail-open）：${e.message}`); }
-      }
+      // 订阅三档（T2）：card 即推 / digest 降档入队（aging 到点升回 card）/ ledger 只入账。
+      // 无订阅配置 = mode:all → card（现状行为，向后兼容）。
+      await deliver(cfg, {
+        type: 'mr_open', mr: attr.iid, author: body.user?.name || attr.author?.name, project: body.project?.path,
+        payload: cardP,
+      });
       recordEvent('broker', 'mr_routed', {
         iid: attr.iid, reviews: reviews.map((r) => r.id), degraded, config_error: configError, uncovered,
-        sent: cardEvents.includes('mr_open') && !!cfg.feishuWebhook,
       });
       return json(200, { ok: true, reviews: reviews.map((r) => r.id), degraded, config_error: configError });
     }
 
     if (body.object_kind === 'pipeline' && attr.status === 'failed') {
-      if (cardEvents.includes('pipeline_failed') && cfg.feishuWebhook) {
-        try {
-          await sendCard(cfg.feishuWebhook, renderPipelineCard({
-            project: body.project?.name || body.project?.path, ref: attr.ref, sha: attr.sha, url: attr.commit?.url, author: body.user?.name,
-          }));
-        } catch (e) { console.error(`[broker] 飞书发送失败（fail-open）：${e.message}`); }
-      }
+      await deliver(cfg, {
+        type: 'pipeline_failed', project: body.project?.path, ref: attr.ref, author: body.user?.name,
+        payload: renderPipelineCard({
+          project: body.project?.name || body.project?.path, ref: attr.ref, sha: attr.sha, url: attr.commit?.url, author: body.user?.name,
+        }),
+      });
       recordEvent('broker', 'pipeline_failed_notified', { project: body.project?.path, ref: attr.ref });
       return json(200, { ok: true });
     }
@@ -429,6 +451,16 @@ export function startServer(userCfg = {}) {
   }
   // 运维读状态的地方：healthz 从这里拿"入站到底通不通"。
   cfg.runtime = { mode, feishuWs: null };
+  // 订阅三档（T2）：aging 队列落部署侧 ledger 目录（通知域内部状态，不是任务状态）；
+  // 巡检周期 env 可调（测试用 200ms 级），digest 整点摘要同理。
+  cfg.notifyQueue = createNotifyQueue({
+    file: join((process.env.HARNESS_LEDGER_DIR || cfg.rulesRoot), 'notify-queue.json'),
+    writeFileSyncImpl: fsMod.writeFileSync,
+    readFileSyncImpl: fsMod.readFileSync,
+    existsSyncImpl: fsMod.existsSync,
+  });
+  const agingInterval = Number(process.env.AGING_INTERVAL_MS || 300_000);
+  const digestInterval = Number(process.env.DIGEST_INTERVAL_MS || 3_600_000);
   const server = http.createServer((req, res) => {
     handle(cfg, req, res).catch((e) => {
       console.error(`[broker] 处理失败：${e.message}`);
@@ -458,6 +490,26 @@ export function startServer(userCfg = {}) {
         cfg.runtime.feishuWs = feishuWs;
       }
       probeGitlab(cfg); // 不 await：令牌问题只影响落账，不能把服务启动卡住
+      // aging 巡检：到 escalateAt 仍未投递的 digest → 升回 card（延迟不吞的铁律在这里执行）。
+      // 摘要整点：未升级的 digest 打包一张卡，不逐条推（防轰炸的另一面）。
+      const agingTimer = setInterval(async () => {
+        try {
+          for (const e of cfg.notifyQueue.due()) {
+            if (cfg.feishuWebhook) {
+              try { await sendCard(cfg.feishuWebhook, e.evt.payload); } catch (err) { console.error(`[broker] aging 升级发送失败：${err.message}`); continue; }
+            }
+            cfg.notifyQueue.markSent(e.id, 'aging-card');
+            recordEvent('broker', 'aging_escalated', { type: e.evt.type, id: e.id });
+          }
+          const pending = cfg.notifyQueue.pending();
+          if (pending.length && cfg.feishuWebhook && Date.now() % digestInterval < agingInterval) {
+            try { await sendCard(cfg.feishuWebhook, renderDigestCard(pending)); } catch (err) { console.error(`[broker] 摘要发送失败：${err.message}`); }
+            pending.forEach((e) => cfg.notifyQueue.markSent(e.id, 'digest-hourly'));
+            recordEvent('broker', 'digest_flushed', { count: pending.length });
+          }
+        } catch (e) { console.error(`[broker] aging 巡检异常（不中断服务）：${e.message}`); }
+      }, agingInterval);
+      agingTimer.unref?.();
       resolve({ server, port: server.address().port, cfg, mode, feishuWs });
     });
   });

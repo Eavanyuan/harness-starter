@@ -152,7 +152,7 @@ check "webhook 发送成功且落账" "0" "$?"
 grep -q '"type":"card_sent"' "$TMP/ledger/events.jsonl"; check "events.jsonl 记 card_sent" "0" "$?"
 
 echo "== 2. broker：健康与认证 =="
-PORT_BROKER=0 \
+AGING_INTERVAL_MS=200 PORT_BROKER=0 \
 GITLAB_WEBHOOK_SECRET=s3cret GITLAB_URL="http://127.0.0.1:${GITLAB_PORT}" GITLAB_TOKEN=gt \
 FEISHU_WEBHOOK_URL="http://127.0.0.1:${FEISHU_PORT}" HARNESS_RULES_ROOT="$TMP/rules" \
 FEISHU_VERIFY_TOKEN=fs-verify \
@@ -444,6 +444,53 @@ wait $REL_PID 2>/dev/null
 ln -s "$HERE" "$TMP/link-repo" 2>/dev/null
 node "$TMP/link-repo/scripts/lib/notify.mjs" --event "$TMP/ev-decision.json" > "$TMP/link-notify.out" 2>/dev/null
 grep -q '"msg_type": "interactive"' "$TMP/link-notify.out"; check "经软链路径调用也正常渲染（不是静默空转）" "0" "$?"
+
+echo "== 9. 订阅三档与 aging 升级（T2） =="
+# 订阅规则写进 rules（broker 每请求重读规则，改了即生效）：
+# default 人 → focused：mr_open 全降 digest（escalate 0.05h=180s→测试用 AGING_INTERVAL_MS=200 前移时间戳）、
+# pipeline_failed(tsdb) → ledger。另验证无订阅=兼容现状已在前面用例（默认 rules 无 persons → all → card）。
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));
+j.notify.subscriptions={defaults:{delivery:"digest"},persons:{default:{mode:"focused",rules:[
+  {when:{type:"mr_open"},delivery:"digest"},
+  {when:{type:"pipeline_failed",project:["tsdb"]},delivery:"ledger"} ]}}};
+fs.writeFileSync(p,JSON.stringify(j,null,2))' "$TMP/rules/harness.rules.json"
+
+cards_before_sub=$(feishu_cards)
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(mr_payload)" "http://127.0.0.1:${BPORT}/webhook/gitlab"
+check "mr_open 降档 digest → 不立即推卡" "$cards_before_sub" "$(feishu_cards)"
+grep -q '"type":"subscription_matched".*"tier":"digest"' "$TMP/ledger/events.jsonl"; check "订阅决策入账（digest）" "0" "$?"
+[ -f "$TMP/ledger/notify-queue.json" ]; check "aging 队列落盘" "0" "$?"
+
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d '{ "object_kind": "pipeline", "project": { "name": "tsdb", "path": "tsdb" }, "user": { "name": "w" },
+       "object_attributes": { "status": "failed", "ref": "main", "sha": "abc" } }' \
+  "http://127.0.0.1:${BPORT}/webhook/gitlab"
+check "ledger 档 → 不推卡不入队" "$cards_before_sub" "$(feishu_cards)"
+grep -q '"tier":"ledger"' "$TMP/ledger/events.jsonl"; check "订阅决策入账（ledger）" "0" "$?"
+
+# aging：把队列里该条目的 escalateAt 改到过去，等一轮巡检（broker 以 AGING_INTERVAL_MS=200 启动）
+node -e 'const fs=require("fs");const p=process.argv[1];const q=JSON.parse(fs.readFileSync(p,"utf8"));
+q.forEach(x=>{x.escalateAt=Date.now()-1000});fs.writeFileSync(p,JSON.stringify(q,null,1))' "$TMP/ledger/notify-queue.json"
+for _ in $(seq 1 30); do [ "$(feishu_cards)" -gt "$cards_before_sub" ] && break; sleep 0.2; done
+check "aging 到点 → 升回 card 推达" "$((cards_before_sub + 1))" "$(feishu_cards)"
+grep -q '"type":"aging_escalated"' "$TMP/ledger/events.jsonl"; check "aging 升级入账" "0" "$?"
+
+# 规则热改即生效：把 default 人切到 minimal → 同一事件从 digest 变 ledger（broker 每请求重读规则）
+cards_m=$(feishu_cards); queue_m=$(node -e 'const q=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(q.filter(x=>!x.sentAt).length)' "$TMP/ledger/notify-queue.json" 2>/dev/null || echo 0)
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p,"utf8"));
+j.notify.subscriptions.persons.default={mode:"minimal",rules:[]};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$TMP/rules/harness.rules.json"
+curl -s -o /dev/null -X POST -H 'content-type: application/json' -H 'x-gitlab-token: s3cret' \
+  -d "$(mr_payload)" "http://127.0.0.1:${BPORT}/webhook/gitlab"
+queue_m2=$(node -e 'const q=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(q.filter(x=>!x.sentAt).length)' "$TMP/ledger/notify-queue.json" 2>/dev/null || echo 0)
+check "规则热改即生效：minimal 后同事件不再入队" "$queue_m" "$queue_m2"
+# mustAct 下限（纯函数层）：ledger 档 + mustAct → digest（铁律 2，端到端无该事件流，函数层锚定）
+node --input-type=module -e '
+import { personSub, classify } from "'"$HERE"'/scripts/lib/subscriptions.mjs";
+const sub = personSub({ notify: { subscriptions: { persons: { x: { mode: "minimal", rules: [{ when: { type: "pipeline_failed" }, delivery: "ledger" }] } } } } }, "x");
+const r = classify({ type: "mr_review_requested", mustAct: true }, sub);
+process.exit(r.tier === "digest" && r.escalateAfterMs > 0 ? 0 : 1);'
+check "mustAct 事件 ledger 下限提升为 digest（带升级时间）" "0" "$?"
 
 kill $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 wait $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null

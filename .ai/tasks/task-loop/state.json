@@ -85,28 +85,55 @@
     {
       "id": "T2",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "订阅三档投递 + broker 评估器 + aging 巡检 + digest 模板 + 批准下限",
-      "files": [],
+      "files": [
+        "scripts/lib/subscriptions.mjs",
+        "scripts/harness-broker.mjs",
+        "harness.rules.json",
+        "test/notify-broker.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 三件全过",
+        "tests": "notify-broker 70/70（三档端到端：mr_open 降档不推卡/队列落盘/ledger 不入队/aging 到点升回 card/规则热改即生效/mustAct 下限函数层锚定）",
+        "feature_complete": "RS US-3 全部验收：card/digest/ledger 三档 + escalateAfter + mode all/focused/minimal + 无订阅=兼容现状 + 老化巡检 + 摘要渲染",
+        "quality_clean": "ledger 不参与 aging（弃权≠延迟）；发送失败 fail-open；决策全落 subscription_matched 事件"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL2.log",
+        "command": "bash test/notify-broker.test.sh"
+      }
     },
     {
       "id": "T3",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "runner 核心：双剖面触发 + git CAS 认领(heads/claims)+TTL + worktree + runtime.headless(hook 必接线) + pause/resume + 预算(D7 口径) + kill switch + 审批三条件",
-      "files": [],
+      "files": [
+        "scripts/task-loop.mjs",
+        "scripts/lib/task-loop-core.mjs",
+        "scripts/lib/claim.mjs",
+        "harness.rules.json",
+        "test/task-loop.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 全过；runner 薄壳 + core 纯函数库分层（顶层副作用拆出）",
+        "tests": "task-loop 10/10（kill switch/headless 接线闸/CAS 双竞争仅一胜/25h 僵尸不抢/新 id 正常认领/审批三条件四形态）",
+        "feature_complete": "剖面 A 单轮骨架 + 全部安全闸：拉模型触发轮询（created_by_me+未解决讨论）、CAS 认领（唯一提交内容）、预算 D7 口径（轮次硬限+pause/resume）、审批三条件、dry-run 零写入",
+        "quality_clean": "两个实测 bug 已修：同 sha push 同 ref 是 no-op 成功（CAS 必须唯一提交内容）；--profile 参数解析 indexOf 陷阱"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL2.log",
+        "command": "bash test/task-loop.test.sh && npm run gate"
+      }
     },
     {
       "id": "T4a",
