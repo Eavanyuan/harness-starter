@@ -16,7 +16,14 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-rsync -a --exclude '.git' --exclude 'node_modules' --exclude '.ai/tasks' "$HERE/" "$TMP/repo/"
+# 复制整棵树不用 rsync：CI 跑在 node:22-alpine 里，那里没有 rsync，而"命令不存在"
+# 不会让脚本停下（set -e 没开），只会留下一个空壳 fixture，后面断言全变假红。
+mkdir -p "$TMP/repo"
+if ! ( cd "$HERE" && tar -cf - --exclude=./.git --exclude=./node_modules --exclude=./.ai/tasks . ) \
+     | ( cd "$TMP/repo" && tar -xf - ); then
+  echo "fixture 建不起来（tar 复制失败），后面的断言没有意义" >&2
+  exit 1
+fi
 cd "$TMP/repo"
 rm -f .gitignore
 rm -rf .ai/tasks

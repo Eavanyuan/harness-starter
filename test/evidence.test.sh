@@ -16,13 +16,20 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/repo"
-rsync -a --exclude '.git' --exclude 'node_modules' "$HERE/" "$TMP/repo/"
+# 复制整棵树不用 rsync：CI 跑在 node:22-alpine 里，那里没有 rsync，而"命令不存在"
+# 不会让脚本停下（set -e 没开），只会留下一个空壳 fixture —— 后面几十条断言在错地基上
+# 跑，全变成假红（实测 31 条）。tar 两个平台都有，失败就直接退。
+if ! ( cd "$HERE" && tar -cf - --exclude=./.git --exclude=./node_modules . ) \
+     | ( cd "$TMP/repo" && tar -xf - ); then
+  echo "fixture 建不起来（tar 复制失败），后面的断言没有意义" >&2
+  exit 1
+fi
 cd "$TMP/repo"
 # 项目自身的 .gitignore 与本测试无关，且会干扰：Java 项目常见的 *.log 规则会把
 # .ai/verify/*.log 证据挡在库外，CI 口径按"未入库"判红（TDC 收编实测踩到）。
 # 证据链与项目忽略策略的冲突由 init 检测并补托管块（试装反馈 #7），不在本测试职责内。
 rm -f .gitignore
-# .ai/verify 也必须清掉再重建：rsync 会把仓库里真实任务的证据日志一并带进来，
+# .ai/verify 也必须清掉再重建：整树复制会把仓库里真实任务的证据日志一并带进来，
 # 基线 commit 入库后，下方 `log T2 0` 写的就是"已跟踪文件的修改"而非"未入库文件"，
 # §5「未入库日志不算证据」当场翻转为永久绿（实测：任务 TODO 恰好也叫 T1/T2 时触发）。
 rm -rf .ai/tasks .ai/verify && mkdir -p .ai/tasks/demo .ai/tasks/demo-base .ai/verify src

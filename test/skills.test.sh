@@ -23,11 +23,51 @@ reset() {
   cp "$ROOT/scripts/resolve-skills.mjs" "$TMP/repo/scripts/"
 }
 
+# mut <形态> —— 在 fixture 上制造一种坏形态。
+# 只用 node：本仓库的硬依赖是 node，不是 python3。CI 跑在 node:22-alpine 里，
+# 那里没有 python3，用 python3 写变异会让"应该拦住"的用例静默失效。
+mut() {
+  local shape="$1"
+  case "$shape" in
+    longline)  # 追加 300 行，越过行数上限
+      node -e '
+        const fs = require("fs");
+        const p = ".skills/backend/SKILL.md";
+        fs.writeFileSync(p, fs.readFileSync(p, "utf8") + "\n" + "填充\n".repeat(300));
+      ' ;;
+    ghost)     # required_skills 指向一个不存在的 skill
+      node -e '
+        const fs = require("fs");
+        const p = ".ai/state.example.json";
+        const d = JSON.parse(fs.readFileSync(p, "utf8"));
+        d.todos[0].required_skills = ["backend", "ghost"];
+        fs.writeFileSync(p, JSON.stringify(d, null, 2) + "\n");
+      ' ;;
+    nofront)   # 砍掉 frontmatter
+      node -e '
+        const fs = require("fs");
+        const p = ".skills/backend/SKILL.md";
+        const t = fs.readFileSync(p, "utf8");
+        const end = t.indexOf("---", 3);
+        if (end < 0) throw new Error("这份 fixture 没有可砍的 frontmatter");
+        fs.writeFileSync(p, t.slice(end + 3));
+      ' ;;
+    *) echo "未知形态：$shape" >&2; return 1 ;;
+  esac
+}
+
 # expect <名称> <期望退出码> <期望输出里的片段|-> <变更命令>
 expect() {
   local name="$1" want_code="$2" needle="$3" mutate="$4"
   reset
-  ( cd "$TMP/repo" && eval "$mutate" ) >/dev/null 2>&1
+  # 变异失败必须当场报错。原来这里是 `( ... ) >/dev/null 2>&1`，一旦变异命令本身跑不起来
+  # （典型：镜像里没有 python3），fixture 原封不动，本该被拦的用例就变成恒真断言，
+  # 而测试仍然"绿"——那是最坏的一种绿。
+  if ! ( cd "$TMP/repo" && eval "$mutate" ) >/dev/null 2>&1; then
+    printf '  ✗ %s（变异命令执行失败，用例不成立）\n' "$name"
+    fail=$((fail + 1))
+    return
+  fi
   local out code
   out="$(cd "$TMP/repo" && node scripts/check-skills.mjs 2>&1)"
   code=$?
@@ -89,14 +129,11 @@ expect "stack 不在 config.stacks 里" 1 "既不在 stacks" \
 expect "缺 applies_to" 1 "缺 applies_to" \
   "sed -i.bak '/^applies_to:/,+1d' .skills/backend/SKILL.md"
 
-expect "超过行数上限" 1 "超过上限" \
-  "python3 -c \"p='.skills/backend/SKILL.md'; t=open(p).read(); open(p,'w').write(t + '\n' + ('填充\n'*300))\""
+expect "超过行数上限" 1 "超过上限" "mut longline"
 
-expect "required_skills 无法解析" 1 "没有这个 skill" \
-  "python3 -c \"import json;p='.ai/state.example.json';d=json.load(open(p));d['todos'][0]['required_skills']=['backend','ghost'];json.dump(d,open(p,'w'),ensure_ascii=False,indent=2)\""
+expect "required_skills 无法解析" 1 "没有这个 skill" "mut ghost"
 
-expect "缺 frontmatter" 1 "缺少 frontmatter" \
-  "python3 -c \"p='.skills/backend/SKILL.md';t=open(p).read();i=t.find('---',3);open(p,'w').write(t[i+3:])\""
+expect "缺 frontmatter" 1 "缺少 frontmatter" "mut nofront"
 
 echo
 echo "resolve-skills 自测"

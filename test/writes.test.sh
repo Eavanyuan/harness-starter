@@ -114,7 +114,10 @@ payload Write "../../etc/passwd"
 check "仓库外必拦" 2 "$(run_write)"
 
 echo "== 9. 受保护区带到期放行条 → 应放行 =="
-echo "hooks/guard_state.mjs | 自测临时放行 | $(date -v+1d +%Y-%m-%d 2>/dev/null || date -d '+1 day' +%Y-%m-%d)" >> "$ALLOWLIST"
+# 日期用 node 算，不用 date：`date -v+1d` 是 BSD，`date -d` 是 GNU，busybox 两个都不支持，
+# 而失败不会让脚本停下 —— 日期落成空串，放行条静默失效，这条用例变成红（实测 alpine）。
+FUTURE_DATE="$(node -e 'console.log(new Date(Date.now() + 864e5).toISOString().slice(0, 10))')"
+echo "hooks/guard_state.mjs | 自测临时放行 | $FUTURE_DATE" >> "$ALLOWLIST"
 payload Edit "hooks/guard_state.mjs"
 check "allowlist 生效" 0 "$(run_write)"
 
