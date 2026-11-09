@@ -117,8 +117,14 @@ jobs:
             exit 0
           fi
           echo "$FILES"
+          # 禁用项的字面量必须拆开拼：这个文件自己也在被扫范围内（只要 PR 改了 workflow，
+          # FILES 里就有它），写全的话扫描会命中自己的定义 —— 于是"改 workflow"这个动作
+          # 本身必然红，跟改动内容无关。实测：本 PR 只是加了一个 test 步骤就被判可疑。
+          # 拆成两段邻接的字符串，运行时才拼成那串禁用选项，源码里不存在完整字面量。
+          # 注意连注释也不能写全，注释同样会被扫到（刚才就踩了）。
+          NO_VERIFY="--no-ver""ify"
           if echo "$FILES" | xargs grep -nE \
-            'rm[[:space:]]+-[A-Za-z]*(rf|fr)[A-Za-z]*[[:space:]]+/[^a-zA-Z]|git push (--force|-f)\b|git push[^|]*[[:space:]]\+[^[:space:]]+|--no-verify|(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh'; then
+            "rm[[:space:]]+-[A-Za-z]*(rf|fr)[A-Za-z]*[[:space:]]+/[^a-zA-Z]|git push (--force|-f)([^a-zA-Z]|$)|git push[^|]*[[:space:]]\+[^[:space:]]+|${NO_VERIFY}|(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh"; then
             echo "::error::检测到可疑命令，请人工确认后改用可回滚形式"
             exit 1
           fi
