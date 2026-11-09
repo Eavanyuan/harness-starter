@@ -13,7 +13,7 @@
  * 用法：node scripts/doctor.mjs
  */
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
-import { join, resolve, dirname } from 'node:path';
+import { join, resolve, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -355,6 +355,33 @@ if (!GL_URL || !GL_TOKEN || !GL_PROJECT) {
     warns.push(`门禁在场性：连不上 GitLab（${e.message}）——检查不因网络抖动判红`);
   }
 }
+
+// 测试用到的外部命令：缺一个就会让几十条断言以"期望空"的形式集体变红，
+// 看起来像功能坏了，其实只是机器上没装（实测：alpine 缺 curl → broker 套件 33 条假红；
+// 缺 rsync → evidence 套件 31 条假红）。
+// 只提醒、不判死：生产容器、CI、开发机的依赖面本来就不同，doctor 不该替人决定装什么。
+const EXTERNAL_TOOLS = [
+  ['bash', '全套 test/*.sh 与 hook 里的 bash 命令护栏'],
+  ['git', '证据链自己 git init 建 fixture、broker 读 diffs'],
+  ['curl', 'notify-broker / feishu-ws 探 healthz、发 webhook'],
+];
+const winExts = process.platform === 'win32' ? ['', '.exe', '.cmd', '.bat'] : [''];
+const hasBin = (name) =>
+  (process.env.PATH || '')
+    .split(delimiter)
+    .some((d) => winExts.some((ext) => {
+      const p = join(d, name + ext);
+      try {
+        return existsSync(p) && !statSync(p).isDirectory();
+      } catch {
+        return false;
+      }
+    }));
+const missingTools = EXTERNAL_TOOLS.filter(([t]) => !hasBin(t));
+for (const [t, why] of missingTools) {
+  warn(`${t} 不在 PATH 里 —— ${why}；缺它时相关套件会以"期望空"的形式假红（alpine: apk add ${t}）`);
+}
+if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length} 个）`);
 
 // 输出
 console.log('[doctor] 配置体检\n');

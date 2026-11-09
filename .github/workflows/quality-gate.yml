@@ -30,6 +30,14 @@ jobs:
       - name: 门禁自测（证据链 CI 口径）
         run: bash test/evidence.test.sh
 
+      # verify-run 是证据链的入口：它决定 .ai/verify/*.log 的头部写什么、测试计数怎么聚合。
+      # 此前它只在本地的 `npm run gate` 里跑，CI 从来没跑过——所以它用 `find -newer` 判
+      # "本次新生成的报告"这个跨平台缺陷才能活到今天：busybox 的 -newer 只比到**秒**，
+      # 同一秒内生成的 surefire 报告被判"不新"→ 测试计数静默变 0、`# tests` 行整条消失、
+      # audit.tests 对不上账。判据只在"人记得敲"的时候存在，等于没有。
+      - name: 证据生成（exit_code / 测试计数 / 跨次不重复 / 同路径重写）
+        run: bash test/verify-run.test.sh
+
       # 回归：hook 必须真的接在两个 CLI 上，不是"看起来注册了"。
       - name: 门禁自测（hook 接线）
         run: bash test/wiring.test.sh
