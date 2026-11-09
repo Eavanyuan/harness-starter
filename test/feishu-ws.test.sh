@@ -15,6 +15,15 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HARNESS_LEDGER_DIR="$TMP/ledger"
 
+# 外部命令预检：缺 curl 会让末尾几条 HTTP 断言以"期望空"的形式红，
+# 看起来像长连接收不回来，其实只是镜像没装（同 notify-broker 的 33 条假红）。
+for tool in curl node; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "缺少 $tool：本套件用它探 healthz/发 webhook，先装（alpine: apk add curl）" >&2
+    exit 1
+  }
+done
+
 pass=0
 fail=0
 check() {

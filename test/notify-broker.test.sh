@@ -16,6 +16,16 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HARNESS_LEDGER_DIR="$TMP/ledger"
 
+# 外部命令预检：缺一个工具会让几十条断言以"期望 X 实际空"的形式集体红，
+# 看起来像 broker 坏了，实际只是镜像里没装 curl。一行说清，别让人去猜
+# （实测 alpine 镜像漏装 curl 时，这套件 33 条假红）。
+for tool in curl node; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "缺少 $tool：本套件用它发 HTTP 请求/起 mock，先装（alpine: apk add curl）" >&2
+    exit 1
+  }
+done
+
 pass=0
 fail=0
 check() {
