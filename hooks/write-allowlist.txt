@@ -23,3 +23,5 @@ hooks/guard_state.mjs | block() 挂载 ledger + 校验前走 migrate（方案 §
 harness.config.json | 新增 agents.enabled 键（方案 §5.2，四周节奏的机械基础） | 2026-11-13
 hooks/session_start.mjs | #22 session 心跳入账 events.jsonl（用户授权的本批改进） | 2026-11-13
 templates/CR-代码审查记录.md | 审查规则单入口问题修复：模板适用于所有审查路径（用户授权） | 2026-11-13
+package.json | task-loop 三套件与 doctor-gates 注册进 gate（用户授权） | 2026-11-24
+.github/workflows/quality-gate.yml | CI 增加 task-loop/doctor-gates/init/harness-cli 四步（用户授权） | 2026-11-24
