@@ -80,6 +80,12 @@ jobs:
       - name: 飞书长连接（换端点 / 握手 / 分片 / 去重 / 失败重投）
         run: bash test/feishu-ws.test.sh
 
+      # 飞书项目身份层。没有空间管理权限的人走 mcpKey（插件身份）永远取不到数据，
+      # 只能改走 OAuth（用户身份）——所以这条路径必须可测，否则"登录"本身又是一处盲区。
+      # 假服务器覆盖 device 全流程与刷新，离线可跑，CI 不触网。
+      - name: 飞书项目 OAuth（device 全流程 / 刷新 / 0600 落盘 / fail-closed）
+        run: bash test/feishu-oauth.test.sh
+
       # task-loop 的两个套件此前哪都不在：连本地 `npm run gate` 都没进。
       # 后果是实测过的——runner 在"真检测到触发"这条路上 100% 崩（budget 从未被创建），
       # 而 gate 全绿只说明它**周围**的东西没坏。判据必须穿过被测的那条路，不是覆盖它旁边。
