@@ -1,9 +1,8 @@
 # cmd: bash -c bash\ test/task-loop.test.sh\ \&\&\ npm\ run\ gate
-# started: 2026-11-10T09:36:22Z
-# finished: 2026-11-10T09:41:09Z
+# started: 2026-11-10T10:01:24Z
+# finished: 2026-11-10T10:06:02Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-== 4. 严重级归一：中文轻重 / P 档 / 英文 / 空值 ==
   [32m✓[0m 18 个归一用例全部通过
 
 == 5. 分级门槛：高→auto / 中→confirm / 低→skip / 缺值→skip ==
@@ -171,6 +170,7 @@ ALL-OK
 == 10i. 凭据文件里的裸命令：runner 报错退出，不执行 ==
   [32m✓[0m 非法行 → exit 1（不静默当作没配）
   [32m✓[0m 报错带行号（定位不用猜）
+  [32m✓[0m 那一行没有被执行（pwn4 不存在）
 == 10j. runner 自己读 HARNESS_ENV_FILE：不靠 shell 注入也能拿到凭据 ==
   [32m✓[0m 干净环境 + 凭据文件 → 进入 runner 并真的用了凭据
   [32m✓[0m 载入了几键有交代（排查「配了没生效」要看得到）
@@ -186,7 +186,7 @@ ALL-OK
   [32m✓[0m 剖面 B 缺凭据 → 两条路都点名（login / FEISHU_MCP_URL）
   [32m✓[0m 数据档未开 → perm 报错带后台指引（活通道）
 
-结果：74 通过，0 失败
+结果：75 通过，0 失败
 
 > harness-starter@1.1.0 test:task-loop-contract
 > bash test/task-loop-contract.test.sh

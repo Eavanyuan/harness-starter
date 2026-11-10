@@ -344,7 +344,7 @@
       ],
       "audit": {
         "compile": "node --check 全过（env-file / task-loop / doctor）；bash -n 安装器与两个套件过",
-        "tests": "task-loop 65→74（10d 加两条结构断言：wrapper 非注释行里不得出现 `. file` / `source file`，一行式 `set -a; . file; set +a` 也算；新增 10h 解析 14 项、10i 非法行 exit 1 + 行号、10j 干净环境读文件 3 条）；doctor-gates 16→20（凭据文件生效键数 / 不再说未检查 / 非法行判红 / 点名后果）",
+        "tests": "task-loop 65→75（10d 加两条结构断言：wrapper 非注释行里不得出现 `. file` / `source file`，一行式 `set -a; . file; set +a` 也算；新增 10h 解析 14 项、10i 非法行 exit 1 + 行号 + 那一行没被执行、10j 干净环境读文件 3 条）；doctor-gates 16→20（凭据文件生效键数 / 不再说未检查 / 非法行判红 / 点名后果）",
         "feature_complete": "凭据文件变成纯数据：注释、空行、export 前缀照旧；$(...) / 反引号 / ; 原样保留不求值；非法行报错带行号且不回显原文；优先级为进程 env > 文件（定时器环境为空，故以文件为准）；缺文件 = 未接入不报错，存在但读不到必须抛错",
         "quality_clean": "去掉的是\"能写凭据文件 = 能以定时器身份执行命令\"这条升级路径：0600 只挡住别人读，挡不住同用户其他进程写（编辑器 / 安装脚本 / >> 重定向）。runtime 也会告警权限漂移，不只在 --status；doctor 与 runner 用同一个 loadTaskLoopEnv()，消灭\"定时器能跑\"与\"doctor 说没配\"同时成立"
       },

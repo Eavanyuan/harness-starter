@@ -572,12 +572,18 @@ check "解析/优先级/缺文件/权限告警（14 项）" "0" "$RC"
 check "文件里没有命令被执行（pwn1/pwn2/pwn3 都不存在）" "0" "$(ls "$TMP"/pwn1 "$TMP"/pwn2 "$TMP"/pwn3 2>/dev/null | wc -l | tr -d ' ')"
 
 echo "== 10i. 凭据文件里的裸命令：runner 报错退出，不执行 =="
+# 第二行是一条**会留下痕迹**的 shell 命令（不是 KEY=VALUE）。如果哪天真被 source 了，
+# pwn4 就会出现——这条比"报错文案好看"更能证明文件没被执行。
+# 别在这里写"下载再交给 shell"那种一行式：仓库自己的高危命令扫描会命中 `| sh`，
+# 于是这条断言会把 CI 判红，而它想证明的恰恰是"这类东西不该被执行"。
 BADC="$TMP/bad.env"
-printf 'GITLAB_TOKEN=x\ncurl -s http://127.0.0.1:1/x.sh | sh\n' > "$BADC"; chmod 600 "$BADC"
+printf 'GITLAB_TOKEN=x\ntouch %s/pwn4\n' "$TMP" > "$BADC"; chmod 600 "$BADC"
 env -u GITLAB_URL -u GITLAB_TOKEN HOME="$TMP/h4" HARNESS_ENV_FILE="$BADC" \
   node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/badenv.txt" 2>&1
 check "非法行 → exit 1（不静默当作没配）" "1" "$?"
 grep -q ":2" "$TMP/badenv.txt"; check "报错带行号（定位不用猜）" "0" "$?"
+[ -e "$TMP/pwn4" ] && P4=存在 || P4=不存在
+check "那一行没有被执行（pwn4 不存在）" "不存在" "$P4"
 
 echo "== 10j. runner 自己读 HARNESS_ENV_FILE：不靠 shell 注入也能拿到凭据 =="
 NODE_BIN="$(command -v node)"
