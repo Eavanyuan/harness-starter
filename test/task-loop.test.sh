@@ -167,6 +167,60 @@ console.log(pass ? "ALL-OK" : JSON.stringify({r1:r1.action,r2:r2.action,ok:ok.ac
 process.exit(pass ? 0 : 1);'
 check "三分流 + 三道闸全形态" "0" "$?"
 
+echo "== 8. T5 会话打包器与产物验收（fail-closed） =="
+SESS="$TMP/sess"; mkdir -p "$SESS"
+node --input-type=module -e '
+import { buildR1ProfileA, buildR1ProfileB, buildRnProfileA, readSessionArtifacts } from "'"$HERE"'/scripts/lib/session-pack.mjs";
+import { writeFileSync, mkdirSync } from "node:fs";
+// A 的 R1：评论原文/协议/产物清单齐
+const r1 = buildR1ProfileA({ mr: { iid: 7, title: "演示" }, changedFiles: ["src/a.js"],
+  comments: [{ discussion_id: "d1", note_id: "n1", author: "lead", body: "排序违反 OP-2" }] });
+const okPack = r1.prompt.includes("d1/n1") && r1.prompt.includes("排序违反 OP-2") && r1.prompt.includes("acks.json") && r1.artifacts.includes("round-1.md");
+// B 的 R1：复现闸在协议里
+const b1 = buildR1ProfileB({ bug: { work_item_id: "7161559257", name: "短帧越界", severity: "P1" }, repo: "tsdb" });
+const okB = b1.prompt.includes("7161559257") && b1.prompt.includes("复现闸");
+// 续轮：失败指纹与历轮日志随包、换法指令在
+const rn = buildRnProfileA({ mr: { iid: 7 }, round: 2, prevJournals: ["试了字母序，失败"], failureFingerprints: ["legend::排序断言"] });
+const okN = rn.prompt.includes("试了字母序") && rn.prompt.includes("legend::排序断言") && rn.prompt.includes("换方法");
+// 产物验收：缺件 fail-closed
+const bad = readSessionArtifacts(process.argv[1], { expected: ["todo.json", "acks.json"] });
+mkdirSync(process.argv[1] + "/ok", { recursive: true });
+writeFileSync(process.argv[1] + "/ok/todo.json", "[]");
+writeFileSync(process.argv[1] + "/ok/acks.json", "[]");
+const good = readSessionArtifacts(process.argv[1] + "/ok", { expected: ["todo.json", "acks.json"] });
+const badJson = readSessionArtifacts(process.argv[1], { expected: [] });
+process.exit(okPack && okB && okN && !bad.ok && good.ok ? 0 : 1);' "$SESS" 2>/dev/null
+check "A/B/续轮打包 + 产物缺失 fail-closed" "0" "$?"
+
+echo "== 9. T5 CI 盯梢（零 LLM 轮询） =="
+node --input-type=module -e '
+import { watchPipeline } from "'"$HERE"'/scripts/lib/ci-watch.mjs";
+let n = 0;
+const states = [["running"], ["running"], ["success"]];
+const r1 = await watchPipeline({ listPipelines: async () => states[Math.min(n++, 2)].map((s) => ({ status: s, sha: "abc" })),
+  intervalMs: 1, sleep: async () => {} });
+const r2 = await watchPipeline({ listPipelines: async () => [{ status: "running" }], timeoutMs: 10, intervalMs: 5, sleep: async () => {} });
+process.exit(r1.status === "success" && r2.status === "timeout" ? 0 : 1);'
+check "终态返回 / 超时返回 timeout（不判红，交上层升级）" "0" "$?"
+
+echo "== 10. T5 定时器安装器（--print 渲染与接线闸） =="
+bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --print > "$TMP/plist.txt" 2>&1
+check "print 模式渲染 plist" "0" "$?"
+grep -q "task-loop.mjs" "$TMP/plist.txt" && grep -qv "__ROOT__" "$TMP/plist.txt"; check "占位符全替换（脚本路径/仓库根）" "0" "$?"
+mkdir -p "$TMP/bare-repo"; bash "$HERE/scripts/install-task-loop.sh" "$TMP/bare-repo" --print >/dev/null 2>&1
+check "无 hook 接线的仓库拒绝安装（同 runner 闸）" "69" "$?"
+
+echo "== 11. T5 影子周：dry-run 积累与 --report 统计 =="
+SHADOW="$ROOT/.ai/task-loop/shadow.jsonl"; rm -f "$SHADOW"
+for i in 1 2 3; do printf '{"ts":"2026-11-10T0%s:00:00Z","kind":"mr","id":42,"summary":"s","unresolved":2}\n' "$i" >> "$SHADOW"; done
+printf '%s\n' '{"ts":"2026-11-11T01:00:00Z","kind":"mr","id":43,"summary":"s2","unresolved":1}' >> "$SHADOW"
+node "$HERE/scripts/task-loop.mjs" --report --root "$ROOT" > "$TMP/report.txt" 2>&1
+grep -q "唯一触发：2" "$TMP/report.txt"; check "去重统计（3×#42+1×#43 → 唯一 2）" "0" "$?"
+grep -q "2026-11-10" "$TMP/report.txt" && grep -q "2026-11-11" "$TMP/report.txt"; check "按天分布输出" "0" "$?"
+grep -q "N≥30" "$TMP/report.txt"; check "验收口径印在报告里" "0" "$?"
+printf '%s\n' '42' 'null' >> "$SHADOW"   # 裸数字/null：合法 JSON 但非对象——统计必须无视
+node "$HERE/scripts/task-loop.mjs" --report --root "$ROOT" 2>/dev/null | grep -q "唯一触发：2"; check "脏行（裸数字/null）不污染统计" "0" "$?"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

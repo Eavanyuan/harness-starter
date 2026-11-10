@@ -1,0 +1,10 @@
+[Unit]
+Description=harness task-loop poll timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=__INTERVAL_SEC__
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

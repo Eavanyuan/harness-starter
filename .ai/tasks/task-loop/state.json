@@ -187,15 +187,32 @@
     {
       "id": "T5",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "剖面 A 影子周(零写入可证+触发/漏触发双列,N≥30) → 单任务 → 小批；P1 准入=K1 runner",
-      "files": [],
+      "files": [
+        "scripts/lib/session-pack.mjs",
+        "scripts/lib/ci-watch.mjs",
+        "scripts/install-task-loop.sh",
+        "scripts/task-loop.mjs",
+        "deploy/task-loop/launchd.plist.template",
+        "deploy/task-loop/systemd.service.template",
+        "deploy/task-loop/systemd.timer.template",
+        "test/task-loop.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 全过；bash -n 安装器过",
+        "tests": "task-loop 26/26（A/B/续轮打包要素+产物缺失 fail-closed；CI 盯梢终态/超时两态；安装器 print 渲染无残留占位符+无接线仓库拒装 69；影子周去重统计/按天分布/验收口径印出/脏行不污染）",
+        "feature_complete": "T5 共用件全落：会话打包器（R1 合一/续轮换法指令/制品契约验收）、CI 盯梢（零 LLM、超时=无法判定交上层）、launchd/systemd 双模板+安装器（接线闸同款）、影子周 dry-run 积累+--report 统计（验收口径 N≥30/0 误触发印在报告里）",
+        "quality_clean": "会话永不持凭据（acks/resolves 由 runner 代发）；凭据渲染进 0600 用户级配置不进仓库；printf 额外参数复用格式串的坑（裸数字行混进统计）已在产品侧防御"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL4.log",
+        "command": "bash test/task-loop.test.sh && npm run gate"
+      }
     },
     {
       "id": "T6",

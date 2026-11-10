@@ -25,13 +25,38 @@ for (let i = 0; i < args.length; i++) {
   if (args[i] === '--profile' && i + 1 < args.length) opt.profile = args[++i];
   else if (args[i] === '--mr' && i + 1 < args.length) opt.mr = args[++i];
   else if (args[i] === '--root' && i + 1 < args.length) opt.root = args[++i];
+  else if (args[i] === '--report') opt.report = true;
   else if (args[i].startsWith('--')) continue; // 已处理的旗标
   else die(64, `未知参数：${args[i]}`);
 }
 const root = resolve(opt.root || process.cwd());
 
 function die(code, msg) { console.error(`[task-loop] ${msg}`); process.exit(code); }
-if (!opt.once) die(64, 'v1 只支持 --once（常驻轮询在 T5 影子周后开放）');
+if (!opt.once && !opt.report) die(64, 'v1 只支持 --once / --report（常驻轮询经 deploy/task-loop 定时器触发）');
+
+// ---- 影子周报告：dry-run 的积累数据出统计（触发精确率素材，验收=N≥30 且 0 误触发） ----
+if (opt.report) {
+  const shadowFile = join(root, '.ai', 'task-loop', 'shadow.jsonl');
+  if (!existsSync(shadowFile)) { console.log('无影子数据（先跑 --once --dry-run 积累）'); process.exit(0); }
+  // 脏行防御：只认"是对象且有 id"的行——裸数字/null 也是合法 JSON，会以 undefined 键混进统计
+  const entries = readFileSync(shadowFile, 'utf8').trim().split('\n').filter(Boolean)
+    .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+    .filter((e) => e && typeof e === 'object' && e.id != null);
+  const byId = new Map();
+  const byDay = {};
+  for (const e of entries) {
+    byId.set(e.id, (byId.get(e.id) || 0) + 1);
+    const d = (e.ts || '').slice(0, 10);
+    byDay[d] = (byDay[d] || 0) + 1;
+  }
+  const unique = byId.size;
+  const repeat = entries.length - unique;
+  console.log(`影子周报告（${Object.keys(byDay).length} 天，${entries.length} tick 命中）`);
+  console.log(`  唯一触发：${unique}；重复命中：${repeat}（CAS 去重生效则重复无害）`);
+  Object.entries(byDay).sort().forEach(([d, n]) => console.log(`  ${d}  ${'#'.repeat(Math.min(n, 40))} ${n}`));
+  console.log(`  影子验收口径：误触发 0 且唯一触发 N≥30 才进 P1 小批；漏触发需人工比对 MR 时间线单列`);
+  process.exit(0);
+}
 
 // ---- kill switch：哨兵文件存在即停（退出 0——被停是运维意图，不是故障）----
 const OFF = join(root, '.ai', 'task-loop', 'OFF');
@@ -90,6 +115,12 @@ for (const t of triggers) {
   recordEvent('task-loop', 'trigger_found', { kind: t.kind, id: t.id, unresolved: t.unresolved.length });
 
   if (opt.dryRun) {
+    // 影子周素材：每个 tick 命中都落 shadow.jsonl（--report 出统计）——零写入指对外部系统，
+    // 本文件是自己的观测积累（.ai/task-loop/ 域内），不违背 dry-run 语义
+    mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
+    const sf = join(root, '.ai', 'task-loop', 'shadow.jsonl');
+    writeFileSync(sf, `${JSON.stringify({ ts: new Date().toISOString(), kind: t.kind, id: t.id, summary: (t.mr?.title || '').slice(0, 60), unresolved: t.unresolved.length })}\n`, { flag: 'a' });
+    recordEvent('task-loop', 'shadow_hit', { kind: t.kind, id: t.id });
     console.log(`[dry-run] 会认领 ${t.kind}-${t.id} → worktree → headless(${headless.cli} ${headless.args.join(' ')} 权限=${headless.permission_mode}) → 修复 ${t.unresolved.length} 条未解决讨论`);
     continue;
   }
