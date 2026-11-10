@@ -34,8 +34,9 @@ node --input-type=module -e '
 import { saveCredentials } from "'"$HERE"'/scripts/lib/feishu-oauth.mjs";
 saveCredentials({ client_id: "cli_x", access_token: "t", refresh_token: "r", expires_at: Date.now() + 3600_000 });
 ' 2>&1
-mode_file=$(stat -f "%Lp" "$FEISHU_OAUTH_FILE" 2>/dev/null || stat -c "%a" "$FEISHU_OAUTH_FILE" 2>/dev/null)
-mode_dir=$(stat -f "%Lp" "$(dirname "$FEISHU_OAUTH_FILE")" 2>/dev/null || stat -c "%a" "$(dirname "$FEISHU_OAUTH_FILE")" 2>/dev/null)
+# stat -f 是 macOS 专用、stat -c 是 GNU 专用——用 node 取权限，跨平台无歧义（CI 实测红）
+mode_file=$(node -pe "(require('fs').statSync(process.argv[1]).mode & 0o777).toString(8)" "$FEISHU_OAUTH_FILE")
+mode_dir=$(node -pe "(require('fs').statSync(process.argv[1]).mode & 0o777).toString(8)" "$(dirname "$FEISHU_OAUTH_FILE")")
 check "凭据文件 0600（refresh_token 等于长期口令）" "600" "$mode_file"
 check "凭据目录 0700" "700" "$mode_dir"
 

@@ -1,0 +1,33 @@
+# cmd: bash test/feishu-oauth.test.sh
+# started: 2026-11-10T07:02:48Z
+# finished: 2026-11-10T07:02:49Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+== 1. 过期判据（无 token / 未来 / 临界 / 缺 expires_at）==
+  [32m✓[0m 空/缺 token/缺有效期判过期，临界按过期
+
+== 2. 凭据落盘：文件 0600、目录 0700 ==
+  [32m✓[0m 凭据文件 0600（refresh_token 等于长期口令）
+  [32m✓[0m 凭据目录 0700
+
+== 3. device 全流程（假服务器：注册 → 发起 → pending×2 → 成功）==
+  [32m✓[0m 轮询穿过 pending 拿到 access_token
+  [32m✓[0m refresh_token 一并落盘
+  [32m✓[0m expires_in 换算成绝对 expires_at
+  [32m✓[0m pending 期间有等待（不是原地空转）
+
+== 4. 刷新：过期凭据 → ensureToken 走 refresh_token 并回写 ==
+  [32m✓[0m 过期 → 自动刷新拿到新 token
+  [32m✓[0m 刷新结果回写文件（下次不再刷）
+  [32m✓[0m 新 refresh_token 覆盖旧的
+  [32m✓[0m 新有效期在未来
+
+== 5. fail-closed：认不出的 token 响应必须抛错，不能返空 ==
+  [32m✓[0m 认 {code:0,data:{...}} 包装形态
+  [32m✓[0m 认扁平形态
+  [32m✓[0m 认不出 → null（调用方据此报错，不静默）
+
+== 6. 未登录时 ensureToken 给出可执行指引 ==
+  [32m✓[0m 未登录 → 报错带 login 命令
+
+结果：15 通过，0 失败
