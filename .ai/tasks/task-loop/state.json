@@ -270,16 +270,19 @@
         "scripts/lib/feishu-oauth.mjs",
         "scripts/feishu-auth.mjs",
         "scripts/lib/feishu-project-mcp.mjs",
-        "test/feishu-oauth.test.sh"
+        "test/feishu-oauth.test.sh",
+        "test/feishu-bug-source.test.sh",
+        "test/fixtures/feishu-mql-defect-new.json",
+        "test/fixtures/feishu-mql-defect-mixed.json"
       ],
       "required_skills": [
         "harness"
       ],
       "audit": {
         "compile": "node --check 全过；MCP 工具 schema 从活通道 tools/list 实捞（update_field/get_transitable_states/add_comment/search_by_mql）",
-        "tests": "task-loop 30/30（MQL 构造含 current_login_user/双形态解析 JSON+表格/P0-P3 分级门槛含裸对象防御/垃圾结果 fail-closed/同步四路：拒硬转、读回成功、静默丢弃→评论兜底、兜底失败显式红/runner 集成：缺凭据点名、活通道 perm 报错带后台指引）；feishu-oauth 15 条（假服务器：device 全流程 / 刷新回写 / 0600 / fail-closed）",
-        "feature_complete": "剖面 B 代码侧全齐：触发（MQL 轮询+分级门槛）、接单三连（评论+状态流转+读回）、perm 错误分类指引；数据档授权后第一次实测若确认 MQL 返回形态，删另一形态解析（代码已留标记）",
-        "quality_clean": "目标状态不在可流转列表时拒绝硬转（get_transitable_states 前置）；读回验证失败不静默（评论兜底留凭，兜底也败才红）"
+        "tests": "feishu-bug-source 30/30（离线，fixture 抓自真实空间）：MQL 形状（两段式表名 / current_status_operator / 状态用 =）、真实 moql_field_list 解析（含取 label 不取 key）、严重级三套词汇归一、分级门槛、截断可见、fail-closed；变异三处（改回 owner / 改回中文待处理 / 严重级 key 配错）均变红。feishu-oauth 15 条；task-loop 39 条",
+        "feature_complete": "剖面 B 全链首次实跑通过（2026-11-10，OAuth 用户身份，taosdata_td）：待我处理 10 张 → 中 3 张 confirm_first、低 7 张 skip、高 0 张 auto。数据契约（表名两段式 / 指派字段 / 状态枚举 / 严重级自定义字段 / 响应形态）全部写入 FS §4.8 并由套件锚定",
+        "quality_clean": "四个错里只有\"表名单段\"会报错，其余三个静默（取到别人的单 / 结果为 0 / 全部判 P3 丢弃）——每个都配了会红的断言；LIMIT 截断单独告警并落账 profile_b_truncated，\"少了几张单\"不再和\"本来就没几张\"长得一样"
       },
       "verify": {
         "log_path": ".ai/verify/TL5.log",
@@ -298,7 +301,7 @@
       ],
       "audit": {
         "compile": "全仓库 node --check / bash -n 已由各套件内部覆盖",
-        "tests": "npm run gate：全绿 0 失败（新增 task-loop 39 条、契约 5 条、doctor-gates 12 条）",
+        "tests": "npm run gate：全绿 0 失败（新增 task-loop 39 条、契约 5 条、doctor-gates 12 条、feishu-oauth 15 条、feishu-bug-source 30 条）",
         "feature_complete": "覆盖 T0–T6 全部产物；三个套件同时进 gate 与 quality-gate.yml，CI 不再漏跑",
         "quality_clean": "新判据逐条做变异检验（反转触发判定 / 拿掉 createBudget / 短路 release / 僵尸退回单机 / 豁免率退回恒等 1），均能变红"
       },
@@ -326,6 +329,18 @@
     {
       "id": "KI-3",
       "text": "真实 GitLab 若既无审批系统留言又无 /approvals 权限，审批状态只能判\"无法判定\"→ 按不通过处理（不猜，但会多跑一轮）",
+      "owner": "task-loop",
+      "status": "open"
+    },
+    {
+      "id": "KI-4",
+      "text": "剖面 B 的工作项类型名（Defect）、严重级字段 key（field_6bff71）、状态 label（New）是 taosdata_td 的实测值，换空间必须同改四个环境变量；配错的症状是\"查询成功但一张单都没有\"，与\"真的没有待办\"无法从结果区分（只能靠 doctor 或人工核对）",
+      "owner": "task-loop",
+      "status": "open"
+    },
+    {
+      "id": "KI-5",
+      "text": "剖面 B 只取首屏（LIMIT，上限 50），超出的单会告警 + 落账 profile_b_truncated 但不自动翻页；session_id + group_pagination_list 的翻页路径未实现",
       "owner": "task-loop",
       "status": "open"
     }

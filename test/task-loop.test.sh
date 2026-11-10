@@ -369,13 +369,14 @@ node "$HERE/scripts/task-loop.mjs" --report --root "$ROOT" 2>/dev/null | grep -q
 echo "== 12. T6 剖面 B 触发源：MQL/解析/分级/同步四路 =="
 node --input-type=module -e '
 import { buildMyBugsMql, parseMqlResult, gateBySeverity } from "'"$HERE"'/scripts/lib/feishu-bug-source.mjs";
-const mql = buildMyBugsMql();
+const mql = buildMyBugsMql({ projectKey: "taosdata_td" });
 const a = parseMqlResult(JSON.stringify([{work_item_id:1,severity:"致命"},{work_item_id:2,severity:"严重"}]));
 const b = parseMqlResult("| work_item_id | name | severity |\n|---|---|---|\n| 3 | x | 一般 |");
 const g = gateBySeverity([...a, ...b]);
 let threw = false; try { parseMqlResult("junk"); } catch { threw = true; }
-process.exit(mql.includes("current_login_user()") && a.length===2 && b.length===1
-  && g.auto.length===2 && g.confirm.length===1 && threw ? 0 : 1);'
+let noKey = false; try { buildMyBugsMql({}); } catch { noKey = true; }
+process.exit(mql.includes("current_login_user()") && mql.includes("`taosdata_td`.`Defect`") && a.length===2 && b.length===1
+  && g.auto.length===2 && g.confirm.length===1 && threw && noKey ? 0 : 1);'
 check "MQL 构造/双形态解析/P0-P3 分级/垃圾结果 fail-closed" "0" "$?"
 node --input-type=module -e '
 import { transitionStatus, readbackOrComment } from "'"$HERE"'/scripts/lib/feishu-sync.mjs";
@@ -387,8 +388,11 @@ const r4 = await readbackOrComment({ call: mk({ get_workitem_brief: "空", add_c
 process.exit(!r1.ok && r2.ok && r3.ok && r3.via==="comment-fallback" && !r4.ok ? 0 : 1);'
 check "同步四路：拒硬转/读回成功/静默丢弃→评论兜底/兜底失败显式红" "0" "$?"
 # runner 集成：无凭据 fail 显式；有凭据但数据档未开 → perm 指引（活通道）
-node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb1.txt" 2>&1
-grep -q "FEISHU_MCP_URL" "$TMP/pb1.txt"; check "剖面 B 缺凭据 → 点名缺什么" "0" "$?"
+# 凭据必须隔离：不隔离的话，本机已登录时 ensureToken() 会成功、CI 上则失败——
+# 同一份代码两种结论，等于没有判据（本地红、CI 绿就是从这里来的）。
+env -u FEISHU_MCP_URL -u FEISHU_MCP_KEY -u FEISHU_USER_KEY FEISHU_OAUTH_FILE="$TMP/no-creds/feishu-oauth.json" \
+  node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb1.txt" 2>&1
+grep -q "FEISHU_MCP_URL" "$TMP/pb1.txt" && grep -q "feishu-auth.mjs login" "$TMP/pb1.txt"; check "剖面 B 缺凭据 → 两条路都点名（login / FEISHU_MCP_URL）" "0" "$?"
 # 活通道探测：需要外网。离线时**显式跳过并单独计数**，不假装通过——
 # 这条断言要证明的是"真实 MCP 的 perm 档报错带后台指引"，离线环境里它什么也没证明。
 if node -e 'fetch(process.argv[1],{method:"HEAD",signal:AbortSignal.timeout(5000)}).then(()=>process.exit(0)).catch(()=>process.exit(1))' "https://project.feishu.cn" 2>/dev/null; then

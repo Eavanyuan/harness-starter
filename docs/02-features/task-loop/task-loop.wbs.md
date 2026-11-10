@@ -10,15 +10,15 @@
 
 | id | 栈 | 任务 | 验收标准 | spec_ref | depends_on | 风险级 | required_skills | 估时（天） |
 |---|---|---|---|---|---|---|---|---|
-| T0 | harness | 仓库税：本任务 RS/ADR/WBS/FS 自身过门，并让"账实一致"变成会红的判据 | `test/task-loop-contract.test.sh` 5/5，且 stage 退回产出阶段时变红 | `fs#§4.1@dab0bbd` | — | LOW | harness | 0.5 |
-| T1 | harness | 追溯门禁：`--related feishu:<id>` + `EXT-<id>` 行 + `meta.remote_id` 双向锚 + 模板与套件 | `init.test.sh` 29/29；把 `remote_id.source` 伪造成 `jira` 时变红 | `fs#§4.2@dab0bbd` | — | MEDIUM | harness | 1 |
-| T2 | harness | 订阅三档投递 + broker 评估器 + aging 巡检 + digest 模板 + 批准下限 | `notify-broker.test.sh` 70/70；摘掉 `mustAct` 下限时变红 | `fs#§4.3@dab0bbd` | — | MEDIUM | harness | 3.5 |
-| T3 | harness | runner 核心：双剖面触发 + git CAS 认领（`heads/claims`）+ TTL + `runtime.headless`（hook 必接线）+ pause/resume + 预算（D7）+ kill switch + 停点三条件 + 认领释放配对 | `task-loop.test.sh` 39/39，含假 GitLab 真触发端到端与"认领后异常必释放"；拿掉 `createBudget` 或反转触发判定时变红 | `fs#§4.4@dab0bbd` | T1 | HIGH | harness | 4.5 |
-| T4a | harness | 失败指纹归一化（剥参/剥色/全角/截断）+ merge-base 基线实跑 + 集合差 | `task-loop.test.sh` 形态层与端到端层全过：引入=B、继承=A，参数随机化下身份稳定 | `fs#§4.5@dab0bbd` | — | MEDIUM | harness | 1.2 |
-| T4b | harness | 三分流决策 + 豁免三道闸 + MR 附证 | 五形态 + 过期/指纹不同/豁免率 60% 告警 + 7% 不误报 + 分母缺失不猜；退回恒等 1 的"率"时变红 | `fs#§4.6@dab0bbd` | T4a | MEDIUM | harness | 1.2 |
-| T5 | harness | 剖面 A 影子周（零写入可证 + 触发/漏触发双列，N≥30）→ 单任务 → 小批；共用件：会话打包器 / CI 盯梢 / launchd+systemd 定时器 | 打包与产物 fail-closed、CI 盯梢终态与超时两态、安装器 `--print` 无残留占位符、无接线仓库 `exit 69`、影子周去重统计 | `fs#§4.7@dab0bbd` | T3 | HIGH | harness | 3 |
-| T6 | harness | 剖面 B：飞书事件源（权限未批走降级形态）+ 接单三连 + 回写读回 + doctor 前提在场性 | MQL 双形态解析 / P0–P3 分级 / 同步四路（拒硬转、读回成功、静默丢弃→评论兜底、兜底失败显式红）/ 活通道 perm 报错带后台指引 | `fs#§4.8@dab0bbd` | T3 | MEDIUM | harness | 3.5 |
-| V1 | harness | 统一验证：本需求新增/改动的套件一起跑（全量门禁由 CI 承担） | `task-loop 39 + 契约 5 + doctor-gates 12 + init 29` 全过；全量 `npm run gate` exit 0 | `fs#§4.1@dab0bbd` | T0 T1 T2 T3 T4a T4b T5 T6 | — | harness | — |
+| T0 | harness | 仓库税：本任务 RS/ADR/WBS/FS 自身过门，并让"账实一致"变成会红的判据 | `test/task-loop-contract.test.sh` 5/5，且 stage 退回产出阶段时变红 | `fs#§4.1@ae238b0` | — | LOW | harness | 0.5 |
+| T1 | harness | 追溯门禁：`--related feishu:<id>` + `EXT-<id>` 行 + `meta.remote_id` 双向锚 + 模板与套件 | `init.test.sh` 29/29；把 `remote_id.source` 伪造成 `jira` 时变红 | `fs#§4.2@ae238b0` | — | MEDIUM | harness | 1 |
+| T2 | harness | 订阅三档投递 + broker 评估器 + aging 巡检 + digest 模板 + 批准下限 | `notify-broker.test.sh` 70/70；摘掉 `mustAct` 下限时变红 | `fs#§4.3@ae238b0` | — | MEDIUM | harness | 3.5 |
+| T3 | harness | runner 核心：双剖面触发 + git CAS 认领（`heads/claims`）+ TTL + `runtime.headless`（hook 必接线）+ pause/resume + 预算（D7）+ kill switch + 停点三条件 + 认领释放配对 | `task-loop.test.sh` 39/39，含假 GitLab 真触发端到端与"认领后异常必释放"；拿掉 `createBudget` 或反转触发判定时变红 | `fs#§4.4@ae238b0` | T1 | HIGH | harness | 4.5 |
+| T4a | harness | 失败指纹归一化（剥参/剥色/全角/截断）+ merge-base 基线实跑 + 集合差 | `task-loop.test.sh` 形态层与端到端层全过：引入=B、继承=A，参数随机化下身份稳定 | `fs#§4.5@ae238b0` | — | MEDIUM | harness | 1.2 |
+| T4b | harness | 三分流决策 + 豁免三道闸 + MR 附证 | 五形态 + 过期/指纹不同/豁免率 60% 告警 + 7% 不误报 + 分母缺失不猜；退回恒等 1 的"率"时变红 | `fs#§4.6@ae238b0` | T4a | MEDIUM | harness | 1.2 |
+| T5 | harness | 剖面 A 影子周（零写入可证 + 触发/漏触发双列，N≥30）→ 单任务 → 小批；共用件：会话打包器 / CI 盯梢 / launchd+systemd 定时器 | 打包与产物 fail-closed、CI 盯梢终态与超时两态、安装器 `--print` 无残留占位符、无接线仓库 `exit 69`、影子周去重统计 | `fs#§4.7@ae238b0` | T3 | HIGH | harness | 3 |
+| T6 | harness | 剖面 B：飞书事件源（权限未批走降级形态）+ 接单三连 + 回写读回 + doctor 前提在场性 | MQL 实测契约（两段式表名 / `current_status_operator` / 状态英文 label）/ 真实 `moql_field_list` 形态解析（取 label 不取 key）/ 严重级三套词汇归一（P 档 + 高/中/低 + 英文）/ 同步四路（拒硬转、读回成功、静默丢弃→评论兜底、兜底失败显式红）/ 活通道 perm 报错带后台指引；`feishu-bug-source.test.sh` 27/27，把指派字段改回 `owner`、状态改回中文"待处理"、严重级 key 配错三处变异均变红 | `fs#§4.8@ae238b0` | T3 | MEDIUM | harness | 3.5 |
+| V1 | harness | 统一验证：本需求新增/改动的套件一起跑（全量门禁由 CI 承担） | `task-loop 39 + 契约 5 + doctor-gates 12 + init 29 + feishu-oauth 15 + feishu-bug-source 27` 全过；全量 `npm run gate` exit 0 | `fs#§4.1@ae238b0` | T0 T1 T2 T3 T4a T4b T5 T6 | — | harness | — |
 
 > `spec_ref` 的格式是 `fs#§<小节>@<blob7>`：小节指回 FS 的详细设计，blob7 是 FS 定稿那一刻的
 > `git hash-object` 前 7 位。它回答的是「这条任务拆的是哪一版设计」。

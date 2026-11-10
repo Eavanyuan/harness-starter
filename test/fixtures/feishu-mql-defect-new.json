@@ -1,0 +1,150 @@
+{
+  "list": [
+    {
+      "group_infos": [
+        {
+          "group_name": "未知分组",
+          "group_id": "1"
+        }
+      ],
+      "count": 10
+    }
+  ],
+  "session_id": "fixture-session",
+  "data": {
+    "1": [
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          },
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 7067679088
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "样例缺陷标题 1"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "cdlvcn1p9",
+                "label": "中"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 7051528312
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "样例缺陷标题 2"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "cdlvcn1p9",
+                "label": "中"
+              }
+            }
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 7016527863
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "样例缺陷标题 3"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "cdlvcn1p9",
+                "label": "中"
+              }
+            }
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

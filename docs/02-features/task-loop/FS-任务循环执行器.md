@@ -107,13 +107,24 @@
 
 ### 4.8 T6 剖面 B（飞书 bug）
 
-- 输入：`search_by_mql` 返回的"指派给我的待处理缺陷"
+- 输入：`search_by_mql` 返回的"指派给我、状态未开始的缺陷"
+- **数据契约（2026-11-10 对 `taosdata_td` 实测，非文档抄录）**：MQL 的每一处写法都由服务端逐条否决过，四条里只有第一条会报错：
+  | 事项 | 正确写法 | 写错的后果 |
+  |---|---|---|
+  | 表名 | ``FROM `空间`.`工作项类型` `` 两段式 | 单段 → `ErrMoqlSemanticError` + "project_name or project_key is missing"（唯一会报错的一条） |
+  | 指派 | `array_contains(`current_status_operator`, current_login_user())` | 用 `owner` → 静默取到"我创建的"而不是"指派给我的"（该空间 `owner` 是创建者） |
+  | 状态 | `` `work_item_status` = 'New' ``（枚举为英文 label：`New`/`Processing`/`Releasing`/`Done`/`Canceled`） | 用中文"待处理" → `attrValueLabel not found`；用 `array_contains` → `operator not supported`（该字段只支持 `IN`/`=`/`!=`/`IS NULL`） |
+  | 严重级 | 自定义字段 key（该空间 `field_6bff71`「故障严重级别」，枚举仅 高/中/低） | 写 `severity` → 字段不存在；或换空间没换 key → 读不到值，全部判 P3 被静默丢弃 |
+  上述后三项都不会让查询失败，只会让结果为"空"或"全被过滤"——所以必须有离线 fixture 断言，见 §4.8 末条。
+- **响应形态（实测）**：`{list:[{count}], session_id, data:{"1":[{moql_field_list:[{key, value_type, value}]}]}}`；值有四型 `long_value`/`string_value`/`key_label_value`/`key_label_value_list`。原设计假设的"JSON 数组 / 管道表格"两种形态都不存在，保留为兜底但不作为主路径。**枚举解包取 `label` 不取 `key`**：状态的 key 是 `Not started`、label 才是能当条件用的 `New`，取反会出现"用 `New` 查出来、解析成 `Not started`"的自相矛盾。
 - **身份两条路，优先 OAuth**：`mcpKey`/`userKey` 是**插件身份**，开放平台按"空间是否安装该插件"判权限——没有空间管理权限的人取不到任何数据，这不是代码能修的缺陷。`project.feishu.cn/mcp_server/v1` 同时支持标准 MCP OAuth，用户身份凭证代表"用户本人"，数据边界是本人可见范围，**不需要空间管理员**。故：有 OAuth 凭据用它；没有且配了插件凭据才退回插件身份；两者皆无则报错并把两条路都写进提示。
 - 授权形态：device code（`verification_uri_complete` + `user_code` + 轮询），不用回调——runner 跑在 launchd/systemd 里可能无可开浏览器的会话，device code 在任意设备点一次同意即可。
 - 凭据落点：`$HOME/.harness/task-loop/feishu-oauth.json`，目录 0700 / 文件 0600，`FEISHU_OAUTH_FILE` 可覆盖；过期前 2 分钟自动 `refresh_token`，刷新结果回写（否则每次调用都刷一次）。
-- 处理：`parseMqlResult()`（JSON 与 Markdown 表格双形态）→ `gateBySeverity()`（致命/严重=auto，一般=confirm_first，其余=skip）→ 接单三连（评论 / 状态流转 / 读回）
+- 处理：`parseMqlResult()`（真实 `moql_field_list` 形态为主，JSON 数组与 Markdown 表格为兜底）→ `gateBySeverity()`（P0/P1 或中文"高"=auto，"中"=confirm_first，"低"或缺值=skip）→ 接单三连（评论 / 状态流转 / 读回）
 - 输出：`{auto, confirm, skip}`；auto 进本轮触发
-- 失败分支：身份被拒（HTTP 401 / `invalid_token`）→ `McpAuthError`，提示重新 login（重试无用）；MCP 权限不足 → `McpPermError`，`exit 1` 并打印"去飞书后台勾工作项读取范围"；token 响应认不出 → 抛错，**绝不返回空 token**（那会让上层以为"通了但没数据"）；目标状态不在 `get_transitable_states` 里 → 拒绝硬转；读回不一致 → 评论兜底留凭，兜底也失败才判红
+- 可配：`FEISHU_PROJECT_KEY`（必填）/ `FEISHU_WORK_ITEM_TYPE`（默认 `Defect`）/ `FEISHU_SEVERITY_FIELD`（默认 `field_6bff71`）/ `FEISHU_NEW_STATUS`（默认 `New`）/ `FEISHU_MQL_LIMIT`（默认 20，上限 50）。中间三个是该空间实测值，换空间必须一起换——配错的症状是"查询成功但一张单都没有"。
+- 失败分支：身份被拒（HTTP 401 / `invalid_token`）→ `McpAuthError`，提示重新 login（重试无用）；MCP 权限不足 → `McpPermError`，`exit 1` 并打印"去飞书后台勾工作项读取范围"；MQL 报 `semantic error` → 缺空间名（本地已在发请求前拦下，见 `buildMyBugsMql` 的入参校验）；token 响应认不出 → 抛错，**绝不返回空 token**（那会让上层以为"通了但没数据"）；解析不出行 → 抛错，**不返回空数组**（"读不懂"与"没有单子"必须可区分）；目标状态不在 `get_transitable_states` 里 → 拒绝硬转；读回不一致 → 评论兜底留凭，兜底也失败才判红
+- 判据：`test/feishu-bug-source.test.sh`（30 条，离线；fixture 抓自真实空间）。五组断言分别盯：MQL 形状（两段式表名 / `current_status_operator` / 状态用 `=`）、真实响应解析（含"取 label 不取 key"）、严重级归一（高→P1、中→P2、低/缺值→P3）、截断可见（命中数 > 取回数必须可判）、fail-closed。末组是变异检验：把 `current_status_operator` 改回 `owner`、把状态改回中文"待处理"、把严重级字段 key 配错，三处都必须让断言变红——否则上面几组只是"看起来在判"。
 
 ## 5 接口契约
 
@@ -160,6 +171,8 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--r
 | `GITLAB_USERNAME` | 空串 | 判"他人留言"用；为空则任何人的未解决意见都算他人 | 建议填 |
 | `GIT_REMOTE` | `origin` | 认领 push 的目标远端 | 否 |
 | `FEISHU_MCP_URL` / `FEISHU_PROJECT_KEY` | 无 | 剖面 B 通道与项目 | 剖面 B 必填 |
+| `FEISHU_WORK_ITEM_TYPE` / `FEISHU_SEVERITY_FIELD` / `FEISHU_NEW_STATUS` / `FEISHU_MQL_LIMIT` | `Defect` / `field_6bff71` / `New` / `20` | 剖面 B 的空间相关标识（类型名、严重级字段 key、状态 label、取回上限）。默认值是 taosdata_td 的实测值，换空间必须同改 | 否 |
+| `FEISHU_OAUTH_FILE` | `$HOME/.harness/task-loop/feishu-oauth.json` | 凭据落点（0600） | 否 |
 | `.ai/task-loop/OFF` | 不存在 | kill switch 哨兵 | 否 |
 
 ## 9 测试要点

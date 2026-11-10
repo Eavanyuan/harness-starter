@@ -86,6 +86,14 @@ jobs:
       - name: 飞书项目 OAuth（device 全流程 / 刷新 / 0600 落盘 / fail-closed）
         run: bash test/feishu-oauth.test.sh
 
+      # 剖面 B 的触发源。这条链路的错有四种，只有第一种会报错：
+      # 表名单段（服务端 semantic error）、owner 当负责人（那是"创建者"）、
+      # severity 字段不存在、状态写成中文"待处理"（枚举里只有 New/Processing/...）。
+      # 后三种是静默的——查询通了但结果为空，或者有结果却被判 P3 全丢，报表上一片正常。
+      # fixture 抓自真实空间，离线可跑，CI 不触网。
+      - name: 飞书缺陷轮询（MQL 形状 / 真实响应解析 / 严重级归一 / fail-closed）
+        run: bash test/feishu-bug-source.test.sh
+
       # task-loop 的两个套件此前哪都不在：连本地 `npm run gate` 都没进。
       # 后果是实测过的——runner 在"真检测到触发"这条路上 100% 崩（budget 从未被创建），
       # 而 gate 全绿只说明它**周围**的东西没坏。判据必须穿过被测的那条路，不是覆盖它旁边。

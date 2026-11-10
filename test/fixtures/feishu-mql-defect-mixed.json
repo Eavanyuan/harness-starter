@@ -1,0 +1,189 @@
+{
+  "list": [
+    {
+      "group_infos": [
+        {
+          "group_name": "未知分组",
+          "group_id": "1"
+        }
+      ],
+      "count": 4
+    }
+  ],
+  "session_id": "fixture-session-mixed",
+  "data": {
+    "1": [
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 9001
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "高严重级样例"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "hb1",
+                "label": "高"
+              }
+            }
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 9002
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "中严重级样例"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "cdlvcn1p9",
+                "label": "中"
+              }
+            }
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 9003
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "低严重级样例"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {
+              "key_label_value": {
+                "key": "o3xs11yki",
+                "label": "低"
+              }
+            }
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "moql_field_list": [
+          {
+            "key": "work_item_id",
+            "name": "工作项id",
+            "value_type": "long_value",
+            "value": {
+              "long_value": 9004
+            }
+          },
+          {
+            "key": "name",
+            "name": "名称",
+            "value_type": "string_value",
+            "value": {
+              "string_value": "无严重级样例"
+            }
+          },
+          {
+            "key": "field_6bff71",
+            "name": "故障严重级别",
+            "value_type": "key_label_value",
+            "value": {}
+          },
+          {
+            "key": "work_item_status",
+            "name": "状态",
+            "value_type": "key_label_value_list",
+            "value": {
+              "key_label_value_list": [
+                {
+                  "key": "Not started",
+                  "label": "New"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

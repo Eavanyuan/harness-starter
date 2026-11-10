@@ -121,7 +121,7 @@ if (opt.profile === 'a') {
 } else if (opt.profile === 'b') {
   // 剖面 B：MQL 轮询指派给我的待处理缺陷 → P0/P1 自动、P2 confirm_first（确认卡片走订阅 T2）
   const { resolveEndpoint, connect, McpPermError, McpAuthError } = await import('./lib/feishu-project-mcp.mjs');
-  const { buildMyBugsMql, parseMqlResult, gateBySeverity } = await import('./lib/feishu-bug-source.mjs');
+  const { buildMyBugsMql, parseMqlPage, gateBySeverity, DEFAULT_SEVERITY_FIELD, DEFAULT_NEW_STATUS } = await import('./lib/feishu-bug-source.mjs');
   const { ensureToken } = await import('./lib/feishu-oauth.mjs');
 
   // 身份优先级：OAuth（用户身份，只代表你自己，不需要空间管理员安装任何插件）→ mcpKey（插件身份，需空间安装）。
@@ -138,11 +138,28 @@ if (opt.profile === 'a') {
     }
   }
   const endpoint = resolveEndpoint() || 'https://project.feishu.cn/mcp_server/v1';
+  const projectKey = process.env.FEISHU_PROJECT_KEY || '';
+  const itemType = process.env.FEISHU_WORK_ITEM_TYPE || 'Defect';
+  const severityKey = process.env.FEISHU_SEVERITY_FIELD || DEFAULT_SEVERITY_FIELD;
+  const newStatus = process.env.FEISHU_NEW_STATUS || DEFAULT_NEW_STATUS;
+  const mqlLimit = Number(process.env.FEISHU_MQL_LIMIT || 20);
+  if (!projectKey) die(1, '剖面 B 需要 FEISHU_PROJECT_KEY（如 taosdata_td）：MQL 的表名是 `<空间>.<工作项类型>`，缺空间名服务端只会回一句 semantic error');
+  let mql = '';
+  try {
+    mql = buildMyBugsMql({ projectKey, type: itemType, statuses: [newStatus], severityKey, limit: mqlLimit });
+  } catch (e) { die(1, e.message); }
   try {
     const c = await connect(endpoint, { token });
-    const raw = await c.call('search_by_mql', { project_key: process.env.FEISHU_PROJECT_KEY || '', mql: buildMyBugsMql() });
-    const { auto, confirm, skip } = gateBySeverity(parseMqlResult(raw));
-    recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length });
+    const raw = await c.call('search_by_mql', { project_key: projectKey, mql });
+    const page = parseMqlPage(raw, { severityKey });
+    // 单次上限 50、LIMIT 只是截断不是分页：待办多于 LIMIT 时必须说出来，
+    // 否则"少了 10 张单"和"本来就只有 10 张"在日志里一模一样。
+    if (page.count != null && page.count > page.bugs.length) {
+      console.warn(`[task-loop] 剖面 B 命中 ${page.count} 张，本轮只取回 ${page.bugs.length} 张（LIMIT 截断）——剩余需翻页或提高 FEISHU_MQL_LIMIT，别当"没有更多"`);
+      recordEvent('task-loop', 'profile_b_truncated', { count: page.count, taken: page.bugs.length });
+    }
+    const { auto, confirm, skip } = gateBySeverity(page.bugs);
+    recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length, status: newStatus });
     triggers = auto.map((b) => ({ kind: 'task', id: b.work_item_id, bug: b, unresolved: [] }));
     if (confirm.length > 0) console.log(`[task-loop] ${confirm.length} 张 P2 单待确认（confirm_first，卡片确认后 --task <单号> 启动）`);
   } catch (e) {

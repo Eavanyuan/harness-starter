@@ -1,0 +1,6 @@
+# cmd: bash -c bash\ test/feishu-bug-source.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ bash\ test/task-loop.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ FIX1_OK
+# started: 2026-11-10T07:05:53Z
+# finished: 2026-11-10T07:06:52Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+FIX1_OK
