@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HARNESS_LEDGER_DIR="$TMP/ledger"
 
-pass=0; fail=0
+pass=0; fail=0; skip=0
 check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$3" "$2"; fail=$((fail+1)); fi; }
 
 # fixture：裸仓库作 remote + 工作克隆（认领的目标仓库），rules 带 runtime.headless
@@ -46,18 +46,25 @@ const b = claim({ cwd, remote, kind: "mr", id: "42", runId: "runnerB" });
 console.log(a.claimed ? "first-ok" : "first-fail", b.claimed ? "BAD" : "second-rejected");
 ' "$ROOT" "$TMP/remote.git" > "$TMP/claim1.txt" 2>&1 || true
 grep -q "first-ok second-rejected" "$TMP/claim1.txt"; check "双端竞争：先者胜、后者拒" "0" "$?"
-# 僵尸路径：直接调 claim（TTL 1h，认领提交已 25h 前）
-# 僵尸：GIT_COMMITTER_DATE 必须包住 commit-tree（生成提交那一刻），不是 push——
-# 嵌套 $() 里 export 不可见，分三步走
+# 僵尸路径：认领发生在**另一台机器**上——本机没有那个提交对象。
+# 上一版 fixture 在同一个仓库里造 25h 前的提交再 push，对象天然在本地，等于走了真实路径
+# 之外的分支：跨机时 git show 直接失败，被外层 catch 吞成 taken，僵尸判不出来，MR 永久锁死。
+# 造数据的距离必须等于生产的距离，所以这里用 A/B 两个独立克隆，并反过来断言 B 确实没有该对象。
+XL="$TMP/xm"; git init -q --bare "$XL/r.git"
+git clone -q "$XL/r.git" "$XL/A" 2>/dev/null; git clone -q "$XL/r.git" "$XL/B" 2>/dev/null
+( cd "$XL/A" && git config user.email t@t && git config user.name t && echo x > f && git add -A && git commit -qm base && git push -q origin HEAD:main )
+( cd "$XL/B" && git config user.email t@t && git config user.name t && git fetch -q origin && git reset -q --hard origin/main )
 ZOMBIE_DATE="$(node -e 'console.log(new Date(Date.now()-25*3600e3).toISOString())')"
-ZOMBIE_SHA="$(GIT_COMMITTER_DATE="$ZOMBIE_DATE" git -C "$ROOT" commit-tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904 -m 'claim mr-z1 by ancient')"
-git -C "$ROOT" push -q "$TMP/remote.git" "$ZOMBIE_SHA:refs/heads/claims/mr-z1"
+ZOMBIE_SHA="$(cd "$XL/A" && GIT_COMMITTER_DATE="$ZOMBIE_DATE" git commit-tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904 -m 'claim mr-z1 by ancient')"
+git -C "$XL/A" push -q "$XL/r.git" "${ZOMBIE_SHA}:refs/heads/claims/mr-z1"
+if git -C "$XL/B" cat-file -e "$ZOMBIE_SHA" 2>/dev/null; then XM=1; else XM=0; fi
+check "fixture 是跨机形态（B 本地没有该对象）" "$XM" "0"
 node --input-type=module -e '
 import { claim } from "'"$HERE"'/scripts/lib/claim.mjs";
 const r = claim({ cwd: process.argv[1], remote: process.argv[2], kind: "mr", id: "z1", ttlMs: 3600_000 });
-console.log(r.claimed ? "BAD-claimed" : r.reason);
-' "$ROOT" "$TMP/remote.git" > "$TMP/claim2.txt" 2>&1
-grep -q "zombie" "$TMP/claim2.txt"; check "25h 前认领 → zombie（不自动抢）" "0" "$?"
+console.log(r.claimed ? "BAD-claimed" : r.reason, r.ageMs == null ? "no-age" : "age-ok");
+' "$XL/B" "$XL/r.git" > "$TMP/claim2.txt" 2>&1
+grep -q "zombie age-ok" "$TMP/claim2.txt"; check "跨机 25h 前认领 → zombie（对象不在本地也读得出时间）" "0" "$?"
 # 新 id（未被占用）正常认领——与 z1 无关的干净引用
 node --input-type=module -e '
 import { claim } from "'"$HERE"'/scripts/lib/claim.mjs";
@@ -67,6 +74,34 @@ console.log(r.claimed ? "claimed" : r.reason);
 grep -q "claimed" "$TMP/claim3.txt"; check "新 id 正常认领" "0" "$?"
 
 echo "== 5. 预算（D7）：轮次硬限 + pause/resume 不计等待 =="
+# 上一版这一节标题写的是预算，断言却只覆盖 approvalValid——标题承诺 > 实际覆盖，
+# 正是 H9 想拦的那类事。而 runner 里 createBudget 从未被调用，也就没有任何断言会红。
+node --input-type=module -e '
+const { createBudget } = await import("file://" + process.argv[1] + "/scripts/lib/task-loop-core.mjs");
+// 轮次硬限：单任务 2 轮，第 2 轮才耗尽（不是第 1 轮，也不是永远不）
+let t = 0;
+const b = createBudget({ maxRounds: 2, maxActiveMs: 1e9, now: () => t });
+b.start(); b.pause();
+const r0 = b.exhausted();
+b.spendRound(); const r1 = b.exhausted();
+b.spendRound(); const r2 = b.exhausted();
+// 等待不计活动墙钟：活动 500 + 等 CI 100 秒 + 活动 400 = 900ms，仍在 1000 以内；
+// 再活动 200 → 1100ms 才耗尽。把等待算进去的话，第二段一开始就会被判耗尽。
+let u = 0;
+const w = createBudget({ maxRounds: 9, maxActiveMs: 1000, now: () => u });
+w.start(); u += 500; w.pause();
+u += 100000;
+w.resume(); u += 400; w.pause();
+const waitNotCounted = !w.exhausted();
+// 顺序要紧：resume 记的是"此刻"，先推进时钟再 resume 会把这 200ms 记成 0
+w.resume(); u += 200;
+const activeCounted = w.exhausted();
+console.log([r0, r1, r2, waitNotCounted, activeCounted].join(" "));
+' "$HERE" > "$TMP/budget.txt" 2>&1
+grep -q "^false false true true true$" "$TMP/budget.txt" && r=0 || { cat "$TMP/budget.txt"; r=1; }
+check "轮次第 2 轮才耗尽；100s 等待不计墙钟，1100ms 活动才耗尽" "0" "$r"
+
+echo "== 5b. 审批三条件（停点判据，ADR D3） =="
 node --input-type=module -e '
 // approvalValid + budget 纯函数直测（runner 的停点判据同源）
 const { approvalValid: av } = await import("file://" + process.argv[1] + "/scripts/lib/task-loop-core.mjs");
@@ -78,6 +113,105 @@ console.log(ok1.ok, bad1.ok === false, bad2.ok === false, bad3.ok === false);
 ' "$HERE" > "$TMP/av.txt" 2>&1 || true
 grep -q "^true true true true" "$TMP/av.txt" && r=0 || { cat "$TMP/av.txt"; r=1; }
 check "审批三条件：有效批/无批/自批/陈批" "0" "$r"
+
+echo "== 5c. 剖面 A 触发判定：打回 = 他人未解决意见 且 无有效批红 =="
+# 判定从 runner 搬到 lib/gitlab-triggers.mjs 才喂得进假数据。上一版它带 process.exit，
+# 测试 import 即执行，于是把判定整段反转（有他人未解决 → 已解决且是我写的），17 条断言零新增红。
+node --input-type=module -e '
+import { classifyMr } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const me = "me";
+const note = (o = {}) => ({ id: "n", system: false, resolvable: true, resolved: false, author: { username: "lead" }, created_at: "2026-11-09T10:00:00Z", body: "改成幂等", ...o });
+const approved = (at) => ({ id: "s", system: true, body: "approved this merge request", author: { username: "lead" }, created_at: at });
+const mr = { iid: 7, author: { username: me } };
+const c = (discussions, lastPushAt) => classifyMr({ mr, discussions, username: me, lastPushAt });
+const a = c([{ id: "d", notes: [note({ resolved: true })] }]);
+const b = c([{ id: "d", notes: [note()] }], "2026-11-09T09:00:00Z");
+const d = c([{ id: "d", notes: [note(), approved("2026-11-09T12:00:00Z")] }], "2026-11-09T09:00:00Z");
+const e = c([{ id: "d", notes: [note(), approved("2026-11-09T08:00:00Z")] }], "2026-11-09T09:00:00Z");
+const f = c([{ id: "d", notes: [note({ author: { username: me } })] }], "2026-11-09T09:00:00Z");
+console.log([a.reviewState, a.triggered, b.reviewState, b.triggered, d.reviewState, d.triggered, e.reviewState, e.triggered, f.triggered].join(","));
+process.exit([a.reviewState, a.triggered, b.reviewState, b.triggered, d.reviewState, d.triggered, e.reviewState, e.triggered, f.triggered].join(",")
+  === "pending,false,changes_requested,true,approved,false,changes_requested,true,false" ? 0 : 1);
+' "$HERE" > "$TMP/trigger.txt" 2>&1
+check "五形态：无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算" "0" "$?"
+
+echo "== 5d. 真触发端到端：假 GitLab → 认领 → 账本配对 =="
+# 这条路径上一版完全没走过：--dry-run 不经过 claim 与 budget，所以影子周全绿而单任务首跑即崩。
+TLROOT="$TMP/e2e"; git init -q --bare "$TLROOT/r.git"
+git clone -q "$TLROOT/r.git" "$TLROOT/w" 2>/dev/null
+( cd "$TLROOT/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 7, project_id: 1, title: "假 MR", sha: "abc", author: { username: "me" } }]));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [{ id: 11, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "改成幂等", created_at: "2026-11-09T10:00:00Z" }] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-09T09:00:00Z" }));
+  if (/approvals$/.test(p)) return s.end(JSON.stringify({ approved_by: [] }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+// 必须异步起子进程：spawnSync 会把这一个事件循环堵死，假服务器再也回不了包（自己把自己等死）
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = "", err = "";
+child.stdout.on("data", (d) => { out += d; });
+child.stderr.on("data", (d) => { err += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+console.log(code, /已认领并落确认清单（1 条待修意见/.test(out) ? "ok" : "no-ack", /ReferenceError|is not defined/.test(err) ? "CRASH" : "no-crash");
+' "$HERE" "$TLROOT/w" "$TMP/ledgerE2E" > "$TMP/e2e.txt" 2>&1
+grep -q "^0 ok no-crash$" "$TMP/e2e.txt" && r=0 || { cat "$TMP/e2e.txt"; r=1; }
+check "真触发跑通（旧版在 budget.start() 处 ReferenceError）" "0" "$r"
+git -C "$TLROOT/r.git" for-each-ref refs/heads/claims/mr-7 --format='%(refname)' | grep -q "claims/mr-7"
+check "认领引用落在远端" "0" "$?"
+node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);process.exit(["trigger_found","claimed","claim_held"].every((w,i)=>t[i]===w)?0:1)' "$TMP/ledgerE2E/events.jsonl"
+check "账本：trigger_found → claimed → claim_held（无孤儿）" "0" "$?"
+
+echo "== 5e. 认领之后失败 → 当场释放（不留孤儿引用） =="
+# 实测过的泄漏：崩在 claim 之后，引用留在远端，release 从未被调用，第二次运行认领被拒，
+# 于是静默 exit 0——这条 MR 从此永远不再被处理，而外部看起来"跑过了、没事"。
+TL2="$TMP/e2e2"; git init -q --bare "$TL2/r.git"
+git clone -q "$TL2/r.git" "$TL2/w" 2>/dev/null
+( cd "$TL2/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && mkdir -p .ai && : > .ai/task-loop \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 11, project_id: 1, title: "会失败", sha: "abc", author: { username: "me" } }]));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [{ id: 1, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "x", created_at: "2026-11-09T10:00:00Z" }] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-09T09:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let err = "";
+child.stderr.on("data", (d) => { err += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+console.log(code, /处理失败/.test(err) && /认领已释放/.test(err) ? "handled" : "silent");
+' "$HERE" "$TL2/w" "$TMP/ledgerRE" > "$TMP/release.txt" 2>&1
+grep -q "^1 handled$" "$TMP/release.txt" && r=0 || { cat "$TMP/release.txt"; r=1; }
+check "异常路径 exit 1 且明说已释放（不是静默 0）" "0" "$r"
+git -C "$TL2/r.git" for-each-ref refs/heads/claims/mr-11 --format='%(refname)' | grep -q . && r=1 || r=0
+check "认领引用已删除（无残留）" "0" "$r"
+node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);process.exit(t.includes("claimed")&&t.includes("released")&&t.indexOf("released")>t.indexOf("claimed")?0:1)' "$TMP/ledgerRE/events.jsonl"
+check "账本：claimed 有配对的 released" "0" "$?"
 
 echo "== 6. T4a 归因：指纹归一化 + merge-base 基线实跑 + 集合差 =="
 # 纯函数层：参数值变化不改变身份（同一失败两次运行、期望/实际互换、全角括号、ANSI 色码）
@@ -152,20 +286,31 @@ const expired = decide({ introduced: [], inherited: [{ id: "s::A", fingerprint: 
 // 闸1：指纹不同不可豁免
 const diffFp = decide({ introduced: [], inherited: [{ id: "s::A2", fingerprint: "A2" }] },
   { exemptions: [{ fingerprintId: "s::A", owner: "lead", expiresAt: new Date(Date.now() + 86400e3).toISOString() }] });
-// 闸3：豁免率超阈值
-const budget = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"},{id:"s::B",fingerprint:"B"},{id:"s::C",fingerprint:"C"}] },
+// 闸3：豁免率超阈值（分母由调用方给：3 条豁免 / 2 条全绿 = 60%）
+const budget = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"},{id:"s::B",fingerprint:"B"},{id:"s::C",fingerprint:"C"}], greenCount: 2 },
   { exemptions: [
     { fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
     { fingerprintId: "s::B", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
     { fingerprintId: "s::C", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
 // 闸2：翻转检测
 const flip = flippyFailures([{id:"s::A"}], [{id:"s::B"}]);
+// 闸3 的反面：40 条全绿 + 3 条豁免 = 7%，不该被判成门禁退化
+const mixed = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"},{id:"s::B",fingerprint:"B"},{id:"s::C",fingerprint:"C"}], greenCount: 40 },
+  { exemptions: [
+    { fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
+    { fingerprintId: "s::B", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
+    { fingerprintId: "s::C", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
+// 分母缺失：不可判定就明说，不塞默认值（旧写法 total/(total+0) 恒等于 1，1 条豁免就报 100%）
+const unknown = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"}] },
+  { exemptions: [{ fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
 const pass = r1.action==="REWORK" && r2.action==="EXEMPT_REQUIRED" && ok.action==="PASS_TO_REVIEW"
   && expired.action==="EXEMPT_REQUIRED" && diffFp.action==="EXEMPT_REQUIRED"
-  && budget.action==="EXEMPTION_BUDGET_EXCEEDED" && flip.length===2;
-console.log(pass ? "ALL-OK" : JSON.stringify({r1:r1.action,r2:r2.action,ok:ok.action,expired:expired.action,diffFp:diffFp.action,budget:budget.action}));
+  && budget.action==="EXEMPTION_BUDGET_EXCEEDED" && flip.length===2
+  && mixed.action==="PASS_TO_REVIEW" && Math.abs(mixed.exemptionRate - 3/43) < 1e-9
+  && unknown.rateKnown === false && unknown.exemptionRate === null && unknown.action==="PASS_TO_REVIEW";
+console.log(pass ? "ALL-OK" : JSON.stringify({r1:r1.action,r2:r2.action,ok:ok.action,expired:expired.action,diffFp:diffFp.action,budget:budget.action,mixed:mixed.action,rate:mixed.exemptionRate,unknown:unknown.action,known:unknown.rateKnown}));
 process.exit(pass ? 0 : 1);'
-check "三分流 + 三道闸全形态" "0" "$?"
+check "三分流 + 三道闸全形态（含 7% 不误报 / 分母缺失不猜）" "0" "$?"
 
 echo "== 8. T5 会话打包器与产物验收（fail-closed） =="
 SESS="$TMP/sess"; mkdir -p "$SESS"
@@ -244,10 +389,18 @@ check "同步四路：拒硬转/读回成功/静默丢弃→评论兜底/兜底�
 # runner 集成：无凭据 fail 显式；有凭据但数据档未开 → perm 指引（活通道）
 node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb1.txt" 2>&1
 grep -q "FEISHU_MCP_URL" "$TMP/pb1.txt"; check "剖面 B 缺凭据 → 点名缺什么" "0" "$?"
-FEISHU_MCP_URL="https://project.feishu.cn/mcp_server/v1?mcpKey=m-dca0c1ab-4fec-4e26-97b7-81aabe932c97&userKey=7231777938960613378" FEISHU_PROJECT_KEY=taosdata_td \
-  node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb2.txt" 2>&1
-grep -q "数据档未授权" "$TMP/pb2.txt"; check "数据档未开 → perm 报错带后台指引（活通道）" "0" "$?"
+# 活通道探测：需要外网。离线时**显式跳过并单独计数**，不假装通过——
+# 这条断言要证明的是"真实 MCP 的 perm 档报错带后台指引"，离线环境里它什么也没证明。
+if node -e 'fetch(process.argv[1],{method:"HEAD",signal:AbortSignal.timeout(5000)}).then(()=>process.exit(0)).catch(()=>process.exit(1))' "https://project.feishu.cn" 2>/dev/null; then
+  FEISHU_MCP_URL="https://project.feishu.cn/mcp_server/v1?mcpKey=m-dca0c1ab-4fec-4e26-97b7-81aabe932c97&userKey=7231777938960613378" FEISHU_PROJECT_KEY=taosdata_td \
+    node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb2.txt" 2>&1
+  grep -q "数据档未授权" "$TMP/pb2.txt"; check "数据档未开 → perm 报错带后台指引（活通道）" "0" "$?"
+else
+  printf "  \033[33m⤷\033[0m 跳过：数据档 perm 探测（无外网，活通道断言不可执行）\n"
+  skip=$((skip+1))
+fi
 
 echo
+[ "$skip" -eq 0 ] || printf "跳过：%d 项（原因见上，不计入通过/失败）\n" "$skip"
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

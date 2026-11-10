@@ -78,6 +78,12 @@
       "args": ["-p"],
       "permission_mode": "acceptEdits",
       "hooks": true
+    },
+    "budget": {
+      "$comment": "task-loop 预算（ADR D7：活动墙钟 + 轮次为硬限，等 CI/人审不计墙钟）。maxRounds 是**单任务**的修复轮次上限，不是一次 --once 能处理几个任务；claimTtlMs 是认领存活期，过期按 blocked 升级而不是自动抢占（ADR D2）。这三个数以前散在代码默认值里，runner 直接 budget.start() 时还没定义过 budget——写进配置，缺了就用默认值，但配置里看得见。",
+      "maxRounds": 3,
+      "maxActiveMs": 1800000,
+      "claimTtlMs": 86400000
     }
   },
   "notify": {

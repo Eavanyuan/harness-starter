@@ -13,7 +13,7 @@
  *   闸2 重跑导致红绿翻转 → 落 flaky 事件并要求开 issue（不落账的重跑不算数）
  *   闸3 豁免率超阈值 → 视为门禁退化告警（豁免必须是有成本的）
  */
-export function decide({ introduced, inherited }, { exemptions = [], flakyLog = [], exemptionBudget = 0.3 } = {}) {
+export function decide({ introduced, inherited, greenCount }, { exemptions = [], flakyLog = [], exemptionBudget = 0.3, minExemptionsToWarn = 3 } = {}) {
   // 到期豁免先失效（闸1 的"过期自动失效"在判定入口执行，不是靠清理任务）
   const now = Date.now();
   const active = (exemptions || []).filter((e) => new Date(e.expiresAt).getTime() > now);
@@ -45,16 +45,25 @@ export function decide({ introduced, inherited }, { exemptions = [], flakyLog = 
       introduced: [], exempted, blockingInherited, expiredExemptions: expired,
     };
   }
-  // 闸3：豁免率 = 豁免数 / (豁免数 + 全绿)。全是豁免过掉的"绿"是退化信号
+  // 闸3：豁免率 = 豁免数 / (豁免数 + 全绿)。
+  //
+  // 分母只能由调用方给：runner 知道本轮绿了多少条断言，decide 不知道，也编不出来。
+  // 上一版写成 total/(total+0)，恒等于 1——1 条豁免报 100%，3 条必然触发退化告警，
+  // 于是"40 条全绿 + 3 条豁免（真实 7%）"被误判成门禁退化。一个恒等 1 的"率"不是判据，是装饰。
+  // 给不出分母就明说不可判定（exemptionRate=null，不下退化结论），不塞默认值。
   const total = exempted.length;
-  const rate = total > 0 ? total / (total + 0) : 0;
-  const degraded = rate > exemptionBudget && total >= 3;
+  const green = Number.isFinite(greenCount) ? Math.max(0, greenCount) : null;
+  const rate = green === null ? null : (total + green === 0 ? 0 : total / (total + green));
+  const degraded = rate !== null && rate > exemptionBudget && total >= minExemptionsToWarn;
   return {
     action: degraded ? 'EXEMPTION_BUDGET_EXCEEDED' : 'PASS_TO_REVIEW',
     reason: degraded
-      ? `豁免率 ${(rate * 100).toFixed(0)}% 超阈值 ${(exemptionBudget * 100).toFixed(0)}%（${total} 条全靠豁免放行）——门禁退化告警，先清存量红再谈豁免`
-      : `引入失败 0，继承 ${exempted.length} 条已豁免（${expired} 条过期失效）——转人审停点`,
-    introduced: [], exempted, blockingInherited: [], expiredExemptions: expired, exemptionRate: rate,
+      ? `豁免率 ${(rate * 100).toFixed(0)}% 超阈值 ${(exemptionBudget * 100).toFixed(0)}%（${total}/${total + green} 条靠豁免放行）——门禁退化告警，先清存量红再谈豁免`
+      : rate === null
+        ? `引入失败 0，继承 ${exempted.length} 条已豁免（${expired} 条过期失效）——豁免率不可判定（调用方未提供本轮全绿数 greenCount），不下退化结论`
+        : `引入失败 0，继承 ${exempted.length} 条已豁免（豁免率 ${(rate * 100).toFixed(0)}%，${expired} 条过期失效）——转人审停点`,
+    introduced: [], exempted, blockingInherited: [], expiredExemptions: expired,
+    exemptionRate: rate, greenCount: green, rateKnown: green !== null,
   };
 }
 

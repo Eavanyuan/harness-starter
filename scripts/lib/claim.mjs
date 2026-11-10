@@ -24,6 +24,22 @@ function git(cwd, args) {
 }
 
 /**
+ * 读远端认领提交的时间——**跨机要能读到**。
+ *
+ * 上一版直接 `git show <remoteSha>`：本机没有该对象时 git show 抛错，被外层 catch 吞成
+ * `taken`，于是"25 小时前的僵尸认领"被判成"在世"，MR 就这么永久锁死。测试之所以绿，是因为
+ * fixture 在同一个仓库里造那个提交再 push，对象天然在本地——走的是真实路径之外的分支。
+ * 造数据的距离必须等于生产的距离：这里补一次 `fetch --depth=1 <ref>` 把对象取到本地
+ * （只取该提交，落在 FETCH_HEAD，不新增引用）。取不到就明说读不到，不假装读过。
+ */
+function remoteCommitDate(cwd, remote, ref, sha) {
+  const readDate = () => git(cwd, ['show', '-s', '--format=%cI', sha]).trim();
+  try { return readDate(); } catch { /* 本地没有该对象：跨机常态 */ }
+  try { git(cwd, ['fetch', '--quiet', '--depth=1', remote, ref]); } catch { return null; }
+  try { return readDate(); } catch { return null; }
+}
+
+/**
  * 尝试认领。返回 { claimed: true, ref } 或 { claimed: false, reason: 'taken'|'zombie', ageMs }。
  *
  * 关键修正（T3 实测打脸）：不能 push 现有 sha——两个竞争者用同一 sha push 同一 ref，
@@ -47,10 +63,12 @@ export function claim({ cwd, remote, kind, id, ttlMs = 24 * 3600_000, now = Date
       const out = git(cwd, ['ls-remote', remote, ref]);
       const remoteSha = (out.trim().split('\t')[0] || '').trim();
       if (!remoteSha) return { claimed: false, reason: 'taken', ref };
-      const dateStr = git(cwd, ['show', '-s', '--format=%cI', remoteSha]).trim();
+      const dateStr = remoteCommitDate(cwd, remote, ref, remoteSha);
+      // 时间读不到 = 判不了是否过期 → 按在世处理，但把"没读到"如实带出去（别让调用方以为判过了）
+      if (!dateStr) return { claimed: false, reason: 'taken', ref, ageMs: null, unreadable: true };
       const ageMs = now() - Date.parse(dateStr);
       if (Number.isFinite(ageMs) && ageMs > ttlMs) return { claimed: false, reason: 'zombie', ageMs, ref };
-      return { claimed: false, reason: 'taken', ref };
+      return { claimed: false, reason: 'taken', ref, ageMs };
     } catch {
       return { claimed: false, reason: 'taken', ref };
     }
