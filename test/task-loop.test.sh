@@ -19,7 +19,7 @@ git clone -q "$TMP/remote.git" "$TMP/repo" 2>/dev/null
 cd "$TMP/repo" && git config user.email t@t && git config user.name t
 cp "$HERE/harness.rules.json" .
 mkdir -p .zcode && printf '{"hooks":{"enabled":true,"PreToolUse":[]}}' > .zcode/config.json
-git add -A && git commit -qm base && git push -q origin main && git branch -q -M main 2>/dev/null || true
+git add -A && git commit -qm base && git branch -q -M main && git push -q origin main
 ROOT="$TMP/repo"
 
 echo "== 1. kill switch =="
