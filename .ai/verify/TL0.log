@@ -1,6 +1,6 @@
-# cmd: bash -c npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ verify:state:local\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ ALL_GREEN
-# started: 2026-11-09T06:33:09Z
-# finished: 2026-11-09T06:33:48Z
+# cmd: bash -c bash\ test/task-loop-contract.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ OK
+# started: 2026-11-10T02:51:01Z
+# finished: 2026-11-10T02:51:49Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-ALL_GREEN
+OK

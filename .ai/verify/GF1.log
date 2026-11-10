@@ -1,6 +1,6 @@
 # cmd: bash test/evidence.test.sh
-# started: 2026-11-09T06:31:06Z
-# finished: 2026-11-09T06:31:14Z
+# started: 2026-11-10T02:47:33Z
+# finished: 2026-11-10T02:47:41Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
@@ -20,6 +20,9 @@
   [32m✓[0m CI 输出点名非法状态
 == 6c. stage=done 但 TODO 未收尾 → CI 拦截（退出条件）==
   [32m✓[0m stage=done 退出条件不满足被拦
+== 6c. 外部来源锚一致性（task-loop 剖面 B） ==
+  [32m✓[0m 锚不一致 → CI 拦截
+  [32m✓[0m 锚一致 → 放行
 == 6d. change 任务完成态缺追溯字段 → CI 拦截 ==
   [32m✓[0m change 缺 baseline/affected_ids/change_tier 被拦
   [32m✓[0m CI 输出点名缺基线
@@ -101,4 +104,4 @@ nothing to commit, working tree clean
   [32m✓[0m 只有 mtime 变（内容无差异）不算改动
   [32m✓[0m 真改了源码没重跑 → 照样拦住
 
-结果：64 通过，0 失败
+结果：66 通过，0 失败

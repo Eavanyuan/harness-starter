@@ -1,76 +1,205 @@
-# cmd: bash test/notify-broker.test.sh
-# started: 2026-11-09T06:24:54Z
-# finished: 2026-11-09T06:24:55Z
+# cmd: bash test/harness-cli.test.sh
+# started: 2026-11-10T02:41:05Z
+# finished: 2026-11-10T02:41:14Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-== 1. 卡片渲染（纯函数） ==
-  [32m✓[0m 决策卡片 msg_type=interactive
-  [32m✓[0m 每个选项一个按钮（票拟）
-  [32m✓[0m 按钮 value 携带回投上下文
-  [32m✓[0m 缺 options 的决策事件 → 拒渲染（非 0）
-  [32m✓[0m webhook 发送成功且落账
-  [32m✓[0m events.jsonl 记 card_sent
-== 2. broker：健康与认证 ==
-  [32m✓[0m healthz → 200
-  [32m✓[0m healthz 报出实际绑定面（默认回环）
-  [32m✓[0m 回环启动时日志点明后果（容器里的 GitLab 打不进来）
-  [32m✓[0m 对外监听时报出所有 IPv4 网卡
-  [32m✓[0m 对外监听时不再喊「打不进来」
-  [32m✓[0m webhook token 不匹配 → 403
-  [32m✓[0m 飞书 URL 校验回显 challenge
-  [32m✓[0m 回投未带校验 token → 403
-  [32m✓[0m 被拒的回投不产生 GitLab 提交
-  [32m✓[0m 回投 token 不匹配 → 403
-== 3. MR 事件路由 → 卡片找人 ==
-  [32m✓[0m MR 路由返回 rs+evidence
-  [32m✓[0m 飞书收到 1 张卡片
-  [32m✓[0m 卡片含审核类型与批红角色
-  [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
-  [32m✓[0m 降级卡片含说明
-  [32m✓[0m config 形状错 → 200（不把 5xx 甩给 GitLab 反复重投）
-  [32m✓[0m 响应里点明配置错误
-  [32m✓[0m 卡片写明是配置坏了（不是「没命中审核」）
-  [32m✓[0m 账本单记一条 mr_route_config_error
-  [32m✓[0m mr_routed 也带 config_error（不漏记）
-== 4. pipeline 失败与 digest ==
-  [32m✓[0m pipeline 失败 → 失败卡片
-  [32m✓[0m 非卡片事件走 digest（不推飞书）
-  [32m✓[0m digest 不产生新卡片
-== 5. 决策回投（批红落账） ==
-  [32m✓[0m 卡片回调 → 200 落账
-  [32m✓[0m GitLab 收到 1 次文件提交
-  [32m✓[0m RS 开放问题行写入结论+批红人
-  [32m✓[0m commit message 带身份与结论
-  [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
-  [32m✓[0m 失败回投不产生新提交
-== 6. 方案 D：决策走 git（零入站口） ==
-  [32m✓[0m push 里的「已裁决」被读成决策
-  [32m✓[0m 账本记 decision_landed via git
-  [32m✓[0m 落账带 commit author 身份
-  [32m✓[0m 读 git 的决策不写仓库（commit 本身就是账）
-  [32m✓[0m 作废的旧结论（-行）不被采纳
-  [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
-  [32m✓[0m 非默认分支的改动不算结论（还没生效）
-  [32m✓[0m 合并 push 只落一条账
-  [32m✓[0m 落账身份是真正改文档的人（张三），不是合并的人（李四）
-  [32m✓[0m 合并提交不额外落账（李四那条被认作重复投影）
-  [32m✓[0m 同一 push 里改判取最终结论
-  [32m✓[0m approvers 名单外的人改的不落账
-  [32m✓[0m 名单外记 decision_rejected 留痕
-  [32m✓[0m 名单内的人改的照常落账
-  [32m✓[0m diff 接口 5xx 时 push 仍返回 200
-  [32m✓[0m 读不到 diff 显式留痕（不静默当没决策）
-== 7. link 模式卡片：不依赖任何回调 ==
-  [32m✓[0m link 模式只给一个按钮（不是 N 个都跳同一页）
-  [32m✓[0m 按钮自带 url（点了直接开编辑页，不经 broker）
-  [32m✓[0m link 模式不再生成 decision value（没有回调可回）
-  [32m✓[0m 正文点名要改哪一行（OP-1）
-  [32m✓[0m MR 卡「去处理」按钮自带 url
-  [32m✓[0m MR 卡点名无槽覆盖洞（G1）
-== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） ==
-  [32m✓[0m notify CLI 相对路径正常渲染（非静默空转）
-  [32m✓[0m broker 相对路径能启动（PORT 行出现）
-  [32m✓[0m 相对路径 broker healthz → 200
-  [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
+  [32m✓[0m 用户文件在 --force 下仍保留（不在 manifest）
+== 16. check：打印运行时前提 ==
+  [32m✓[0m 打印 node 版本
+  [32m✓[0m 打印 bash 状态
+  [32m✓[0m 前提齐备时 exit 0
+== 17. 不支持的栈：只识别，不发明命令 ==
+  [32m✓[0m Go 标 unsupported
+  [32m✓[0m config 里没有凭空生成的 Go 命令
+== 18. analysis.json 契约字段 ==
+  [32m✓[0m 含 schema_version / warnings / evidence / tool / edges / buildRoots
+  [32m✓[0m v3 evidence 四类口径 + 未解析样本 + 安装物计数齐备
+  [32m✓[0m edges_truncated 字段存在（null 表示未截断）
+== 18b. 明细边上限（1.9MB 的 analysis.json 会让 agent 直接读不动） ==
+  [32m✓[0m --max-edges 截断且把总数亮出来
+  [32m✓[0m --full-edges 不截断（标记为 null，不是假的全量）
+  [32m✓[0m CLI 输出提示截断（不静默少几万条）
+== 19. init 用探测结果适配 config（不再是模板占位值） ==
+  [32m✓[0m project.name 与 stacks 按探测回填
+  [32m✓[0m harness 安装物不进依赖图（无 hooks/ scripts/ 的节点）
+  [32m✓[0m evidence 报出排除了多少安装物（口径可复核）
+== 20. 未知 flag 直接 usage（不被当成 positional 吞掉） ==
+  [32m✓[0m 拼错的 --stackdir → exit 64
+== 21. init：已有 package.json 合并 scripts（否则 npm run gate 是纸面的） ==
+  [32m✓[0m dry 输出提到合并 scripts
+  [32m✓[0m 保留原有键并补上 gate/build:agents
+  [32m✓[0m merge 的 package.json 不被 remove 删除（不是我们建的）
+== 22. init：bash 缺失 → 拒绝安装（exit 69，零落盘） ==
+  [32m✓[0m 缺失 bash → exit 69
+  [32m✓[0m 拒绝时零落盘
+== 32. projects 数组：多栈混合探测回填（v2 核心，TDasset 解锁件） ==
+  [32m✓[0m Java + Go 两个构建根都识别到
+  [32m✓[0m Java 栈生成命令、Go 标 unsupported（不猜）
+  [32m✓[0m v2 allStacks 兼容：对象→数组
+== 30. Go import 解析（TDC-Go 关系视图空白 → go.mod 前缀 + 包级索引） ==
+  [32m✓[0m Go import 解析到包内文件
+  [32m✓[0m 标准库（fmt/flag）不产生未解析
+  [32m✓[0m 函数体里的字符串不算 import（只认 import 声明）
+  [32m✓[0m 四类口径互斥且相加等于总数
+  [32m✓[0m 标准库单独计数（不混进外部包）
+== 31. MyBatis 表血缘（mapper XML/注解 SQL → 数据表，DB 迁移影响面） ==
+  [32m✓[0m XML mapper 表血缘（namespace→Java 接口 + 表名）
+== 29. Maven Reactor 折叠 + 模块级聚合（TDC 实测：35 个假根、跨模块改动没有影响面视图） ==
+  [32m✓[0m 子模块折叠（构建根只剩 .）
+  [32m✓[0m 模块依赖边 app→lib 聚合正确
+  [32m✓[0m 嵌套子模块归并到最近聚合单元
+== 29b. 单模块项目也要有模块视图（此前 modules 恒为空，且无告警） ==
+  [32m✓[0m java-small 的模块视图里有根模块 .
+  [32m✓[0m 根模块的文件数不是 0（不是有键无值）
+== 32. 血缘只认 SQL 结构：列名/参数名/注释掉的 SQL 都不算表 ==
+  [32m✓[0m 注解 SQL 只提取真表（td_user / td_order）
+  [32m✓[0m 参数名/列名/注释里的表都不进血缘
+  [32m✓[0m XML 只取 statement 元素（注释语句/resultMap 列名不算）
+== 28. Java FQN 解析 + 基础包多数派（TDC 1.1万/TDasset 2.9万假 unresolved 的解药） ==
+  [32m✓[0m 第三方 import 不算 unresolved（=0）且重名类精确解析
+  [32m✓[0m 基础包进报告可复核（java_bases 非空）
+== 27. 项目 .gitignore 目录级推导（TDasset 实测：.worktrees 在项目 gitignore 里写着） ==
+  [32m✓[0m .worktrees/ 与 snapshots/ 不出现在构建根
+  [32m✓[0m 否定救回的 golden/snapshots 保留为构建根
+== 26. Go 模块缓存（pkg/mod）不算构建根（TDC-Go 实测：220 个依赖淹死真项目） ==
+  [32m✓[0m 识别到 Go 栈
+  [32m✓[0m pkg/mod 不出现在构建根里
+  [32m✓[0m 构建根只剩真项目（. / operator / test）
+== 23. Node 命令从 package.json 推导（不硬编码、不发明） ==
+  [32m✓[0m test 取自 scripts（pnpm）
+  [32m✓[0m testOne 按 vitest 推导
+  [32m✓[0m lint 取自 scripts
+  [32m✓[0m 无脚本不发明命令（test 留空）
+  [32m✓[0m 留空给出手填警告
+== 24. init 未完成必须失败退出（不能把坏现场当成功） ==
+  [32m✓[0m 配置冲突 → exit 1
+  [32m✓[0m 输出点名冲突
+  [32m✓[0m manifest.status=incomplete
+  [32m✓[0m 空目录安装 → exit 1（未填 stacks 前不算装好）
+  [32m✓[0m 提示手填 stacks
+== 25. remove 保护安装后被改过的生成文件 ==
+  [32m✓[0m remove --yes 有保护项 → exit 2（不是假成功）
+  [32m✓[0m 点名被改文件
+  [32m✓[0m 说明本次未删除任何文件
+  [32m✓[0m 被改的生成文件保留
+  [32m✓[0m --force 才删被改文件
+== 26. 重跑 init 后 remove 必须删净（含条件生成项） ==
+  [32m✓[0m 重跑后卸载无残留（只剩空目录）
+== 27. 安装前就存在的生成物目录文件 → 归属不是我们，remove 保留 ==
+  [32m✓[0m 用户既有文件记入 manifest.foreign
+  [32m✓[0m remove 不删用户既有文件
+== 28. build 覆盖用户既有生成物 → 备份 + 点名（覆盖可恢复） ==
+  [32m✓[0m 点名被覆盖的文件
+  [32m✓[0m 指出备份位置
+  [32m✓[0m 原内容已备份
+  [32m✓[0m 备份内容就是原文件
+== 29. init 到不存在的目录：创建并说明，不是 ENOENT 崩溃 ==
+  [32m✓[0m 明说目录已创建
+  [32m✓[0m 没有 node 堆栈
+  [32m✓[0m 目录与产物齐全
+  [32m✓[0m 全新项目：未填 stacks 前 exit 1（与空目录口径一致）
+== 30. 构建清单只看直属文件：根 package.json 不因下属 build.gradle 变 Java 栈 ==
+  [32m✓[0m 根目录不再被误判 Java/Gradle
+  [32m✓[0m 没有凭空撞车告警
+== 31. ci-verify：拼错的 flag / 缺值必须报错，不静默降级 ==
+  [32m✓[0m 未知 flag → exit 64
+  [32m✓[0m --file 缺值 → exit 64
+== 32. guides/ 随模板安装（orchestrator 引用了它，不能是死链） ==
+  [32m✓[0m 需求变更指南已安装
+== 33. remove 遇 symlink：跳过并说明，不中断整场卸载 ==
+  [32m✓[0m symlink 场景不中断（exit 0）
+  [32m✓[0m 说明跳过原因
+  [32m✓[0m 链接指向的外部内容未动
+  [32m✓[0m 其余条目照常删净
+  [32m✓[0m 有跳过项时不说'退出干净'
+== 34. resume：停在 blocker 上的任务必须有恢复入口 ==
+  [32m✓[0m 有待决 blocker 时退出码 3（可被 CI/脚本判读）
+  [32m✓[0m 总览点名任务与卡点数
+  [32m✓[0m 点名待裁决的决策 id
+  [32m✓[0m 给出可立即开工的 TODO（不被已决策项挡住的那条）
+  [32m✓[0m 只读：state.json 未被改写
+  [32m✓[0m 回填决策缺 --by → exit 64（无记名决策一律拒绝）
+  [32m✓[0m 说明为什么必须记名
+  [32m✓[0m 用 --decide 处理能力阻断 → exit 64
+  [32m✓[0m 指向正确的开关
+  [32m✓[0m 未知 blocker id → exit 64
+  [32m✓[0m 回填一条决策后仍待决 → exit 3
+  [32m✓[0m 落盘含 resolved/by/decision/时间四要素
+  [32m✓[0m adr 决策检查随之转 pass
+  [32m✓[0m 还有未决 blocker 时 --advance 被拒（exit 3）
+  [32m✓[0m 阻断清空 → 自动推进，exit 0
+  [32m✓[0m 报出推进方向
+  [32m✓[0m stage 推进且历史收口（上一阶段 gate=pass + exited_at）
+== 35. promotionDir 必须落在某个 agent 的 writes 里（否则定稿无处落盘） ==
+  [32m✓[0m 模板自身覆盖 docs/plans/**
+  [32m✓[0m orchestrator 写入域含 docs/plans/**
+== 36. ledger 区分自测与真实拦截 ==
+  [32m✓[0m 自测流量标 selftest（不污染真实拦截基线）
+== 37. 装进项目后工具要能用在自己身上（resume .） ==
+  [32m✓[0m resume 自身不再报'互相嵌套'
+  [32m✓[0m 退出码落在 0/3/64 之内（不是崩溃）
+  [32m✓[0m init 仍拒绝自复制（安全内核不放宽）
+  [32m✓[0m init 的拒绝理由照旧
+== 38. 停点落成决策单（可留存、可转发，而不是一次 stdout）==
+  [32m✓[0m 给出恢复命令
+  [32m✓[0m 决策单已生成
+  [32m✓[0m 第一档：必须现在决定（只有 D1）
+  [32m✓[0m 第二档：可以先干再定（D2 有前置）
+  [32m✓[0m 第三档：按建议默认（D3 有 default_ok）
+  [32m✓[0m 选项带编号（看到的 1/2/3 就是填回去的 1/2/3）
+  [32m✓[0m D2 标明前置
+== 39. 决策值必须落在选项内（枚举闭合，§16）==
+  [32m✓[0m 自由文本被拒（exit 64）
+  [32m✓[0m 报错列出合法选项
+  [32m✓[0m 单选填两项被拒（exit 64）
+  [32m✓[0m 说明是单选并点出 multi
+  [32m✓[0m 多选（multi=true）允许多项，且剩余项都属可稍后定 → exit 0
+  [32m✓[0m 回填为可读文本
+  [32m✓[0m 可稍后定的项单独点名
+== 40. 从决策单读回（--from）==
+  [32m✓[0m 读回成功（D2 属可稍后定 → exit 0）
+  [32m✓[0m 点名回填了哪些
+  [32m✓[0m decision_ids 落盘（机器可判，不靠文本解析）
+  [32m✓[0m 勾选编号同样生效
+== 41. 人已经填好但没应用的输入，不能被刷新冲掉 ==
+  [32m✓[0m 点名有未应用的填写
+  [32m✓[0m 说明不会覆盖
+  [32m✓[0m 填写仍在文件里
+== 42. 批量接受建议只作用于第三档 ==
+  [32m✓[0m default_ok 项被批（建议映射到选项编号）
+  [32m✓[0m 第一、二档不动（只有 D3 被批）
+  [32m✓[0m --except 排除的项不被批
+  [32m✓[0m 批量接受同样必须记名（exit 64）
+  [32m✓[0m 说清为什么
+== 43. 门禁没通过 / TODO 没收尾 → 不许推进（P1-1 实测复现过的假推进）==
+  [32m✓[0m gate 记着 fail + TODO 未收尾 → 拒绝推进（exit 3）
+  [32m✓[0m 点名是门禁没过
+  [32m✓[0m 点名未收尾的 TODO
+  [32m✓[0m state 未被改写（stage 与 gate 都保持原样，没被推进动作翻成 pass）
+  [32m✓[0m 门禁全 pass 但 TODO 未收尾 → 仍拒绝（exit 3）
+  [32m✓[0m 说清是阶段收尾要求
+  [32m✓[0m 门禁全 pass → 放行推进
+  [32m✓[0m 推进后 gate_result 清成空、stage 同步到新阶段
+  [32m✓[0m 上一阶段记 pass 且有 exited_at，新阶段是 pending
+  [32m✓[0m 清空后不会冒充已评估
+== 44. 产物索引：显示缺失与形状异常，但不判死（advisory，P3-10）==
+  [32m✓[0m 索引不影响退出码（无阻塞无校验失败 → 0）
+  [32m✓[0m 报出索引统计
+  [32m✓[0m 缺失的产物被点名
+  [32m✓[0m 形状异常只提示不改写
+  [32m✓[0m 给出找法，而不是判死
+  [32m✓[0m state 里的 artifacts 一个字节都没被改
+== 45. verify：统一验证入口（读磁盘，不读 hook 载荷）==
+  [32m✓[0m 合规 state → 退出码 0
+  [32m✓[0m 结论可被机器读（ok:true）
+  [32m✓[0m 报出实际检过的 state
+  [32m✓[0m 无证据的完成态 → 退出码 1
+  [32m✓[0m 结论可被机器读（ok:false）
+  [32m✓[0m 失败项能定位到具体 todo
+  [32m✓[0m 拼错的 --mode 不许静默降级 → 64
+  [32m✓[0m 非 harness 目录 → 明确拒绝（非 0）
+== 46. 发布包必须带齐 init 声明要拷的模板文件 ==
+  [32m✓[0m 发布包含 harness.rules.json
+  [32m✓[0m 发布包含 harness.config.json（对照组）
 
-结果：61 通过，0 失败
+结果：208 通过，0 失败

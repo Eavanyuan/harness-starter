@@ -1,6 +1,6 @@
 # cmd: bash test/review-router.test.sh
-# started: 2026-11-08T01:44:27Z
-# finished: 2026-11-08T01:44:28Z
+# started: 2026-11-10T02:47:44Z
+# finished: 2026-11-10T02:47:44Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 命中与分流 ==

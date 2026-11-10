@@ -1,6 +1,6 @@
 # cmd: bash test/notify-broker.test.sh
-# started: 2026-11-09T06:32:21Z
-# finished: 2026-11-09T06:32:23Z
+# started: 2026-11-10T02:47:41Z
+# finished: 2026-11-10T02:47:43Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 卡片渲染（纯函数） ==
@@ -72,5 +72,15 @@
   [32m✓[0m broker 相对路径能启动（PORT 行出现）
   [32m✓[0m 相对路径 broker healthz → 200
   [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
+== 9. 订阅三档与 aging 升级（T2） ==
+  [32m✓[0m mr_open 降档 digest → 不立即推卡
+  [32m✓[0m 订阅决策入账（digest）
+  [32m✓[0m aging 队列落盘
+  [32m✓[0m ledger 档 → 不推卡不入队
+  [32m✓[0m 订阅决策入账（ledger）
+  [32m✓[0m aging 到点 → 升回 card 推达
+  [32m✓[0m aging 升级入账
+  [32m✓[0m 规则热改即生效：minimal 后同事件不再入队
+  [32m✓[0m mustAct 事件 ledger 下限提升为 digest（带升级时间）
 
-结果：61 通过，0 失败
+结果：70 通过，0 失败

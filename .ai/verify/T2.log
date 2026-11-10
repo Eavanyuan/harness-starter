@@ -1,6 +1,6 @@
 # cmd: bash test/ai-review.test.sh
-# started: 2026-11-08T01:40:03Z
-# finished: 2026-11-08T01:40:04Z
+# started: 2026-11-10T02:37:52Z
+# finished: 2026-11-10T02:37:53Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. L0 机器判据：零 token 先阻断 ==

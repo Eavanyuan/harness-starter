@@ -1,6 +1,6 @@
 # cmd: bash test/verify-run.test.sh
-# started: 2026-11-09T06:32:20Z
-# finished: 2026-11-09T06:32:21Z
+# started: 2026-11-10T02:47:41Z
+# finished: 2026-11-10T02:47:41Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. # cmd 必须是真实命令，不能被测试计数覆盖（实测过的 bug）==
