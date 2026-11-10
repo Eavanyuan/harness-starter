@@ -85,10 +85,14 @@
       "maxActiveMs": 1800000,
       "claimTtlMs": 86400000
     },
+    "gitlab": {
+      "$comment": "GitLab 接入。**扩展项，不是硬性条件**：url 为空 = 不接，task-loop 直接跳过剖面 A 并退出 0（不接不等于坏）。url 是'这个仓库接哪个实例'的事实，进仓库；token 是凭据，只走 GITLAB_TOKEN 或 0600 文件，进 git 就是泄露。username 不配：runner 用 token 调 GET /user 取，token 是谁就是谁——配错的 username 会让判定反向（空值 → 你自己写的每条留言都算'他人的打回意见'，实测 triggered 由 false 变 true），所以宁可不配。",
+      "url": ""
+    },
     "feishu": {
-      "$comment": "剖面 B 接的那个飞书项目（Meego）空间。这些值不是'偏好'而是**该空间的事实**：类型名、字段 key、状态 label 换一个空间全都不一样，写错不会报错——查询照常成功，只是一张单都没有。所以放在仓库配置里，跟着代码一起 review。凭据不在这里：OAuth token 等于长期口令，只落用户级 $HOME/.harness/task-loop/feishu-oauth.json（0600），进 git 就是泄露。环境变量仍可覆盖（临时切空间/CI 指向假端点），优先级 env > 本段 > 内置兜底。",
+      "$comment": "剖面 B 接的那个飞书项目（Meego）空间。**扩展项，不是硬性条件**：projectKey 为空 = 不接，跳过剖面 B。这些值不是'偏好'而是**该空间的事实**：类型名、字段 key、状态 label 换一个空间全都不一样，写错不会报错——查询照常成功，只是一张单都没有。所以放在仓库配置里，跟着代码一起 review。凭据不在这里：OAuth token 等于长期口令，只落用户级 $HOME/.harness/task-loop/feishu-oauth.json（0600），进 git 就是泄露。环境变量仍可覆盖（临时切空间/CI 指向假端点），优先级 env > 本段 > 内置兜底。",
       "projectKey": "taosdata_td",
-      "workItemType": "Defect",
+      "taskTypes": ["Defect"],
       "assigneeField": "current_status_operator",
       "newStatus": "New",
       "mqlLimit": 20,

@@ -111,7 +111,7 @@
 - **配置分三类，各有各的落点**（这是本节最重要的一条，其余都是它的展开）：
   | 类别 | 落点 | 进 git | 理由 |
   |---|---|---|---|
-  | 空间身份：`projectKey` / `workItemType` / `assigneeField` / `newStatus` / `mqlLimit` / `issuer` / `severity.{field,map}` | `harness.rules.json` 的 `runtime.feishu` | 是 | 这是"这个仓库接哪个空间"的**事实**，该跟着代码一起 review；也是定时器能装到别的机器上的前提——环境变量要安装器逐条渲染，漏一个就是一次静默失败（`install-task-loop.sh` 历史上只注入了 `FEISHU_MCP_URL`，`FEISHU_PROJECT_KEY` 从未被注入过） |
+  | 空间身份：`projectKey` / `taskTypes` / `assigneeField` / `newStatus` / `mqlLimit` / `issuer` / `severity.{field,map}` | `harness.rules.json` 的 `runtime.feishu` | 是 | 这是"这个仓库接哪个空间"的**事实**，该跟着代码一起 review；也是定时器能装到别的机器上的前提——环境变量要安装器逐条渲染，漏一个就是一次静默失败（`install-task-loop.sh` 历史上只注入了 `FEISHU_MCP_URL`，`FEISHU_PROJECT_KEY` 从未被注入过） |
   | 用户凭据：`client_id`/`client_secret`/`access_token`/`refresh_token` | `$HOME/.harness/task-loop/feishu-oauth.json`（0600） | **否** | token 等于长期口令，进仓库就是泄露。它已经是配置文件，只是不能放在仓库里 |
   | 临时覆盖 | `FEISHU_PROJECT_KEY` / `FEISHU_WORK_ITEM_TYPE` / `FEISHU_ASSIGNEE_FIELD` / `FEISHU_SEVERITY_FIELD` / `FEISHU_NEW_STATUS` / `FEISHU_MQL_LIMIT` / `FEISHU_ISSUER` / `FEISHU_OAUTH_FILE` | 否 | 一次性动作（临时查别的空间、CI 指向假端点）。优先级 **env > 配置 > 内置兜底**；空字符串按"没配"处理 |
 - **数据契约（2026-11-10 对 `taosdata_td` 实测，非文档抄录）**：MQL 的每一处写法都由服务端逐条否决过，三条里只有第一条会报错：
@@ -131,8 +131,22 @@
 - 输出：`{auto, confirm, skip}`；auto 进本轮触发
 - 配置读取：`resolveFeishuConfig({ rules, env })` 合成一份配置（内置兜底 < `runtime.feishu` < 环境变量），runner 与测试共用同一个入口——测试若自己拼参数，测的就不是生产那条路。
 - 失败分支：身份被拒（HTTP 401 / `invalid_token`）→ `McpAuthError`，提示重新 login（重试无用）；MCP 权限不足 → `McpPermError`，`exit 1` 并打印"去飞书后台勾工作项读取范围"；MQL 报 `semantic error` → 缺空间名（本地已在发请求前拦下，见 `buildMyBugsMql` 的入参校验）；`ProjectNotFound` → 空间名写错（配置里 `runtime.feishu.projectKey`）；token 响应认不出 → 抛错，**绝不返回空 token**（那会让上层以为"通了但没数据"）；解析不出行 → 抛错，**不返回空数组**（"读不懂"与"没有单子"必须可区分）；目标状态不在 `get_transitable_states` 里 → 拒绝硬转；读回不一致 → 评论兜底留凭，兜底也失败才判红
-- 判据：`test/feishu-bug-source.test.sh`（41 条，离线；fixture 抓自真实空间）。六组断言：MQL 形状（两段式表名 / `current_status_operator` / 状态用 `=`）、真实响应解析（含"取 label 不取 key"）、严重级归一（高→P1、中→P2、低/缺值→P3）、截断可见（命中数 > 取回数必须可判）、**配置驱动**（配置读到值 / env 覆盖 / 空串不覆盖 / 缺配置兜底 / 改词表真的改变去向 / 指派字段可配）、fail-closed。末组是变异检验：把 `current_status_operator` 改回 `owner`、把状态改回中文"待处理"、把严重级字段 key 配错，三处都必须让断言变红——否则上面几组只是"看起来在判"。
+- 判据：`test/feishu-bug-source.test.sh`（43 条，离线；fixture 抓自真实空间）。六组断言：MQL 形状（两段式表名 / `current_status_operator` / 状态用 `=`）、真实响应解析（含"取 label 不取 key"）、严重级归一（高→P1、中→P2、低/缺值→P3）、截断可见（命中数 > 取回数必须可判）、**配置驱动**（配置读到值 / env 覆盖 / 空串不覆盖 / 缺配置兜底 / 改词表真的改变去向 / 指派字段可配 / 多任务类型各生成不同表名 / 空 `projectKey` 解析成空串而不是字符串 `"undefined"`）、fail-closed。末组是变异检验：把 `current_status_operator` 改回 `owner`、把状态改回中文"待处理"、把严重级字段 key 配错，三处都必须让断言变红——否则上面几组只是"看起来在判"。
 - 配置体检：`doctor` 检查 `runtime.feishu` 五个必填项非空、`severity.map` 的值必须落在 P0–P3、以及**该词表是否真有代码消费**（配了没人读 = 换空间时改了配置行为一点没变，比没配更难查）。
+
+### 4.9 接入是扩展条件（两条通道都可以不接，任务类型可选）
+
+- **两条通道都是可选的**：GitLab（剖面 A）与飞书项目（剖面 B）各自独立接入，接了就轮询，一个都没接就 `exit 0`。`--profile` 默认 `auto`，按"配置是否在场"决定跑哪个；两个都配就都跑。
+- **显式 `--profile a|b|both` 是一句断言**：指定了却缺配置 → `exit 1` 并点名缺什么。"我就要跑这个"与"顺便看看有没有"必须可区分——静默跳过会让"没接"和"接了但坏了"长得一样。
+- **未接入 ≠ 接入坏了**，这是本层最容易混的一对：
+  | 情形 | 判据 | 处置 |
+  |---|---|---|
+  | 凭据不在场（未登录 / 没填 token） | 文件不存在且无 env | 按未接入跳过，逐条说明缺什么，`exit 0` |
+  | 凭据在场但被拒 / 过期 | `401` / `invalid_token` | 按故障处理，`exit 1`（否则 token 过期后每轮都"安静地没有任务"） |
+  | 配置写了一半 | `url` 有、`token` 无（或反之） | 算未接入，但把缺的那一半写进提示 |
+- **任务类型可由用户指定**：`--type 缺陷,需求`（可重复）优先于 `runtime.feishu.taskTypes`。一个 MQL 只能查一种工作项——表名就是类型名，把两种塞进同一句不可能，所以多类型 = 多条 MQL、结果合并。类型名写错时服务端只回 `ErrMetadataError: metadata error`（看不出是自己填错），runner 补一句上下文并点名"该空间没有这个工作项类型名"。
+- **GitLab 的用户名不配置**：用 token 调 `GET /user` 取，token 是谁就是谁。空 `username` 会让判定**反向**（`n.author.username !== ''` 恒真 → 自己写的未解决留言全算"他人的打回意见"，实测同一讨论 `triggered` 由 `false` 变 `true`），所以 `unresolvedByOthers` 直接抛错而不是返回空数组。
+- **runner 与 doctor 读同一份 GitLab 配置**（`scripts/lib/gitlab-config.mjs`）：`url` 空 = 不接（不算故障）；填成 `/api/v4` 整段 → 判红（代码会再拼一次路径，症状是每次 404、报错像"接口不存在"）。token 除 env 外还认 `$HOME/.harness/task-loop/gitlab-token`（0600）——定时器把 env 写进 plist/unit，那是全机可读的，凭据不该多开一个读者。
 
 ## 5 接口契约
 
@@ -144,7 +158,7 @@
 | GET | `/api/v4/projects/:pid/merge_requests/:iid/approvals` | 同上 | `approved_by[]` | 404 → 降级（名单有、时间无） |
 | MCP | `search_by_mql` / `get_transitable_states` / `update_field` / `add_comment` / `get_workitem_brief` | 见 `scripts/lib/feishu-project-mcp.mjs` | 工作项 | `McpPermError` → `exit 1` + 后台指引 |
 
-CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--root <仓库>] [--mr <iid>]`，`--report` 出影子周统计。退出码：0 正常（含无事可做）/ 1 有触发但被安全闸拦或处理失败 / 64 用法错。
+CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry-run] [--root <仓库>] [--mr <iid>] [--type <工作项类型>] [--username <逃生口>]`，`--report` 出影子周统计。退出码：0 正常（含无事可做 / 未接入）/ 1 有触发但被安全闸拦、处理失败或**已接入的源坏了** / 64 用法错（含非法 `--profile`）。
 
 ## 6 数据变更
 
@@ -154,12 +168,16 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--r
 | `.ai/ledger/events.jsonl` 新增事件类型 `trigger_found/claimed/claim_held/task_failed/released/release_failed/claim_zombie/claim_skip/budget_exhausted/shadow_hit/profile_b_polled` | 追加型 | 无 | 无（只追加不改写） | 否 |
 | `refs/heads/claims/<kind>-<id>` | 新增远端分支命名空间 | 无 | `git push origin :refs/heads/claims/<kind>-<id>` | 否（TTL 兜底） |
 | `harness.rules.json` 新增 `runtime.budget`（`maxRounds`/`maxActiveMs`/`claimTtlMs`） | 新增配置段 | 无（缺省用代码默认值） | 删段即回默认 | 否 |
+| `harness.rules.json` 新增 `runtime.gitlab`（`url`）；`runtime.feishu` 的 `workItemType` 换成 `taskTypes[]` | 新增配置段 + 字段替换 | 无（缺 `taskTypes` 时仍认 `workItemType`，缺 `url` 即视为未接入） | 删段即回"不接" | 否（旧值仍可读） |
+| `$HOME/.harness/task-loop/gitlab-token`（0600，可选） | 新增凭据落点 | 无（读不到就回落到 env） | 删文件即可 | 否 |
 
 ## 7 交互与状态
 
 - 状态矩阵：`ui_scope=NONE`，无 UI
 - 关键交互（命令行可见的部分）：
   - `OFF` 哨兵存在 → 打印位置并 `exit 0`（被停是运维意图，不是故障）
+  - `--profile auto`（默认）→ 接了就轮询、都没接就 `exit 0` 并列出缺项；显式 `a|b|both` 缺配置则 `exit 1`
+  - `--type <类型>` → 本轮只查指定工作项类型（可逗号分隔或重复），覆盖 `runtime.feishu.taskTypes`
   - `--dry-run` → 每个 tick 命中追加 `shadow.jsonl`，不认领、不推、不起会话
   - `--report` → 输出"唯一触发 N / 重复命中 M / 按天分布 / 验收口径"
   - 认领成功 → `claimed`；本轮未完成 → `claim_held`（**显式配对**，孤儿引用才查得出来）；处理失败 → `task_failed` + `released`
@@ -175,19 +193,21 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--r
 | `runtime.budget.maxRounds` | `3` | **单任务**修复轮次上限 | 否 |
 | `runtime.budget.maxActiveMs` | `1800000` | 活动墙钟上限；等 CI/人审不计 | 否 |
 | `runtime.budget.claimTtlMs` | `86400000` | 认领存活期，过期按 blocked 升级 | 否 |
-| `GITLAB_URL` / `GITLAB_TOKEN` | 无 | 剖面 A 凭据；缺失即 `exit 1` | 剖面 A 必填 |
-| `GITLAB_USERNAME` | 空串 | 判"他人留言"用；为空则任何人的未解决意见都算他人 | 建议填 |
+| `runtime.gitlab.url` | 空（= 不接） | GitLab 实例**根**地址（不是 `/api/v4`）。扩展项：空即跳过剖面 A，不算故障 | 否 |
+| `GITLAB_URL` / `HARNESS_GITLAB_URL` | 无 | 临时指向别的实例（CI 指假服务器）；优先级 env > 配置 | 否 |
+| `GITLAB_TOKEN` / `HARNESS_GITLAB_TOKEN` | 无 | PAT（`private-token` 头只认 PAT，OAuth access token 会 401） | 剖面 A 必填 |
+| `$HOME/.harness/task-loop/gitlab-token` | 不存在 | token 落点（0600）。定时器的 env 写在 plist/unit 里是全机可读的，凭据走文件不多开读者 | 否 |
+| `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
+| `HARNESS_GITLAB_PROJECT` | 无 | doctor 门禁在场性检查的目标项目（`group/project`）；不配则只提醒"未检查" | 否 |
 | `GIT_REMOTE` | `origin` | 认领 push 的目标远端 | 否 |
 | `runtime.feishu.projectKey` | 无 | 剖面 B 接的飞书项目空间标识（如 `taosdata_td`）。缺了 MQL 就是单段表名 = 一句 `semantic error` | 剖面 B 必填 |
-| `runtime.feishu.workItemType` | `Defect` | 工作项类型名（该空间的"缺陷"叫 `Defect`，`issue` 是禁用的备份类型） | 否 |
+| `runtime.feishu.taskTypes` | `["Defect"]` | 要轮询的工作项类型名数组（该空间的"缺陷"叫 `Defect`，`issue` 是禁用的备份类型）。多类型 = 多条 MQL 分别查；`--type` 可临时覆盖 | 否 |
 | `runtime.feishu.assigneeField` | `current_status_operator` | 指派判据字段。**不是 `owner`**——该空间的 `owner` 是创建者 | 否 |
 | `runtime.feishu.newStatus` | `New` | 待办状态的 label（英文；中文"待处理"不存在于枚举） | 否 |
 | `runtime.feishu.severity.field` | `field_6bff71` | 严重级自定义字段的 key（不是 `severity`/`priority`） | 否 |
 | `runtime.feishu.severity.map` | `{"高":"P1","中":"P2","低":"P3"}` | 平台词表 → P 档；值必须落在 P0–P3，且**必须在解析时生效**（见 §4.8）。换空间只改这里 | 否 |
 | `runtime.feishu.mqlLimit` | `20` | 单次取回上限（夹到 ≤50）。超出时告警 + 落账 `profile_b_truncated` | 否 |
 | `runtime.feishu.issuer` | `https://project.feishu.cn` | MCP 端点域名（Lark 国际版另填） | 否 |
-| `GITLAB_URL` / `GITLAB_TOKEN` | 无 | 剖面 A 凭据；缺失即 `exit 1` | 剖面 A 必填 |
-| `GITLAB_USERNAME` | 空串 | 判"他人留言"用；为空则任何人的未解决意见都算他人 | 建议填 |
 | `FEISHU_OAUTH_FILE` | `$HOME/.harness/task-loop/feishu-oauth.json` | 凭据落点（0600）。**凭据只在这里，不进仓库** | 否 |
 | `FEISHU_PROJECT_KEY` / `FEISHU_WORK_ITEM_TYPE` / `FEISHU_ASSIGNEE_FIELD` / `FEISHU_SEVERITY_FIELD` / `FEISHU_NEW_STATUS` / `FEISHU_MQL_LIMIT` / `FEISHU_ISSUER` | 见上表 | 覆盖配置的临时手段（切空间、CI 指向假端点）。优先级 env > 配置 > 内置兜底；空串按"没配"处理 | 否 |
 | `.ai/task-loop/OFF` | 不存在 | kill switch 哨兵 | 否 |
@@ -201,6 +221,10 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--r
 | CAS 双竞争 | 先者胜、后者 `taken` | 同 sha push 同 ref 是 no-op（必须内容唯一） |
 | 跨机僵尸 | **两个独立克隆**，B 无对象 → 仍判出 `zombie` 且带 `ageMs` | fixture 先断言"B 本地没有该对象"，否则测不到跨机路径 |
 | 触发五形态 | 无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算 | 批红时间与 push 时间的先后 |
+| 未接入 | 一个源都没配 → 退出 0 且逐条说明缺什么 | 显式 `--profile` 时必须 `exit 1`（"我就要跑这个"不许静默跳过） |
+| username 派生 | 不配 `GITLAB_USERNAME` 时问 `/user`，自己写的留言不算打回 | 空值在 `unresolvedByOthers` 与 `classifyMr` 两处都抛错（否则判定反向） |
+| GitLab 地址形状 | 空/空白 = 不接；`/api/v4`、缺协议、带 API 段 → 判红 | 代码自己会拼 `/api/v4`，配置再带一次就是每次 404 |
+| 多任务类型 | `taskTypes` 两项 → 两条 MQL，表名各不相同；`--type` 可覆盖 | 一个 MQL 只能查一种工作项 |
 | 真触发端到端 | 假 GitLab → `claimed` → `claim_held`，退出 0 | `--dry-run` 走不到这条路 |
 | 认领后异常 | `task_failed` + `released`，远端引用被删，退出 1 | 不得静默 `exit 0` |
 | 预算 | 轮次第 N 轮才耗尽；100s 等待不计墙钟；活动 1100ms/上限 1000ms 才耗尽 | `resume()` 记的是"此刻"，时钟顺序反了测不到 |
@@ -208,7 +232,7 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile a|b] [--dry-run] [--r
 | 影子周统计 | 3×#42+1×#43 → 唯一 2；脏行（裸数字/null）不污染 | 按天分布 + 验收口径印出 |
 | 定时器安装 | `--print` 无残留占位符；无接线仓库 `exit 69` | 凭据不进仓库 |
 
-> 判据有效性用**变异**检验：已做过的五处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1）分别产生 6 / 4 / 1 / 1 / 1 条新增红。绿不算证据，能变红才算。
+> 判据有效性用**变异**检验：已做过的九处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据）分别产生新增红。绿不算证据，能变红才算。
 
 ## 10 兼容与回滚
 

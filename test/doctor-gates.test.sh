@@ -99,13 +99,82 @@ probe_level() { node -e '
 echo perm > "$TMP/fmcp/mode"; check "数据档未配 → perm 档（提示后台勾选，不判死）" "perm" "$(probe_level)"
 echo ok > "$TMP/fmcp/mode"; check "数据档已配 → ok 档" "ok" "$(probe_level)"
 echo protocol > "$TMP/fmcp/mode"; check "协议错 → error 档（不吞）" "error" "$(probe_level)"
-node -e '
+# 这里原来是 `| xargs -I{} check ...`：check 是 shell 函数，xargs 调不到，
+# 于是这一条从未真正执行过（只打一行 xargs 报错，退出码还被管道吃掉）。
+# "写了断言但从不运行"和"没有断言"在结果上完全一样，所以改成变量捕获。
+OFF_LEVEL="$(node -e '
   const m = await import(process.argv[1] + "/scripts/lib/feishu-project-mcp.mjs");
   const r = await m.probe(null);
   console.log(r.level);
-' --input-type=module "$HERE" | xargs -I{} check "无凭据 → off 档（未配置≠故障）" "off" "{}"
+' --input-type=module "$HERE" 2>/dev/null)"
+check "无凭据 → off 档（未配置≠故障）" "off" "$OFF_LEVEL"
 kill $FMCP_PID 2>/dev/null; wait $FMCP_PID 2>/dev/null
+
+echo "== 6. GitLab 接入地址形状（扩展项：空=不接，填错必须红） =="
+# 这条以前没有判据：url 填成 API 地址时，代码再拼一次 /api/v4 → 每次 404，
+# 报错长得像"接口不存在"，没人会想到是配置多了两个路径段。
+node --input-type=module -e '
+import { checkGitlabUrl } from "'"$HERE"'/scripts/lib/config-checks.mjs";
+const cases = {
+  empty: checkGitlabUrl(""),
+  blank: checkGitlabUrl("   "),
+  ok: checkGitlabUrl("https://gitlab.example.com"),
+  okSlash: checkGitlabUrl("https://gitlab.example.com/"),
+  api: checkGitlabUrl("https://gitlab.example.com/api/v4"),
+  apiSlash: checkGitlabUrl("https://gitlab.example.com/api/v4/"),
+  noProto: checkGitlabUrl("gitlab.example.com"),
+  apiMid: checkGitlabUrl("http://git.example.com/api/v4/projects"),
+};
+const want = { empty: null, blank: null, ok: null, okSlash: null, api: "err", apiSlash: "err", noProto: "err", apiMid: "err" };
+const got = Object.fromEntries(Object.entries(cases).map(([k, v]) => [k, v === null ? null : "err"]));
+console.log(JSON.stringify(got));
+process.exit(JSON.stringify(got) === JSON.stringify(want) ? 0 : 1);' > "$TMP/glurl.txt" 2>&1
+r=$?; [ "$r" -eq 0 ] || cat "$TMP/glurl.txt"
+check "空/空白=不接（null）；正常地址放行；API 地址/缺协议/带 API 段 全部报错" "0" "$r"
+
+echo "== 7. GitLab 配置解析：runner 与 doctor 必须读同一处 =="
+# 上一版 runner 只认 GITLAB_*，doctor 只认 HARNESS_GITLAB_*，"我配好了"在两个进程里
+# 指的不是同一件事。现在两边都走 lib/gitlab-config.mjs，这条断言盯的就是优先级本身。
+mkdir -p "$TMP/home/.harness/task-loop"
+printf 'file-token\n' > "$TMP/home/.harness/task-loop/gitlab-token"
+chmod 600 "$TMP/home/.harness/task-loop/gitlab-token"
+node --input-type=module -e '
+import { resolveGitlabConfig, tokenFileMode } from "'"$HERE"'/scripts/lib/gitlab-config.mjs";
+const home = process.argv[1];
+const rules = { runtime: { gitlab: { url: "https://cfg.example.com/" } } };
+const fromFile = resolveGitlabConfig({ rules, env: {}, home });
+const envWins = resolveGitlabConfig({ rules, env: { GITLAB_TOKEN: "env-token", GITLAB_URL: "http://env.example.com" }, home });
+const legacy = resolveGitlabConfig({ rules: null, env: { HARNESS_GITLAB_URL: "http://old.example.com", HARNESS_GITLAB_TOKEN: "t", HARNESS_GITLAB_PROJECT: "g/p" }, home });
+const blank = resolveGitlabConfig({ rules, env: { GITLAB_TOKEN: "   ", GITLAB_URL: "" }, home });
+const half = resolveGitlabConfig({ rules: { runtime: { gitlab: { url: "" } } }, env: {}, home: home + "/nohome" });
+const mode = tokenFileMode({ home });
+const got = {
+  fileUrl: fromFile.url, fileToken: fromFile.token, fileSource: fromFile.tokenSource, fileConfigured: fromFile.configured,
+  envUrl: envWins.url, envToken: envWins.token, envSource: envWins.tokenSource,
+  legacyUrl: legacy.url, legacyProject: legacy.project,
+  blankToken: blank.token, halfConfigured: half.configured, halfMissing: half.missing.join("/"),
+  modeLoose: mode.loose, modeBits: mode.mode,
+};
+console.log(JSON.stringify(got, null, 0));
+process.exit(JSON.stringify(got) === JSON.stringify({
+  fileUrl: "https://cfg.example.com", fileToken: "file-token", fileSource: "file", fileConfigured: true,
+  envUrl: "http://env.example.com", envToken: "env-token", envSource: "env",
+  legacyUrl: "http://old.example.com", legacyProject: "g/p",
+  blankToken: "file-token", halfConfigured: false, halfMissing: "url/token",
+  modeLoose: false, modeBits: "600",
+}) ? 0 : 1);' "$TMP/home" > "$TMP/glcfg.txt" 2>&1
+r=$?; [ "$r" -eq 0 ] || cat "$TMP/glcfg.txt"
+check "配置 url 去掉尾斜杠 / token 文件兜底 / env 覆盖 / 旧名兼容 / 空串不覆盖 / 只含一半算未接入 / 0600 不算过宽" "0" "$r"
+
+chmod 644 "$TMP/home/.harness/task-loop/gitlab-token"
+LOOSE="$(node --input-type=module -e '
+import { tokenFileMode } from "'"$HERE"'/scripts/lib/gitlab-config.mjs";
+const m = tokenFileMode({ home: process.argv[1] });
+console.log(m ? String(m.loose) + ":" + m.mode : "none");' "$TMP/home" 2>/dev/null)"
+check "0644 的 token 文件被识别为过宽" "true:644" "$LOOSE"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1
+
+

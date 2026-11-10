@@ -32,10 +32,77 @@ check "无接线 → 拒启" "1" "$?"
 grep -q "绕过全部写入门禁" "$TMP/out2.txt"; check "拒绝理由点明风险" "0" "$?"
 printf '{"hooks":{"enabled":true}}' > "$ROOT/.zcode/config.json"
 
-echo "== 3. 剖面 A 无凭据 → fail 显式 =="
-node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/out3.txt" 2>&1
-check "缺 GITLAB_URL/TOKEN → exit 1" "1" "$?"
-grep -q "GITLAB_URL" "$TMP/out3.txt"; check "点名缺什么" "0" "$?"
+echo "== 3. 剖面 A 显式指定但无凭据 → fail 显式 =="
+# 注意这里是**显式** --profile a：接入是扩展条件，不给 profile 且没接入时应退出 0（见 3b）。
+# 但"我就要跑 A"是一句断言，缺配置却静默跳过是最糟的结果，所以显式时缺配置必须 exit 1。
+node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" --profile a > "$TMP/out3.txt" 2>&1
+check "缺 GITLAB 配置 → exit 1" "1" "$?"
+grep -q "GITLAB_TOKEN" "$TMP/out3.txt"; check "点名缺什么" "0" "$?"
+
+echo "== 3b. 一个源都没接 → 退出 0（不接不算故障），并逐条说明缺什么 =="
+# 配置里显式留空 projectKey 与 gitlab.url，模拟"还没接任何系统"的仓库
+NR="$TMP/nosource"; mkdir -p "$NR/.zcode"
+cp "$HERE/harness.rules.json" "$NR/"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.feishu.projectKey="";j.runtime.gitlab.url="";fs.writeFileSync(p,JSON.stringify(j,null,2))' "$NR/harness.rules.json"
+printf '{"hooks":{"enabled":true}}' > "$NR/.zcode/config.json"
+env -u GITLAB_URL -u GITLAB_TOKEN -u FEISHU_PROJECT_KEY -u FEISHU_MCP_URL HOME="$TMP/nohome" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$NR" > "$TMP/out3b.txt" 2>&1
+check "未接入 → exit 0" "0" "$?"
+grep -q "未接入任何触发源" "$TMP/out3b.txt"; check "明说未接入（不是装作跑过）" "0" "$?"
+grep -q "runtime.gitlab.url" "$TMP/out3b.txt"; check "指出 GitLab 缺什么" "0" "$?"
+grep -q "runtime.feishu.projectKey" "$TMP/out3b.txt"; check "指出飞书缺什么" "0" "$?"
+
+echo "== 3c. 空 username 必须抛错，不许把自己的留言当成他人的打回 =="
+# 实测：同一条讨论，username="me" → triggered=false；username="" → triggered=true 且 reviewState=changes_requested。
+# 空串不是"没有他人"而是"不知道谁是我"，判不了就该拒绝，而不是给一个看起来正常的结论。
+node --input-type=module -e '
+import { unresolvedByOthers, classifyMr } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const discs = [{ id: "d", notes: [{ id: 1, resolvable: true, resolved: false, author: { username: "me" }, body: "我自己问的" }] }];
+const r = {};
+try { unresolvedByOthers(discs, ""); r.u = "NO-THROW"; } catch { r.u = "throw"; }
+try { classifyMr({ mr: { iid: 1, sha: "abc", author: { username: "me" } }, discussions: discs, username: "" }); r.c = "NO-THROW"; } catch { r.c = "throw"; }
+r.mine = unresolvedByOthers(discs, "me").length;
+console.log([r.u, r.c, r.mine].join(","));
+process.exit(r.u === "throw" && r.c === "throw" && r.mine === 0 ? 0 : 1);' > "$TMP/out3c.txt" 2>&1
+check "空 username 两处都抛错，正常值下自己的留言不计" "0" "$?"
+
+echo "== 3d. username 从 token 派生（不配 GITLAB_USERNAME 也能判对） =="
+# 上一版靠 GITLAB_USERNAME，而 install-task-loop.sh 从来没注入过它 → 定时器里恒为空串。
+# 现在改成 GET /user：token 是谁就是谁。这条断言同时盯"真的问过 /user"和"自己的留言被排除"。
+TG="$TMP/derive"; mkdir -p "$TG/.zcode"
+cp "$HERE/harness.rules.json" "$TG/"
+printf '{"hooks":{"enabled":true}}' > "$TG/.zcode/config.json"
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+const [here, repo, ledger] = process.argv.slice(1);
+const seen = [];
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0]; seen.push(p);
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "derived-me" }));
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 5, project_id: 1, title: "x", sha: "abc", author: { username: "derived-me" } }]));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d", notes: [
+    { id: 1, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "改", created_at: "2026-11-09T10:00:00Z" },
+    { id: 2, system: false, resolvable: true, resolved: false, author: { username: "derived-me" }, body: "我自己追问的一句", created_at: "2026-11-09T11:00:00Z" }] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-09T09:00:00Z" }));
+  if (/approvals$/.test(p)) return s.end(JSON.stringify({ approved_by: [] }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--dry-run", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; let err = "";
+child.stdout.on("data", (d) => (out += d)); child.stderr.on("data", (d) => (err += d));
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const asked = seen.includes("/api/v4/user");
+const oneOnly = /修复 1 条未解决讨论/.test(out);
+console.log([code, asked ? "asked" : "no-ask", oneOnly ? "one" : "wrong", err.includes("username") ? "ERR:" + err.slice(0, 60) : "clean"].join(" "));
+' "$HERE" "$TG" "$TMP/ledgerDerive" > "$TMP/out3d.txt" 2>&1
+grep -q "^0 asked one clean$" "$TMP/out3d.txt" && r=0 || { cat "$TMP/out3d.txt"; r=1; }
+check "问了 /user，且只把他人那 1 条算作待修" "0" "$r"
 
 echo "== 4. CAS 认领：双竞争仅一胜 + 僵尸不抢 =="
 node --input-type=module -e '
@@ -158,7 +225,7 @@ const srv = createServer((q, s) => {
 await new Promise((r) => srv.listen(0, "127.0.0.1", r));
 const url = "http://127.0.0.1:" + srv.address().port;
 // 必须异步起子进程：spawnSync 会把这一个事件循环堵死，假服务器再也回不了包（自己把自己等死）
-const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--root", repo], {
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
   env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
 });
 let out = "", err = "";
@@ -172,7 +239,7 @@ grep -q "^0 ok no-crash$" "$TMP/e2e.txt" && r=0 || { cat "$TMP/e2e.txt"; r=1; }
 check "真触发跑通（旧版在 budget.start() 处 ReferenceError）" "0" "$r"
 git -C "$TLROOT/r.git" for-each-ref refs/heads/claims/mr-7 --format='%(refname)' | grep -q "claims/mr-7"
 check "认领引用落在远端" "0" "$?"
-node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);process.exit(["trigger_found","claimed","claim_held"].every((w,i)=>t[i]===w)?0:1)' "$TMP/ledgerE2E/events.jsonl"
+node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);const i=t.indexOf("trigger_found"),j=t.indexOf("claimed"),k=t.indexOf("claim_held");process.exit(i>=0&&j>i&&k>j?0:1)' "$TMP/ledgerE2E/events.jsonl"
 check "账本：trigger_found → claimed → claim_held（无孤儿）" "0" "$?"
 
 echo "== 5e. 认领之后失败 → 当场释放（不留孤儿引用） =="
@@ -197,7 +264,7 @@ const srv = createServer((q, s) => {
   s.statusCode = 404; s.end("{}");
 });
 await new Promise((r) => srv.listen(0, "127.0.0.1", r));
-const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--root", repo], {
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
   env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
 });
 let err = "";

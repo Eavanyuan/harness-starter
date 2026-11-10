@@ -53,15 +53,27 @@ export const DEFAULTS = {
 export function resolveFeishuConfig({ rules = null, env = process.env } = {}) {
   const c = (rules?.runtime?.feishu && typeof rules.runtime.feishu === 'object') ? rules.runtime.feishu : {};
   const sev = (c.severity && typeof c.severity === 'object') ? c.severity : {};
-  const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && String(v).trim() !== '');
+  // 全部候选都是空值时返回 ''，不能返回 undefined——外层要 String() 它，
+  // String(undefined) 是字符串 "undefined"，会被拼成 `undefined`.`Defect` 这种表名。
+  // 这种错不会报 semantic error，它只是"查询成功、零行"，与"今天没活"无法区分。
+  const pick = (...vals) => vals.find((v) => v !== undefined && v !== null && String(v).trim() !== '') ?? '';
   const num = (v, d) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : d;
   };
   const map = (sev.map && typeof sev.map === 'object' && !Array.isArray(sev.map)) ? sev.map : null;
+  // 任务类型可以多个：同一空间里"缺陷"和"需求"是两种工作项，MQL 的表名不同，必须分别查。
+  // 来源优先级 env（单个，逗号分隔）> taskTypes 数组 > 旧的 workItemType 字符串 > 内置兜底。
+  const rawTypes = pick(env.FEISHU_WORK_ITEM_TYPE, c.taskTypes, c.workItemType);
+  const taskTypes = (Array.isArray(rawTypes) ? rawTypes : String(rawTypes ?? '').split(','))
+    .map((t) => String(t).trim())
+    .filter(Boolean);
+  const types = taskTypes.length ? taskTypes : [DEFAULTS.workItemType];
   return {
     projectKey: String(pick(env.FEISHU_PROJECT_KEY, c.projectKey, DEFAULTS.projectKey)),
-    workItemType: String(pick(env.FEISHU_WORK_ITEM_TYPE, c.workItemType, DEFAULTS.workItemType)),
+    taskTypes: types,
+    // 兼容单类型调用方（buildMyBugsMql 一次查一种）：第一个就是主类型
+    workItemType: types[0],
     assigneeField: String(pick(env.FEISHU_ASSIGNEE_FIELD, c.assigneeField, DEFAULTS.assigneeField)),
     newStatus: String(pick(env.FEISHU_NEW_STATUS, c.newStatus, DEFAULTS.newStatus)),
     mqlLimit: Math.min(num(pick(env.FEISHU_MQL_LIMIT, c.mqlLimit), DEFAULTS.mqlLimit), 50),

@@ -17,6 +17,13 @@ import { approvalValid } from './task-loop-core.mjs';
 
 /** 未解决的、由他人写的 resolvable 讨论（本人自己的留言不算打回证据）。 */
 export function unresolvedByOthers(discussions, username) {
+  // 空 username 不是"没有他人"而是"不知道谁是我"：`n.author.username !== ''` 对每条留言都成立，
+  // 于是自己写的未解决留言全被当成他人的打回意见。实测同一条讨论：
+  //   username="me" → 他人未解 0、triggered=false；username="" → 他人未解 1、triggered=true
+  // 假触发会每轮把已批红的 MR 拉回来重做，且看起来一切正常。判不了就不判，直接抛。
+  if (!username || !String(username).trim()) {
+    throw new Error('unresolvedByOthers 缺 username：空值会把你自己的留言当成他人的打回证据（假触发）。用 GET /user 取 token 对应账号，或 GITLAB_USERNAME 显式指定');
+  }
   return (discussions || []).filter((d) =>
     (d.notes || []).some((n) => n.resolvable && !n.resolved && n.author?.username !== username));
 }
@@ -97,6 +104,29 @@ export function classifyMr({ mr, discussions, username, lastPushAt = null, appro
  * 拉一轮触发。返回 [{ kind:'mr', id, mr, unresolved, reviewState, signal }]。
  * 只对"有他人未解决意见"的 MR 追加两次接口调用（审批兜底、末次 push 时间），没意见的直接跳过。
  */
+/**
+ * token 是谁，我就算谁。
+ *
+ * `username` 以前靠人配 GITLAB_USERNAME，而 install-task-loop.sh 从来没有注入过它——
+ * 于是定时器里恒为空串，判定「他人未解决意见」时每一条自己写的留言都成了他人意见。
+ * 这个值本来就不该被配置：它不描述偏好，它描述事实，而事实的唯一权威是 token 本身。
+ * 取不到就抛，绝不返回空串（空串在下游等价于「把自己当成别人」）。
+ */
+export async function fetchCurrentUser({ url, token, fetchImpl = fetch }) {
+  const res = await fetchImpl(`${url}/api/v4/user`, {
+    headers: { 'private-token': token },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`GitLab 拒绝了 GITLAB_TOKEN（HTTP ${res.status}）：private-token 头只认 PAT，OAuth access token 不行；令牌过期也会是这个状态`);
+  }
+  if (!res.ok) throw new Error(`GitLab /user HTTP ${res.status}`);
+  const j = await res.json().catch(() => null);
+  const username = j?.username;
+  if (!username) throw new Error('GitLab /user 没返回 username——判不了「谁是我」，拒绝继续（空值会把你的留言当成他人的打回）');
+  return String(username);
+}
+
 export async function fetchTriggers({ url, token, username, fetchImpl = fetch, mrFilter }) {
   const api = async (path) => {
     const res = await fetchImpl(`${url}/api/v4${path}`, {

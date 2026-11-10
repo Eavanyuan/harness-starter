@@ -161,15 +161,17 @@
         "scripts/lib/claim.mjs",
         "harness.rules.json",
         "test/task-loop.test.sh",
-        "scripts/lib/gitlab-triggers.mjs"
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/lib/gitlab-config.mjs",
+        "scripts/lib/config-checks.mjs"
       ],
       "required_skills": [
         "harness"
       ],
       "audit": {
         "compile": "node --check 全过；runner 薄壳 + core 纯函数库分层（顶层副作用拆出）",
-        "tests": "task-loop 10/10（kill switch/headless 接线闸/CAS 双竞争仅一胜/25h 僵尸不抢/新 id 正常认领/审批三条件四形态）",
-        "feature_complete": "剖面 A 单轮骨架 + 全部安全闸：拉模型触发轮询（created_by_me+未解决讨论）、CAS 认领（唯一提交内容）、预算 D7 口径（轮次硬限+pause/resume）、审批三条件、dry-run 零写入",
+        "tests": "task-loop 45/45：kill switch / headless 接线闸 / CAS 双竞争仅一胜 / 跨机 25h 僵尸 / 审批三条件 / 触发五形态 / 真触发端到端（claim+claim_held 配对）/ 认领后异常必释放 / 预算 D7 / 三分流三道闸 / 影子周统计 / 定时器渲染 / 未接入退出 0 / 显式 profile 缺配置 exit 1 / 空 username 抛错 / username 从 GET /user 派生",
+        "feature_complete": "剖面 A 单轮骨架 + 全部安全闸；GitLab 接入按扩展条件处理：url 空即跳过（不接不算故障），显式 --profile 缺配置才 exit 1；npm 侧用户名不配置，用 token 调 GET /user 取（空值会让\"自己的留言\"被当成他人的打回，故判据层直接抛错）；url/token 解析与 doctor 共用 lib/gitlab-config.mjs（runner 认 GITLAB_*、doctor 认 HARNESS_GITLAB_* 的两套名字已合并）",
         "quality_clean": "两个实测 bug 已修：同 sha push 同 ref 是 no-op 成功（CAS 必须唯一提交内容）；--profile 参数解析 indexOf 陷阱"
       },
       "verify": {
@@ -280,13 +282,45 @@
       ],
       "audit": {
         "compile": "node --check 全过；MCP 工具 schema 从活通道 tools/list 实捞（update_field/get_transitable_states/add_comment/search_by_mql）",
-        "tests": "feishu-bug-source 41/41（离线，fixture 抓自真实空间）：MQL 形状（两段式表名 / current_status_operator / 状态用 =）、真实 moql_field_list 解析（含取 label 不取 key）、严重级三套词汇归一、分级门槛、截断可见、配置驱动（读到值 / env 覆盖 / 空串不覆盖 / 缺配置兜底 / 改词表真改变去向 / 指派字段可配）、fail-closed；变异三处（改回 owner / 改回中文待处理 / 严重级 key 配错）均变红。feishu-oauth 15 条；task-loop 39 条",
-        "feature_complete": "剖面 B 全链首次实跑通过（2026-11-10，OAuth 用户身份，taosdata_td）：待我处理 10 张 → 中 3 张 confirm_first、低 7 张 skip、高 0 张 auto。空间身份全部移入 harness.rules.json runtime.feishu（projectKey/类型/指派字段/状态/严重级字段与词表/上限/端点），零环境变量即可运行；凭据仍单独存用户级 0600",
-        "quality_clean": "四个错里只有\"表名单段\"会报错，其余三个静默（取到别人的单 / 结果为 0 / 全部判 P3 丢弃）——每个都配了会红的断言；LIMIT 截断单独告警并落账 profile_b_truncated；配置化的词表必须在解析时生效，否则\"配置改了行为不变\"（测试用高→P3 证明真被消费）"
+        "tests": "feishu-bug-source 43/43（离线，fixture 抓自真实空间）：MQL 形状（两段式表名 / current_status_operator / 状态用 =）、真实 moql_field_list 解析（含取 label 不取 key）、严重级三套词汇归一、分级门槛、截断可见、配置驱动（读到值 / env 覆盖 / 空串不覆盖 / 缺配置兜底 / 改词表真改变去向 / 指派字段可配）、fail-closed；变异三处（改回 owner / 改回中文待处理 / 严重级 key 配错）均变红。feishu-oauth 15 条；task-loop 39 条",
+        "feature_complete": "剖面 B 全链首次实跑通过（2026-11-10，OAuth 用户身份，taosdata_td）：待我处理 10 张 → 中 3 张 confirm_first、低 7 张 skip、高 0 张 auto。空间身份全部移入 harness.rules.json runtime.feishu（projectKey/类型/指派字段/状态/严重级字段与词表/上限/端点），零环境变量即可运行；凭据仍单独存用户级 0600；任务类型可多选（runtime.feishu.taskTypes + --type，一条 MQL 一种工作项）；接入是扩展条件，未接入时 runner 退出 0 并逐条说明缺什么",
+        "quality_clean": "四个错里只有\"表名单段\"会报错，其余三个静默（取到别人的单 / 结果为 0 / 全部判 P3 丢弃）——每个都配了会红的断言；LIMIT 截断单独告警并落账 profile_b_truncated；配置化的词表必须在解析时生效，否则\"配置改了行为不变\"（测试用高→P3 证明真被消费）；空 projectKey 曾被 pick() 解析成字符串 \"undefined\" 并拼进表名（查询成功、零行，与\"今天没活\"无法区分），已修并加断言"
       },
       "verify": {
         "log_path": ".ai/verify/TL5.log",
         "command": "bash test/task-loop.test.sh && npm run gate"
+      }
+    },
+    {
+      "id": "T7",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "接入扩展化：飞书/GitLab 都是可选扩展；GitLab 配置统一到 lib/gitlab-config.mjs（runner 与 doctor 同源）；username 由 GET /user 派生；任务类型可选（taskTypes[] + --type）",
+      "files": [
+        "scripts/lib/gitlab-config.mjs",
+        "scripts/lib/config-checks.mjs",
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/lib/feishu-bug-source.mjs",
+        "scripts/task-loop.mjs",
+        "scripts/doctor.mjs",
+        "harness.rules.json",
+        "test/task-loop.test.sh",
+        "test/feishu-bug-source.test.sh",
+        "test/doctor-gates.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 全过（task-loop / doctor / gitlab-config / config-checks / feishu-bug-source）",
+        "tests": "task-loop 45/45（新增 4 条：未接入退出 0 并逐条说明 / 显式 --profile 缺配置 exit 1 / 空 username 两处抛错 / username 从 GET /user 派生且只把他人那条算待修）；feishu-bug-source 43/43（新增 2 条：多任务类型各生成不同表名 / 空 projectKey 不再是字符串 \"undefined\"）；doctor-gates 16/16（新增 3 条：GitLab 地址形状 8 种形态 / 配置同源优先级 7 项 / 0644 的 token 文件判宽）",
+        "feature_complete": "两条通道都按扩展条件工作：一个都没接 → exit 0 并列出缺项；接了就轮询；两个都接就都跑（--profile 默认 auto）。任务类型可用户指定（--type 优先于 runtime.feishu.taskTypes，一条 MQL 一种工作项）。GitLab 用户名不配置，由 token 调 /user 取",
+        "quality_clean": "修掉三处静默失败：① GITLAB_USERNAME 从未被安装器注入 → 空串让\"自己的留言\"变成\"他人的打回\"（实测 triggered false→true），现在判据层直接抛错；② runner 认 GITLAB_*、doctor 认 HARNESS_GITLAB_*，配好了 doctor 仍在喊未配置，现在同源；③ pick() 全空时返回 undefined 被 String 成 \"undefined\" 拼进表名，查询成功零行"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL-EXT.log",
+        "command": "bash test/task-loop.test.sh && bash test/feishu-bug-source.test.sh && bash test/doctor-gates.test.sh"
       }
     },
     {
@@ -334,13 +368,19 @@
     },
     {
       "id": "KI-4",
-      "text": "剖面 B 的空间身份已移入 harness.rules.json runtime.feishu（换空间改一处，doctor 校验必填项与词表值域）。剩下的风险是字段 key 写错仍属静默失败：查询照常成功、结果为零，与\"今天真没有待办\"无法从结果区分——只能靠 doctor 的必填项检查 + 空结果时人工核对字段配置发现",
+      "text": "剖面 B 的空间身份在 harness.rules.json runtime.feishu（换空间改一处，doctor 校验必填项与词表值域）。剩余风险：字段 key 写错仍属静默失败——查询成功、结果为零，与\"今天真没有待办\"无法从结果区分，只能靠 doctor 必填检查 + 空结果时人工核对",
       "owner": "task-loop",
       "status": "open"
     },
     {
       "id": "KI-5",
       "text": "剖面 B 只取首屏（LIMIT，上限 50），超出的单会告警 + 落账 profile_b_truncated 但不自动翻页；session_id + group_pagination_list 的翻页路径未实现",
+      "owner": "task-loop",
+      "status": "open"
+    },
+    {
+      "id": "KI-6",
+      "text": "定时器安装器 install-task-loop.sh 仍把 GITLAB_URL / GITLAB_TOKEN 写进 launchd plist / systemd unit（全机可读）。runner 已支持把 token 放 0600 的 $HOME/.harness/task-loop/gitlab-token，但安装器尚未改为写文件，装定时器的机器上 token 仍可能被同机其他用户读到",
       "owner": "task-loop",
       "status": "open"
     }

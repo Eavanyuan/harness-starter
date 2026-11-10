@@ -199,6 +199,41 @@ check "被改判的单确实落进 skip" "$(val9 flippedSkip)" "9001,9003,9004"
 check "指派字段可配（改成 owner 后 MQL 跟着变）" "$(val9 ownerMql)" "true"
 
 echo
+echo "== 9b. 任务类型可多选（同一空间里缺陷/需求是不同工作项，MQL 表名不同） =="
+# 一个 MQL 只能查一种工作项，所以"多类型"必须落到"多条 MQL"，不能拼进一句。
+node --input-type=module -e '
+import { readFileSync } from "node:fs";
+import { resolveFeishuConfig, buildMyBugsMql } from "'"$LIB"'";
+const base = JSON.parse(readFileSync("'"$HERE"'/harness.rules.json", "utf8"));
+const fromRules = resolveFeishuConfig({ rules: base, env: {} });
+const two = JSON.parse(JSON.stringify(base)); two.runtime.feishu.taskTypes = ["Defect", "需求", "任务"];
+const multi = resolveFeishuConfig({ rules: two, env: {} });
+const envOne = resolveFeishuConfig({ rules: two, env: { FEISHU_WORK_ITEM_TYPE: "缺陷" } });
+const legacy = JSON.parse(JSON.stringify(base));
+delete legacy.runtime.feishu.taskTypes; legacy.runtime.feishu.workItemType = "Defect";
+const old = resolveFeishuConfig({ rules: legacy, env: {} });
+const mqls = multi.taskTypes.map((t) => buildMyBugsMql({ projectKey: "taosdata_td", workItemType: t }));
+const distinct = new Set(mqls.map((m) => m.match(/FROM `[^`]+`\.`([^`]+)`/)[1])).size;
+console.log([fromRules.taskTypes.join("|"), fromRules.workItemType, multi.taskTypes.length, envOne.taskTypes.join("|"), old.taskTypes.join("|"), distinct].join(","));
+process.exit(fromRules.taskTypes.join("|") === "Defect" && fromRules.workItemType === "Defect"
+  && multi.taskTypes.length === 3 && envOne.taskTypes.join("|") === "缺陷"
+  && old.taskTypes.join("|") === "Defect" && distinct === 3 ? 0 : 1);' > "$TMP/types.txt" 2>&1
+r=$?; [ "$r" -eq 0 ] || cat "$TMP/types.txt"
+check "配置多类型 / env 覆盖 / 旧字符串兼容 / 每条 MQL 表名各不相同" "0" "$r"
+
+# 空配置曾解析成字符串 "undefined"（String(undefined)），拼出 `undefined`.`Defect` 表名：
+# 查询照样成功、零行，与"今天没活"无法区分。这类错只能靠断言拦。
+node --input-type=module -e '
+import { resolveFeishuConfig, buildMyBugsMql } from "'"$LIB"'";
+const empty = resolveFeishuConfig({ rules: { runtime: { feishu: { projectKey: "" } } }, env: {} });
+const none = resolveFeishuConfig({ rules: {}, env: {} });
+let threw = false;
+try { buildMyBugsMql({ projectKey: empty.projectKey }); } catch { threw = true; }
+console.log(JSON.stringify([empty.projectKey, none.projectKey, threw]));
+process.exit(empty.projectKey === "" && none.projectKey === "" && threw ? 0 : 1);' > "$TMP/empty.txt" 2>&1
+r=$?; [ "$r" -eq 0 ] || cat "$TMP/empty.txt"
+check "空/缺 projectKey → 空串并被拦下（不是 \"undefined\" 拼进表名）" "0" "$r"
+
 echo "== 10. 变异检验：把判据改坏，套件必须变红 =="
 # 变异一：解析时严重级字段传错（模拟换了空间没改 FEISHU_SEVERITY_FIELD）→ 全部 P3 → 有人也变没人
 node --input-type=module -e '

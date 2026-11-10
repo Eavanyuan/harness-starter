@@ -15,6 +15,8 @@
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { join, resolve, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkGitlabUrl } from './lib/config-checks.mjs';
+import { resolveGitlabConfig, tokenFileMode } from './lib/gitlab-config.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 规则清单的规范化与 guard_command 共用同一份实现：doctor 若自己解析一遍，
@@ -177,17 +179,24 @@ else ok.push(`配置键均有消费者（${CONSUMED.length} 个）`);
 // 4b. 剖面 B 的空间配置。这里是本项目最容易"配了不生效"的一段：
 // projectKey / 字段 key / 状态 label 错一个，查询仍然成功，只是没有任何单子——
 // 症状与"今天真的没有待办"完全一样。所以值域与消费情况必须在这里先判一遍。
+// 注意：**接不接是扩展条件，不接不是错误**。只有"配了但值是坏的"才判红。
 const feishuCfg = json('harness.rules.json').value?.runtime?.feishu;
 if (feishuCfg && typeof feishuCfg === 'object') {
+  // 任务类型可以是数组（同一空间里缺陷/需求是不同工作项）；只为向后兼容仍认单个字符串。
+  const rawTypes = feishuCfg.taskTypes ?? feishuCfg.workItemType;
+  const types = Array.isArray(rawTypes) ? rawTypes : [rawTypes];
+  const badTypes = types.filter((t) => !t || !String(t).trim());
   const need = [
     ['projectKey', feishuCfg.projectKey],
-    ['workItemType', feishuCfg.workItemType],
+    ['taskTypes', types.length ? types[0] : ''],
     ['severity.field', feishuCfg.severity?.field],
     ['assigneeField', feishuCfg.assigneeField],
     ['newStatus', feishuCfg.newStatus],
   ];
   const empty = need.filter(([, v]) => !v || !String(v).trim()).map(([k]) => k);
   if (empty.length) err(`runtime.feishu 缺值：${empty.join(', ')} —— 剖面 B 会拼出坏 MQL 或取不到严重级，且不会报错`);
+  if (badTypes.length) err(`runtime.feishu.taskTypes 里有空项（${JSON.stringify(rawTypes)}）——空类型名会拼出 \`空间\`.\`\` 这种表名`);
+  if (types.some((t) => typeof t !== 'string')) err('runtime.feishu.taskTypes 必须是字符串数组（工作项类型名）');
 
   const map = feishuCfg.severity?.map;
   if (map && typeof map === 'object' && !Array.isArray(map)) {
@@ -198,7 +207,22 @@ if (feishuCfg && typeof feishuCfg === 'object') {
   } else if (feishuCfg.severity && !map) {
     warn('runtime.feishu.severity.map 未配置，将退回内置词表（高/中/低 + P 档 + 英文）——换过空间的话词表大概率对不上');
   }
-  if (empty.length === 0) ok.push(`剖面 B 空间：${feishuCfg.projectKey}.${feishuCfg.workItemType}（指派判据 ${feishuCfg.assigneeField}，严重级 ${feishuCfg.severity?.field}）`);
+  if (empty.length === 0) ok.push(`剖面 B 空间：${feishuCfg.projectKey}.${types.join('/')}（指派判据 ${feishuCfg.assigneeField}，严重级 ${feishuCfg.severity?.field}）`);
+}
+
+// 4c. GitLab 接入配置。**扩展项**：url 为空 = 不接，不算错误；接了却填错才是错误。
+// 最容易踩的一处是把 API 地址整段贴进来（https://gitlab.x/api/v4）——
+// 代码会再拼一次 /api/v4，于是每次请求都是 404，而报错看起来像"接口不存在"。
+const gitlabCfg = json('harness.rules.json').value?.runtime?.gitlab;
+if (gitlabCfg && typeof gitlabCfg === 'object' && gitlabCfg.url) {
+  const bad = checkGitlabUrl(gitlabCfg.url);
+  if (bad) err(bad);
+  else ok.push(`GitLab 接入：${String(gitlabCfg.url).replace(/\/+$/, '')}`);
+} else {
+  ok.push('GitLab 未接入（扩展项，不接不算故障）——接入后填 runtime.gitlab.url 或 GITLAB_URL');
+}
+if (gitlabCfg?.username) {
+  warn('runtime.gitlab.username 不再读取：改成用 token 调 GET /user 取（配错的 username 会把你自己写的留言当成他人的打回意见）');
 }
 
 // 5. 门禁代码改动必须有对应测试
@@ -353,14 +377,20 @@ if (stateDoc === null) {
 }
 
 // ---- 门禁在场性（演练 B1/B2：无 runner、批红规则配不出时，落地现场没人检查门禁在不在线） ----
-// 走 env 而非配置键：这两项只在"这个仓库确实接着 GitLab"时才有意义，强制人人配置就是空转键（H8）。
-// 未配连接 = 提醒"未检查"，不是"通过"；缺 runner = 阻塞（CI 是证据链的兜底执行者）；
-// approval_rules 不可用 = 提醒（版本能力差异是事实，不是配置错误，处置见演练 B2 报告）。
-const GL_URL = process.env.HARNESS_GITLAB_URL || '';
-const GL_TOKEN = process.env.HARNESS_GITLAB_TOKEN || '';
-const GL_PROJECT = process.env.HARNESS_GITLAB_PROJECT || '';
+// 接入是扩展条件：没接就"不适用"，不是失败。但**名字必须和 runner 读的是同一个**——
+// 上一版 doctor 只认 HARNESS_GITLAB_*，而 task-loop 只认 GITLAB_*，于是配好了 runner 的机器上
+// doctor 仍在喊"未配置"。现在两边都走 lib/gitlab-config.mjs，只有一处优先级。
+const glCfg = resolveGitlabConfig({ rules: json('harness.rules.json').value });
+const GL_URL = glCfg.url;
+const GL_TOKEN = glCfg.token;
+const GL_PROJECT = glCfg.project;
+const glMode = tokenFileMode();
+if (glMode?.loose) {
+  warn(`GitLab token 文件权限过宽（${glMode.file} = ${glMode.mode}）——同机其他用户可读，改成 0600`);
+}
 if (!GL_URL || !GL_TOKEN || !GL_PROJECT) {
-  warns.push('门禁在场性未检查：未配置 HARNESS_GITLAB_URL / HARNESS_GITLAB_TOKEN / HARNESS_GITLAB_PROJECT。无 CI runner、批红规则缺位是演练实证过的流程断点——配置后此处给出结论');
+  const miss = [!GL_URL && 'url', !GL_TOKEN && 'token', !GL_PROJECT && 'project'].filter(Boolean).join(' / ');
+  warns.push(`门禁在场性未检查：GitLab 未完整接入（缺 ${miss}）——不接不算故障，接入后在 runtime.gitlab.url 写实例地址并提供 GITLAB_TOKEN 与 HARNESS_GITLAB_PROJECT，此处才会给出结论`);
 } else {
   const glHeaders = { 'private-token': GL_TOKEN };
   const glGet = async (p) => {
