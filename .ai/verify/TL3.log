@@ -1,6 +1,6 @@
-# cmd: bash test/task-loop.test.sh
-# started: 2026-11-10T09:01:40Z
-# finished: 2026-11-10T09:01:45Z
+# cmd: bash -c bash\ test/task-loop.test.sh
+# started: 2026-11-10T09:42:03Z
+# finished: 2026-11-10T09:42:17Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. kill switch ==
@@ -67,7 +67,7 @@ ALL-OK
   [32m✓[0m 凭据文件 0600
   [32m✓[0m 包装脚本 0700（定时器实际执行的是它）
   [32m✓[0m 凭据目录 0700
-  [32m✓[0m 定时器配置文件权限
+  [32m✓[0m plist 0600
   [32m✓[0m 定时器配置不含 token
   [32m✓[0m token 落在 0600 文件里
 == 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd）下仍能取到 token ==
@@ -83,8 +83,8 @@ ALL-OK
 == 10f. --status 能查出被改宽的权限（cp/rsync 保留不了 0600） ==
   [32m✓[0m 正常权限 → 报 0600
   [32m✓[0m 644 → 报过宽并给修法
-== 10g. 旧版安装器写过明文 token 的 plist：重装后必须提示轮换 ==
-  [32m✓[0m 旧 plist 含 token → 提示撤销重建
+== 10g. 旧版安装器写过明文 token 的 plist / unit：重装后必须提示轮换 ==
+  [32m✓[0m 旧定时器配置含 token → 提示撤销重建
   [32m✓[0m 重装后定时器配置已无 token
 == 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） ==
   [32m✓[0m 解析/优先级/缺文件/权限告警（14 项）

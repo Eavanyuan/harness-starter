@@ -448,13 +448,17 @@ D="$TMP/h2/.harness/task-loop"
 check "凭据文件 0600" "600" "$(mode_of "$D/task-loop.env")"
 check "包装脚本 0700（定时器实际执行的是它）" "700" "$(mode_of "$D/run-round.sh")"
 check "凭据目录 0700" "700" "$(mode_of "$D")"
-# 定时器配置文件的平台分支：macOS 写 plist、Linux 写 systemd unit——凭据安全断言等价
+# 定时器配置按平台落点：macOS 写 plist、Linux 写 systemd user unit。
+# 权限断言只在 plist 上做——安装器给它 chmod 600，unit 则没有（也不该有：
+# systemd 的 unit 不是秘密文件的容器，真正的秘密在 task-loop.env 里）。
+# 两边都要断言的是**不含 token**，那才是这条要守的性质；把"unit 必须 0600"写成判据
+# 等于凭空造一条需求，然后为了让测试过而去改安装器。
 if [ "$(uname)" = "Darwin" ]; then
   UNIT_FILE="$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist"
+  check "plist 0600" "600" "$(mode_of "$UNIT_FILE")"
 else
   UNIT_FILE="$TMP/h2/.config/systemd/user/com.harness.task-loop.service"
 fi
-check "定时器配置文件权限" "600" "$(mode_of "$UNIT_FILE")"
 grep -q "$FAKE_TOKEN" "$UNIT_FILE" 2>/dev/null
 check "定时器配置不含 token" "1" "$?"
 grep -q "GITLAB_TOKEN=$FAKE_TOKEN" "$D/task-loop.env"; check "token 落在 0600 文件里" "0" "$?"
@@ -493,19 +497,21 @@ HOME="$TMP/h2" bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --status > "$TM
 grep -q "权限过宽" "$TMP/st2.txt"; check "644 → 报过宽并给修法" "0" "$?"
 chmod 600 "$D/task-loop.env"
 
-echo "== 10g. 旧版安装器写过明文 token 的 plist：重装后必须提示轮换 =="
+echo "== 10g. 旧版安装器写过明文 token 的 plist / unit：重装后必须提示轮换 =="
 # 重写文件不会让已经落盘的 token 失效。写过就当泄露处理——这是唯一诚实的处置。
-mkdir -p "$TMP/h3/Library/LaunchAgents"
-printf '<plist><dict><key>GITLAB_TOKEN</key><string>old-plaintext</string></dict></plist>\n' \
-  > "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
-HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
-grep -q "明文凭据" "$TMP/legacy.txt"; check "旧 plist 含 token → 提示撤销重建" "0" "$?"
+# 落点按平台取：安装器只检查本平台的定时器配置，在 Linux 上摆一个 plist 什么也证明不了
+# （它根本不会被读），那会变成一条"看起来在判、其实对着空气"的断言。
+mkdir -p "$TMP/h3/Library/LaunchAgents" "$TMP/h3/.config/systemd/user"
 if [ "$(uname)" = "Darwin" ]; then
-  grep -q "GITLAB_TOKEN" "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
+  LEGACY="$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
+  printf '<plist><dict><key>GITLAB_TOKEN</key><string>old-plaintext</string></dict></plist>\n' > "$LEGACY"
 else
-  grep -q "GITLAB_TOKEN" "$TMP/h3/.config/systemd/user/com.harness.task-loop.service"
+  LEGACY="$TMP/h3/.config/systemd/user/com.harness.task-loop.service"
+  printf '[Service]\nEnvironment=GITLAB_TOKEN=old-plaintext\n' > "$LEGACY"
 fi
-check "重装后定时器配置已无 token" "1" "$?"
+HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
+grep -q "明文凭据" "$TMP/legacy.txt"; check "旧定时器配置含 token → 提示撤销重建" "0" "$?"
+grep -q "GITLAB_TOKEN" "$LEGACY"; check "重装后定时器配置已无 token" "1" "$?"
 
 echo "== 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） =="
 cat > "$TMP/envprobe.mjs" <<'JSEOF'
