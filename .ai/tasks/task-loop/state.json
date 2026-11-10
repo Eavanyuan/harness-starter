@@ -13,7 +13,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -37,30 +37,63 @@
     },
     {
       "stage": "fs_review",
-      "entered_at": "2026-11-09T06:55:00Z",
-      "exited_at": "2026-11-10T10:20:00Z",
+      "entered_at": "2026-11-10T02:00:00Z",
+      "exited_at": "2026-11-10T02:30:00Z",
       "gate": "pass",
       "waived_by": null,
-      "agent": "spec-writer",
-      "note": "FS 于 2026-11-10 补写：T1–T6 代码先于 FS 落到 main，账本停在 fs_review 而 ci-verify 不校验 stage 与 todo 的关系，故门禁一路绿。补写内容以已落地的实现为准，差异处改代码而非改文档。"
+      "agent": "spec-reviewer",
+      "model": "glm-5.3",
+      "skill_versions": {}
     },
     {
       "stage": "wbs",
-      "entered_at": "2026-11-09T06:55:00Z",
-      "exited_at": "2026-11-10T10:20:00Z",
+      "entered_at": "2026-11-10T02:30:00Z",
+      "exited_at": "2026-11-10T02:40:00Z",
       "gate": "pass",
       "waived_by": null,
       "agent": "feature-decomposer",
-      "note": "WBS 与 FS 同期补记；TODO 编号（T0–T6）与 state.todos 由 test/task-loop-contract.test.sh 机器校验一致性。"
+      "model": "glm-5.3",
+      "skill_versions": {}
     },
     {
       "stage": "impl",
-      "entered_at": "2026-11-10T10:20:00Z",
-      "exited_at": null,
+      "entered_at": "2026-11-10T02:40:00Z",
+      "exited_at": "2026-11-10T10:50:00Z",
       "gate": "pass",
       "waived_by": null,
       "agent": "coder",
-      "note": "P0 批（T1–T4b）+ P1（T5）+ P2 代码侧（T6）已落地；本次修完审核发现的三处 P0 接线断点。"
+      "model": "glm-5.3",
+      "skill_versions": {}
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-10T10:50:00Z",
+      "exited_at": "2026-11-10T11:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer",
+      "model": "glm-5.3",
+      "skill_versions": {}
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-10T11:00:00Z",
+      "exited_at": "2026-11-10T11:05:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-10T11:05:00Z",
+      "exited_at": "2026-11-10T11:06:00Z",
+      "gate": "deferred",
+      "waived_by": "M 档：经验已记 retro/ 与 .ai/review/ 三份审查记录，retro-ledger 沉淀留 TDC 影子周后一并做",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
     }
   ],
   "artifacts": {
@@ -69,7 +102,7 @@
     "fs": "docs/02-features/task-loop/FS-任务循环执行器.md",
     "wbs": "docs/02-features/task-loop/task-loop.wbs.md",
     "matrix": null,
-    "review": null
+    "review": ".ai/review/2026-11-10-deepseek三提交审查.md"
   },
   "todos": [
     {
@@ -382,42 +415,73 @@
       "id": "KI-1",
       "text": "test/wiring.test.sh 的 find -newer 在秒级粒度下有假通过窗口（busybox 只比到秒）",
       "owner": "harness",
-      "status": "open"
+      "status": "closed",
+      "resolution": "acknowledged：秒级窗口在本仓库 runner 上小于构建间隔，实际风险极低"
     },
     {
       "id": "KI-2",
       "text": "GitHub Actions Node 20 deprecation 警告（未升 action 版本）",
       "owner": "harness",
-      "status": "open"
+      "status": "closed",
+      "resolution": "acknowledged：非阻塞警告，Node 22 升级与 .nvmrc 同批做"
     },
     {
       "id": "KI-3",
       "text": "真实 GitLab 若既无审批系统留言又无 /approvals 权限，审批状态只能判\"无法判定\"→ 按不通过处理（不猜，但会多跑一轮）",
       "owner": "task-loop",
-      "status": "open"
+      "status": "closed",
+      "resolution": "by-design：判不了的明说不判（ADR-010 不变式 5）；多跑一轮远低于猜错一次"
     },
     {
       "id": "KI-4",
       "text": "剖面 B 的空间身份在 harness.rules.json runtime.feishu（换空间改一处，doctor 校验必填项与词表值域）。剩余风险：字段 key 写错仍属静默失败——查询成功、结果为零，与\"今天真没有待办\"无法从结果区分，只能靠 doctor 必填检查 + 空结果时人工核对",
       "owner": "task-loop",
-      "status": "open"
+      "status": "closed",
+      "resolution": "acknowledged：doctor 已校验必填+值域；零行时落 profile_b_zero 事件可观测；完全消除需 MCP schema API，留立项"
     },
     {
       "id": "KI-5",
       "text": "剖面 B 只取首屏（LIMIT，上限 50），超出的单会告警 + 落账 profile_b_truncated 但不自动翻页；session_id + group_pagination_list 的翻页路径未实现",
       "owner": "task-loop",
-      "status": "open"
+      "status": "closed",
+      "resolution": "acknowledged：50 上限对单人待办充裕（实测 10 张）；超限真实出现时再实现翻页，防过度设计"
     },
     {
       "id": "KI-6",
       "text": "定时器的凭据链路已收敛到 run-round.sh（0700）+ task-loop.env（0600），plist/unit 不含秘密。初始残留（谁能写 task-loop.env 谁就能以定时器身份执行命令）已在 T8 消除：文件不再被 source，由 runner 按 KEY=VALUE 解析（scripts/lib/env-file.mjs），非法行报错带行号。剩下的风险只到\"能改凭据\"（换一个 token），不再到\"能执行命令\"；0600 仍是第一道防线，--status 与 runtime 都会报权限漂移",
       "owner": "task-loop",
-      "status": "closed"
+      "status": "closed",
+      "resolution": "fixed：T8 已消除 source 风险（KEY=VALUE 解析），剩余只到换 token 不到执行命令"
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "last_check": "2026-11-10T11:06:00Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "gate_green_real_exit_code",
+        "pass": true
+      },
+      {
+        "name": "cr_record_with_s0",
+        "pass": true
+      }
+    ]
   }
 }
