@@ -1,0 +1,17 @@
+# task-loop 落地项目的 CI 配置参考（含三个实跑踩过的坑）
+stages: [test]
+
+variables:
+  # 坑 1：router/ai-review 的 git diff 需要完整历史，shallow clone 下 diff 为空 → 假红
+  GIT_DEPTH: "0"
+
+# 坑 2：alpine 镜像无 bash（exit 127），bash 是硬前提
+# 方案 A：用 debian 系镜像（node:22 而非 node:22-alpine）
+# 方案 B：alpine + before_script: apk add --no-cache bash
+# 方案 C：自建含 bash 的基础镜像（推荐，省每次安装时间）
+
+your-tests:
+  stage: test
+  image: node:22  # 或 alpine + before_script
+  script:
+    - bash test/your-suite.test.sh
