@@ -17,6 +17,7 @@ import { join, resolve, dirname, delimiter } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkGitlabUrl } from './lib/config-checks.mjs';
 import { resolveGitlabConfig, tokenFileMode } from './lib/gitlab-config.mjs';
+import { loadTaskLoopEnv } from './lib/env-file.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 规则清单的规范化与 guard_command 共用同一份实现：doctor 若自己解析一遍，
@@ -27,6 +28,17 @@ const warns = [];
 const ok = [];
 const err = (m) => errors.push(m);
 const warn = (m) => warns.push(m);
+
+// 定时器的凭据不在 plist / unit 里，而在 0600 的 task-loop.env（安装器写、runner 解析）。
+// doctor 不读这一份的话，"定时器能跑"与"doctor 说 GitLab 没配"会同时成立——
+// 同一个问题两个答案，等于没有答案（历史故障：doctor 只认 HARNESS_GITLAB_*，runner 只认 GITLAB_*）。
+// 放在所有检查之前：后面那些读 env 的判断（GitLab、飞书 MCP）看到的必须是同一份合并结果。
+let envFile;
+try {
+  envFile = loadTaskLoopEnv();
+} catch (e) {
+  envFile = { file: '', exists: false, loaded: [], shadowed: [], warnings: [], missingExplicit: false, error: e.message };
+}
 
 let config;
 try {
@@ -385,6 +397,16 @@ const GL_URL = glCfg.url;
 const GL_TOKEN = glCfg.token;
 const GL_PROJECT = glCfg.project;
 const glMode = tokenFileMode();
+// 凭据文件的体检：定时器能不能跑，取决于这一份是不是读得懂、权限是不是还锁着。
+if (envFile.error) {
+  err(`凭据文件无法解析：${envFile.error}——定时器每轮都会在这里失败，修好再谈接入`);
+} else if (envFile.exists) {
+  for (const w of envFile.warnings) warn(w);
+  const shadow = envFile.shadowed.length ? `，${envFile.shadowed.length} 键被环境变量覆盖` : '';
+  ok.push(`凭据文件：${envFile.file}（生效 ${envFile.loaded.length} 键${shadow}）`);
+} else if (envFile.missingExplicit) {
+  warn(`HARNESS_ENV_FILE 指向的文件不存在：${envFile.file}——拼错路径的症状与"未接入"一样，先确认`);
+}
 if (glMode?.loose) {
   warn(`GitLab token 文件权限过宽（${glMode.file} = ${glMode.mode}）——同机其他用户可读，改成 0600`);
 }

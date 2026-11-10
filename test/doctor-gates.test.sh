@@ -8,6 +8,10 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; kill ${MOCK_PID:-0} 2>/dev/null; wait ${MOCK_PID:-0} 2>/dev/null' EXIT
+# 凭据文件必须隔离：doctor 现在也读 0600 的 task-loop.env（与 runner 同一份，否则
+# "定时器能跑"和"doctor 说没配"会同时成立）。本机真装过定时器时那个文件里有真实 token，
+# 会让下面「未配连接」这条在开发机上翻绿、在 CI 上翻红。指向空文件 = 明确不用凭据文件。
+: > "$TMP/empty.env"; export HARNESS_ENV_FILE="$TMP/empty.env"
 
 pass=0; fail=0
 check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$3" "$2"; fail=$((fail+1)); fi; }
@@ -172,6 +176,22 @@ import { tokenFileMode } from "'"$HERE"'/scripts/lib/gitlab-config.mjs";
 const m = tokenFileMode({ home: process.argv[1] });
 console.log(m ? String(m.loose) + ":" + m.mode : "none");' "$TMP/home" 2>/dev/null)"
 check "0644 的 token 文件被识别为过宽" "true:644" "$LOOSE"
+
+echo "== 8. 凭据文件：doctor 读的就是定时器那份（否则同一个问题两个答案） =="
+# 定时器的凭据只在 0600 的 task-loop.env 里（plist / unit 不含秘密）。doctor 不读它的话，
+# 装完定时器的机器上会同时成立两句话：「定时器在跑」与「GitLab 未接入」。
+mkdir -p "$TMP/cred"; EC="$TMP/cred/task-loop.env"
+printf 'GITLAB_URL=%s\nGITLAB_TOKEN=t\n' "$GP" > "$EC"; chmod 600 "$EC"
+echo approvalset > "$TMP/mock/mode"
+out="$(cd "$HERE" && HARNESS_ENV_FILE="$EC" HARNESS_GITLAB_PROJECT=root/x npm run --silent doctor 2>/dev/null)"
+grep -q "凭据文件" <<<"$out" && grep -q "生效 2 键" <<<"$out"; check "认出 0600 文件并报出生效键数" "0" "$?"
+# 文件在场时 doctor 真的用了它：url/token 只在文件里，GitLab 检查必须从"未检查"变成有结论
+grep -q "门禁在场性未检查" <<<"$out"; check "凭据来自文件时不再说「未检查」" "1" "$?"
+# 写成非 KEY=VALUE（比如手贴了一段命令）→ 定时器每轮都会失败，doctor 必须判红而不是放过
+printf 'GITLAB_TOKEN=t\nset -a; . /tmp/x\n' > "$EC"
+out="$(cd "$HERE" && HARNESS_ENV_FILE="$EC" npm run --silent doctor 2>/dev/null)"; rc=$?
+check "非法行 → 退出码非 0" "1" "$([ "$rc" -ne 0 ] && echo 1 || echo 0)"
+grep -q "凭据文件无法解析" <<<"$out"; check "明说解析失败并指向后果" "0" "$?"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

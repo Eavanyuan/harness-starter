@@ -5,5 +5,7 @@ Description=harness task-loop single round (A/B 共用，由 timer 触发)
 Type=oneshot
 WorkingDirectory=__ROOT__
 # 执行体是 0700 的包装脚本，不是 node 本身：凭据在 0600 的 task-loop.env 里，
-# 由它 source 进环境。**unit 文件不含任何秘密**——`systemctl cat` 谁都能看。
+# 包装脚本只把**路径**交过去，由 runner 按 KEY=VALUE 解析（不 source——
+# 那会让"能写凭据文件"变成"能以定时器身份执行命令"）。
+# **unit 文件不含任何秘密**——`systemctl cat` 谁都能看。
 ExecStart=/bin/bash __WRAPPER__

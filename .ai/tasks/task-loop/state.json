@@ -324,6 +324,36 @@
       }
     },
     {
+      "id": "T8",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "凭据文件去执行面：task-loop.env 由 runner 按 KEY=VALUE 解析（不再 source），wrapper 只交路径；doctor 读同一份",
+      "files": [
+        "scripts/lib/env-file.mjs",
+        "scripts/task-loop.mjs",
+        "scripts/doctor.mjs",
+        "scripts/install-task-loop.sh",
+        "deploy/task-loop/launchd.plist.template",
+        "deploy/task-loop/systemd.service.template",
+        "test/task-loop.test.sh",
+        "test/doctor-gates.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 全过（env-file / task-loop / doctor）；bash -n 安装器与两个套件过",
+        "tests": "task-loop 65→74（10d 加两条结构断言：wrapper 非注释行里不得出现 `. file` / `source file`，一行式 `set -a; . file; set +a` 也算；新增 10h 解析 14 项、10i 非法行 exit 1 + 行号、10j 干净环境读文件 3 条）；doctor-gates 16→20（凭据文件生效键数 / 不再说未检查 / 非法行判红 / 点名后果）",
+        "feature_complete": "凭据文件变成纯数据：注释、空行、export 前缀照旧；$(...) / 反引号 / ; 原样保留不求值；非法行报错带行号且不回显原文；优先级为进程 env > 文件（定时器环境为空，故以文件为准）；缺文件 = 未接入不报错，存在但读不到必须抛错",
+        "quality_clean": "去掉的是\"能写凭据文件 = 能以定时器身份执行命令\"这条升级路径：0600 只挡住别人读，挡不住同用户其他进程写（编辑器 / 安装脚本 / >> 重定向）。runtime 也会告警权限漂移，不只在 --status；doctor 与 runner 用同一个 loadTaskLoopEnv()，消灭\"定时器能跑\"与\"doctor 说没配\"同时成立"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL-ENVF.log",
+        "command": "bash test/task-loop.test.sh && bash test/doctor-gates.test.sh"
+      }
+    },
+    {
       "id": "V1",
       "stack": "harness",
       "status": "completed",
@@ -380,7 +410,7 @@
     },
     {
       "id": "KI-6",
-      "text": "定时器的凭据链路已收敛到 run-round.sh（0700）+ task-loop.env（0600），plist/unit 不含秘密。剩余风险：task-loop.env 是 shell 语法（`source` 执行），谁能写它谁就能以定时器身份执行任意命令——文件权限 0600 是唯一防线，故 --status 会检查权限漂移",
+      "text": "定时器的凭据链路已收敛到 run-round.sh（0700）+ task-loop.env（0600），plist/unit 不含秘密。初始残留（谁能写 task-loop.env 谁就能以定时器身份执行命令）已在 T8 消除：文件不再被 source，由 runner 按 KEY=VALUE 解析（scripts/lib/env-file.mjs），非法行报错带行号。剩下的风险只到\"能改凭据\"（换一个 token），不再到\"能执行命令\"；0600 仍是第一道防线，--status 与 runtime 都会报权限漂移",
       "owner": "task-loop",
       "status": "closed"
     }

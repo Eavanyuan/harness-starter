@@ -10,8 +10,9 @@
 #     --status       显示定时器与 kill switch 状态
 #
 # 安全边界：凭据只从当前环境读，写进用户级 0600 文件；**plist / unit 里不含任何秘密**——
-# 它们是明文配置，会被 `launchctl print` / `systemctl cat` 打印出来。安装前校验目标仓库
-# hook 接线（与 runner 同一道闸——不接 hook 的仓库不装）。
+# 它们是明文配置，会被 `launchctl print` / `systemctl cat` 打印出来。那个 0600 文件也只是
+# **数据**：由 runner 按 KEY=VALUE 解析（不经 shell），能写它不等于能以定时器身份执行命令。
+# 安装前校验目标仓库 hook 接线（与 runner 同一道闸——不接 hook 的仓库不装）。
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -103,17 +104,20 @@ write_creds() {
 
 # launchd 的 plist 与 systemd 的 unit 都是会被 `launchctl print` / `systemctl cat` 打印出来的
 # 明文配置，把 token 渲染进去等于把口令落在一份"谁都能看"的文件里。所以真正的执行入口是这个
-# 脚本：它把 0600 的 env 读进环境再 exec，plist/unit 只负责说"用 bash 跑它"。
+# 脚本：plist/unit 只负责说"用 bash 跑它"，凭据的位置由它交给 runner。
 # 换 token = 改 env 文件；不用重装定时器（重装会丢 launchctl 的已加载状态）。
+#
+# 注意这里**不 source** 那个 env 文件，只 export 它的路径。source 会让凭据文件变成可执行代码：
+# 谁能写它，谁就能以定时器身份跑任意命令。文件是 0600，但那只挡住"别人读"，挡不住"别的进程写"
+# （同用户的编辑器、安装脚本、`>>` 都写得进去）。解析在 runner 里，按 KEY=VALUE 当数据读。
 write_wrapper() {
   local body
   body="$(cat <<EOF
 #!/usr/bin/env bash
 # 由 install-task-loop.sh 生成——请勿手改，改凭据改 ${CRED_FILE}。
-# 为什么要有这一层：plist / unit 是明文配置，token 不能写在里面。
-set -a
-[ -f "${CRED_FILE}" ] && . "${CRED_FILE}"
-set +a
+# 为什么要有这一层：plist / unit 是明文配置，token 不能写在里面，只能放路径。
+# 为什么不 source：凭据文件是数据不是脚本，由 runner 解析（见 scripts/lib/env-file.mjs）。
+export HARNESS_ENV_FILE="${CRED_FILE}"
 export HARNESS_LEDGER_DIR="${LOGDIR}"
 cd "${ROOT}" || exit 69
 exec "${NODE_BIN}" "${SCRIPT}" --once --root "${ROOT}"

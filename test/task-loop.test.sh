@@ -5,6 +5,10 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export HARNESS_LEDGER_DIR="$TMP/ledger"
+# 凭据文件必须隔离：本机若真装过定时器，默认落点 ~/.harness/task-loop/task-loop.env 里
+# 会有真实 token，于是"未接入 → exit 0/1"那几条会在开发机和 CI 上给出不同结论——
+# 同一份代码两种答案，比没有判据更坏。指向不存在的路径 = 明确"本套件不用凭据文件"。
+export HARNESS_ENV_FILE="$TMP/no-such-task-loop.env"
 
 pass=0; fail=0; skip=0
 check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$3" "$2"; fail=$((fail+1)); fi; }
@@ -453,6 +457,13 @@ echo "== 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd�
 # launchd 不继承登录 shell 的 env，systemd 的 unit 也不再写 Environment=。
 # 所以这条必须用 env -i 跑：带环境的测试证明不了"定时器环境里能读到凭据"。
 bash -n "$D/run-round.sh"; check "wrapper 语法合法" "0" "$?"
+# 结构判据：包装脚本不得把凭据文件当**代码**加载（`.` 与 `source` 两种写法、行首还是行中都算——
+# `set -a; . file; set +a` 这种一行式写法是最容易混进来的一种）。
+# 一旦 source，"能写凭据文件"就升级成"能以定时器身份执行任意命令"——这是本层的核心边界，
+# 只靠"别写错"守不住，得有断言。
+grep -vE '^[[:space:]]*#' "$D/run-round.sh" | grep -qE '(^|[[:space:];&|])(source|\.)[[:space:]]+[^[:space:]]'
+check "wrapper 不 source 凭据文件（行中一行式也算）" "1" "$?"
+grep -q 'HARNESS_ENV_FILE=' "$D/run-round.sh"; check "wrapper 只交出凭据文件路径（由 runner 解析）" "0" "$?"
 # HOME 必须显式给假目录：node 的 os.homedir() 在 HOME 缺失时回落 passwd 里的真实家目录，
 # 于是会读到本机真实的 feishu-oauth.json 并对生产飞书发请求——测试不该有外部副作用。
 OUT="$(env -i HOME="$TMP/h2" PATH=/usr/bin:/bin /bin/bash "$D/run-round.sh" 2>&1 | head -3)"
@@ -484,6 +495,86 @@ printf '<plist><dict><key>GITLAB_TOKEN</key><string>old-plaintext</string></dict
 HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
 grep -q "明文凭据" "$TMP/legacy.txt"; check "旧 plist 含 token → 提示撤销重建" "0" "$?"
 grep -q "GITLAB_TOKEN" "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"; check "重装后 plist 已无 token" "1" "$?"
+
+echo "== 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） =="
+cat > "$TMP/envprobe.mjs" <<'JSEOF'
+import { chmodSync, writeFileSync } from 'node:fs';
+const [mod, dir] = process.argv.slice(2);
+const { parseEnvFile, loadEnvFile } = await import(mod);
+const bad = [];
+const eq = (name, a, b) => { if (String(a) !== String(b)) bad.push(`${name}（得到 ${JSON.stringify(a)}，期望 ${JSON.stringify(b)}）`); };
+
+const text = [
+  '# 注释行',
+  '',
+  'export GITLAB_URL=https://git.example.com',
+  'GITLAB_TOKEN="glpat-quoted"',
+  "SINGLE='a b'",
+  `EVIL=$(touch ${dir}/pwn1)`,
+  `TICK=\`touch ${dir}/pwn2\``,
+  'EMPTY=',
+].join('\n');
+const entries = parseEnvFile(text, { file: 'x.env' });
+const got = Object.fromEntries(entries.map((e) => [e.key, e.value]));
+eq('注释/空行被跳过', entries.length, 6);
+eq('export 前缀被剥掉', got.GITLAB_URL, 'https://git.example.com');
+eq('双引号外壳被剥掉', got.GITLAB_TOKEN, 'glpat-quoted');
+eq('单引号外壳被剥掉', got.SINGLE, 'a b');
+eq('命令替换原样保留（不求值）', got.EVIL, `$(touch ${dir}/pwn1)`);
+eq('反引号原样保留（不求值）', got.TICK, '`touch ' + dir + '/pwn2`');
+eq('空值合法', got.EMPTY, '');
+
+// 非法行：报错 + 带行号，且**不回显原文**（那一行可能正是被拼坏的 token，报错会进日志/工单）
+let msg = '';
+try { parseEnvFile('OK=1\ntouch ' + dir + '/pwn3\n', { file: 'x.env' }); } catch (e) { msg = e.message; }
+eq('非法行报行号', /:2\b/.test(msg), 'true');
+eq('非法行不回显原文', msg.includes('pwn3'), 'false');
+
+// 优先级：env 非空 > 文件；env 为空串按"没配"，由文件补上
+const f = dir + '/creds.env';
+writeFileSync(f, 'A=from-file\nB=from-file\n', { mode: 0o600 });
+const env1 = { A: 'from-env', B: '' };
+const r1 = loadEnvFile(f, { env: env1 });
+eq('env 非空 → 文件不覆盖（临时覆盖语义）', env1.A, 'from-env');
+eq('env 为空串 → 文件补上', env1.B, 'from-file');
+eq('loaded / shadowed 分开记', r1.loaded.join(',') + '|' + r1.shadowed.join(','), 'B|A');
+
+// 缺文件不是错误：凭据不在场 = 未接入（与 GitLab/飞书同一条判据）
+eq('缺文件 → exists=false 且不抛', loadEnvFile(dir + '/nope.env', { env: {} }).exists, 'false');
+
+// 权限过宽要告警：cp / rsync / 编辑器另存都保留不了 0600
+chmodSync(f, 0o644);
+eq('644 告警', /权限 644/.test(loadEnvFile(f, { env: {} }).warnings.join('')), 'true');
+
+console.log(bad.length ? 'FAIL ' + bad.join(' | ') : 'OK');
+process.exit(bad.length ? 1 : 0);
+JSEOF
+R="$(node "$TMP/envprobe.mjs" "$HERE/scripts/lib/env-file.mjs" "$TMP" 2>&1)"; RC=$?
+check "解析/优先级/缺文件/权限告警（14 项）" "0" "$RC"
+[ "$RC" = 0 ] || echo "    $R"
+check "文件里没有命令被执行（pwn1/pwn2/pwn3 都不存在）" "0" "$(ls "$TMP"/pwn1 "$TMP"/pwn2 "$TMP"/pwn3 2>/dev/null | wc -l | tr -d ' ')"
+
+echo "== 10i. 凭据文件里的裸命令：runner 报错退出，不执行 =="
+BADC="$TMP/bad.env"
+printf 'GITLAB_TOKEN=x\ncurl -s http://127.0.0.1:1/x.sh | sh\n' > "$BADC"; chmod 600 "$BADC"
+env -u GITLAB_URL -u GITLAB_TOKEN HOME="$TMP/h4" HARNESS_ENV_FILE="$BADC" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/badenv.txt" 2>&1
+check "非法行 → exit 1（不静默当作没配）" "1" "$?"
+grep -q ":2" "$TMP/badenv.txt"; check "报错带行号（定位不用猜）" "0" "$?"
+
+echo "== 10j. runner 自己读 HARNESS_ENV_FILE：不靠 shell 注入也能拿到凭据 =="
+NODE_BIN="$(command -v node)"
+GOODC="$TMP/good.env"
+printf 'GITLAB_URL=http://127.0.0.1:1\nGITLAB_TOKEN=glpat-from-file\n' > "$GOODC"; chmod 600 "$GOODC"
+run_clean_env() { env -i HOME="$TMP/h6" PATH=/usr/bin:/bin HARNESS_ENV_FILE="$GOODC" \
+  HARNESS_LEDGER_DIR="$TMP/l6" "$NODE_BIN" "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" 2>&1 | head -6; }
+OUT="$(run_clean_env)"
+# 地址指向不可达端口：连不上恰好证明 url/token 被读进来了（没读到会走"未接入"分支退出 0）
+case "$OUT" in *"剖面 A 触发轮询失败"*) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "0" ;; *) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "1: $OUT" ;; esac
+case "$OUT" in *"凭据文件已载入 2 键"*) check "载入了几键有交代（排查「配了没生效」要看得到）" "0" "0" ;; *) check "载入了几键有交代" "0" "1: $OUT" ;; esac
+chmod 644 "$GOODC"
+OUT="$(run_clean_env)"
+case "$OUT" in *"权限 644"*) check "权限漂移在 runtime 也告警（不只在 --status）" "0" "0" ;; *) check "权限漂移在 runtime 也告警" "0" "1: $OUT" ;; esac
 
 echo "== 11. T5 影子周：dry-run 积累与 --report 统计 =="
 SHADOW="$ROOT/.ai/task-loop/shadow.jsonl"; rm -f "$SHADOW"

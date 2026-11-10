@@ -104,7 +104,10 @@
 - 处理：`session-pack.mjs` 组 R1/Rn prompt；`ci-watch.mjs` 零 LLM 轮询终态；`install-task-loop.sh` 渲染 launchd/systemd 单元（默认 180s）；`--dry-run` 累积 `shadow.jsonl`，`--report` 出统计
 - 输出：`acks.json`/`todo.json`/`round-N.md`；终态或 `timeout`；影子周报告（唯一触发 N / 重复命中 / 按天分布）
 - 失败分支：产物缺件 fail-closed（不拿部分产物当完成）；CI 盯梢超时返回 `timeout` 交上层升级（不判红）；安装前校验目标仓库 hook 接线，无接线 `exit 69`；**凭据不进 plist / unit**（见下）
-- 定时器的执行体不是 `node`，而是 `$HOME/.harness/task-loop/run-round.sh`（0700）：它 `source` 同目录的 `task-loop.env`（0600）把凭据注入环境，再 `exec node`。plist / unit 只写"用 `/bin/bash` 跑这个脚本"，**不含任何秘密**。理由不是洁癖——这两个文件会被 `launchctl print` / `systemctl cat` 原样打印到终端，也经常被"贴配置求助"带出去；旧版安装器直接把 `GITLAB_TOKEN` 渲染进去，等于把口令落在一个随时会被展示的文件里。副作用是换 token 只改 `task-loop.env`，不用重装（重装会丢 launchd 的已加载状态）。
+- 定时器的执行体不是 `node`，而是 `$HOME/.harness/task-loop/run-round.sh`（0700）：它把同目录 `task-loop.env`（0600）的**路径**交给 runner（`HARNESS_ENV_FILE`），再 `exec node`。plist / unit 只写"用 `/bin/bash` 跑这个脚本"，**不含任何秘密**。理由不是洁癖——这两个文件会被 `launchctl print` / `systemctl cat` 原样打印到终端，也经常被"贴配置求助"带出去；旧版安装器直接把 `GITLAB_TOKEN` 渲染进去，等于把口令落在一个随时会被展示的文件里。副作用是换 token 只改 `task-loop.env`，不用重装（重装会丢 launchd 的已加载状态）。
+  - **凭据文件是数据，不是脚本**：runner 自己按 `KEY=VALUE` 解析（`scripts/lib/env-file.mjs`），**不经 shell**。旧版包装脚本写的是 `set -a; . task-loop.env; set +a`，那让凭据文件变成可执行代码——谁能写它，谁就能以定时器身份执行任意命令。0600 只挡住"别人读"，挡不住"同用户的其他进程写"（编辑器、安装脚本、`>>` 都写得进去）。改成数据后：注释 / 空行 / `export ` 前缀照旧，`$(...)` / 反引号 / `;` 只是普通字符，**认不出的行报错并带行号**（不猜、不执行、不回显原文——那一行可能正是被拼坏的凭据）。
+  - 优先级 **进程 env > 文件**：文件是"这台机器平时用哪个凭据"，env 是"这次临时指到别处"。反过来的话临时覆盖会被文件吃掉，症状是"我明明指过去了，怎么还在连老实例"。定时器环境下进程 env 是空的，所以定时器以文件为准。
+  - 文件权限在 runtime 也会被查（644/640 告警并给 `chmod 600`），不只在 `--status` 里——`cp` / `rsync` 保留不了 0600，而"能读这个文件"就是"能拿到 token"。
   - `--no-activate` 只写文件不 `launchctl load` / `systemctl enable`：测试要验证落盘与权限，但不该在跑测试的机器上注册一个真定时器。
   - `--status` 顺带查凭据文件权限：`cp` / `rsync` 都保留不了 0600，被改宽是常事，报出来并给 `chmod 600`。
   - 重装时**只更新本次提供的键**，其余行原样保留——否则"换个 url"会把上次配好的 token 清掉；用户手加的 `HARNESS_*` 也不该被抹掉。
@@ -152,6 +155,7 @@
 - **任务类型可由用户指定**：`--type 缺陷,需求`（可重复）优先于 `runtime.feishu.taskTypes`。一个 MQL 只能查一种工作项——表名就是类型名，把两种塞进同一句不可能，所以多类型 = 多条 MQL、结果合并。类型名写错时服务端只回 `ErrMetadataError: metadata error`（看不出是自己填错），runner 补一句上下文并点名"该空间没有这个工作项类型名"。
 - **GitLab 的用户名不配置**：用 token 调 `GET /user` 取，token 是谁就是谁。空 `username` 会让判定**反向**（`n.author.username !== ''` 恒真 → 自己写的未解决留言全算"他人的打回意见"，实测同一讨论 `triggered` 由 `false` 变 `true`），所以 `unresolvedByOthers` 直接抛错而不是返回空数组。
 - **runner 与 doctor 读同一份 GitLab 配置**（`scripts/lib/gitlab-config.mjs`）：`url` 空 = 不接（不算故障）；填成 `/api/v4` 整段 → 判红（代码会再拼一次路径，症状是每次 404、报错像"接口不存在"）。token 除 env 外还认 `$HOME/.harness/task-loop/gitlab-token`（0600）——给"不走定时器、直接 `node scripts/task-loop.mjs`"的场景留一个不必天天 `export` 的落点；定时器自己走 `task-loop.env`（见 §4.7），两者都不进 plist / unit。
+- **`task-loop.env` 也由 doctor 读**（同一个 `loadTaskLoopEnv()`）：不读的话，装完定时器的机器上会同时成立两句话——「定时器在跑」与「doctor 说 GitLab 未接入」。同一个问题两个答案等于没有答案，这正是当初 doctor 只认 `HARNESS_GITLAB_*` 的翻版。doctor 会报出生效键数、被 env 覆盖的键数，文件解析不了则判红（定时器每轮都会在这里失败）。
 
 ## 5 接口契约
 
@@ -202,8 +206,9 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | `GITLAB_URL` / `HARNESS_GITLAB_URL` | 无 | 临时指向别的实例（CI 指假服务器）；优先级 env > 配置 | 否 |
 | `GITLAB_TOKEN` / `HARNESS_GITLAB_TOKEN` | 无 | PAT（`private-token` 头只认 PAT，OAuth access token 会 401） | 剖面 A 必填 |
 | `$HOME/.harness/task-loop/gitlab-token` | 不存在 | token 落点（0600），给直接 `node scripts/task-loop.mjs` 的场景；定时器走 `task-loop.env` | 否 |
-| `$HOME/.harness/task-loop/task-loop.env` | 安装时生成（0600） | 定时器的凭据来源，由 `run-round.sh` source 进环境。**plist / unit 里没有 token**，换 token 只改这个文件 | 装定时器时生成 |
-| `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：注入凭据 → `exec node` | 装定时器时生成 |
+| `$HOME/.harness/task-loop/task-loop.env` | 安装时生成（0600） | 定时器的凭据来源（`K=V` 数据，**由 runner 解析，不 source**）。**plist / unit 里没有 token**，换 token 只改这个文件 | 装定时器时生成 |
+| `HARNESS_ENV_FILE` | `$HOME/.harness/task-loop/task-loop.env` | 凭据文件路径（`run-round.sh` 会 export 它）。指到不存在的路径 = 该文件不生效，与"未接入"同判据 | 否 |
+| `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：交出凭据**路径** → `exec node`（不注入值，不 source） | 装定时器时生成 |
 | `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
 | `HARNESS_GITLAB_PROJECT` | 无 | doctor 门禁在场性检查的目标项目（`group/project`）；不配则只提醒"未检查" | 否 |
 | `GIT_REMOTE` | `origin` | 认领 push 的目标远端 | 否 |
@@ -241,11 +246,14 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | 凭据不外泄 | 传假 token 后 `--print` 输出、plist、unit **都不含它** | 明文配置会被 `launchctl print` / `systemctl cat` 原样打出来 |
 | 落盘权限 | `task-loop.env` 0600 / `run-round.sh` 0700 / 目录 0700 / plist 0600 | 用 `stat` 不用 `ls -l \| cut`（macOS 带 ACL 时列会错位） |
 | wrapper 是唯一入口 | `env -i` 干净环境跑 `run-round.sh` 仍能取到凭据并进入 runner | 必须显式给假 `HOME`：node 的 `os.homedir()` 在 HOME 缺失时回落 passwd 真实家目录，会读到本机真凭据并对外发请求 |
+| 凭据文件是数据不是代码 | 文件里写裸命令 → **runner 报错 exit 1 并给行号**，`pwn*` 文件一个都没被创建；`$(...)` / 反引号原样保留不求值 | 判据是"文件没被执行"，不是"报错文案好看"；wrapper 里 `set -a; . file; set +a` 这种一行式也算 source（结构断言查非注释行的 `.` / `source`） |
+| 凭据文件优先级 | 进程 env 非空 → 文件不覆盖；env 为空串 → 文件补上；`loaded` / `shadowed` 分开记 | 反过来会让"临时指到别处"失效，症状是"我明明指过去了" |
+| doctor 与定时器同一份凭据 | `HARNESS_ENV_FILE` 指过去后 doctor 报出生效键数、不再说"未检查"；文件写成非 `K=V` → doctor 判红 | 否则"定时器在跑"与"未接入"同时成立 |
 | 重装幂等 | 未提供的键保留、提供的键更新、手加的键不被抹掉、权限仍 0600 | 整体重写会把上次配好的 token 清掉 |
 | 权限漂移 | `--status` 对 644 报"过宽"并给 `chmod 600` | `cp` / `rsync` 都保留不了 0600 |
 | 旧版泄露 | 旧 plist 含明文 token → 重装时提示撤销重建 | 重写文件不会让已落盘的 token 失效 |
 
-> 判据有效性用**变异**检验：已做过的九处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据）分别产生新增红。绿不算证据，能变红才算。
+> 判据有效性用**变异**检验：已做过的十三处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据 / wrapper 改回 `set -a; . file` / 非法行改成静默跳过 / 文件强行覆盖 env / doctor 不读凭据文件）分别产生新增红（1 / 2+1 / 1 / 4）。绿不算证据，能变红才算。
 
 ## 10 兼容与回滚
 

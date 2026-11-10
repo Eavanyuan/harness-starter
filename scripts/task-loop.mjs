@@ -11,6 +11,8 @@
  * 接入是**扩展条件**，不是启动前提：配了哪个源就轮询哪个，一个都没配就退出 0（不接 ≠ 坏）。
  * 凭据缺失按"未接入"处理（跳过 + 提示）；凭据在但被拒/过期按故障处理（exit 1）——两者不能混为一谈。
  * env：GITLAB_URL / GITLAB_TOKEN（剖面 A）；飞书走 runtime.feishu + $HOME/.harness/task-loop/feishu-oauth.json。
+ * 定时器的凭据来自 0600 的 task-loop.env（HARNESS_ENV_FILE 可改路径）：**由本进程解析 KEY=VALUE**，
+ * 不经 shell——文件是数据不是可执行代码（见 lib/env-file.mjs）。进程 env 优先于文件。
  * --dry-run 为影子周形态（零写入：不认领、不推、不起会话）。
  * 退出码：0 正常（含无事可做 / 未接入）；1 有触发但被安全闸拦，或接入的源坏了；64 用法错。
  */
@@ -43,6 +45,18 @@ function die(code, msg) { console.error(`[task-loop] ${msg}`); process.exit(code
 if (!opt.once && !opt.report) die(64, 'v1 只支持 --once / --report（常驻轮询经 deploy/task-loop 定时器触发）');
 const PROFILES = ['auto', 'a', 'b', 'both'];
 if (!PROFILES.includes(opt.profile)) die(64, `--profile 只认 ${PROFILES.join(' / ')}（当前 "${opt.profile}"）`);
+
+// ---- 0600 凭据文件：本进程自己按 KEY=VALUE 解析，不交给 shell ----
+// 上一版是 run-round.sh 里 `set -a; . task-loop.env`——那让凭据文件成为**可执行代码**：
+// 谁能写它，谁就能以定时器身份跑任意命令。解析搬到这里之后，它只是数据。
+// 非法行必须 exit 1：静默跳过会让"文件被手抖改坏"表现成"今天没有任务"。
+const { loadTaskLoopEnv } = await import('./lib/env-file.mjs');
+let envFile;
+try { envFile = loadTaskLoopEnv(); } catch (e) { die(1, `凭据文件无法解析：${e.message}`); }
+for (const w of envFile.warnings) console.error(`[task-loop] ${w}`);
+if (envFile.missingExplicit) console.error(`[task-loop] 指定的凭据文件不存在：${envFile.file}（按未接入继续）`);
+// 载入了几键写出来：排查"我配好了怎么没生效"时要能回答"这一轮到底读到了什么"
+if (envFile.loaded.length) console.log(`[task-loop] 凭据文件已载入 ${envFile.loaded.length} 键：${envFile.file}`);
 
 // ---- 影子周报告：dry-run 的积累数据出统计（触发精确率素材，验收=N≥30 且 0 误触发） ----
 if (opt.report) {

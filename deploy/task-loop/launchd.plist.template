@@ -5,8 +5,8 @@
      kill switch：目标仓库 .ai/task-loop/OFF 存在时每 tick 自查即停。
 
      **本文件不含任何凭据**：它会被 `launchctl print` 打到终端、也可能被贴进工单。
-     token 在 $HOME/.harness/task-loop/task-loop.env（0600），由 __WRAPPER__ 读进环境；
-     换 token 只改那个文件，不用重装定时器。 -->
+     token 在 $HOME/.harness/task-loop/task-loop.env（0600），__WRAPPER__ 只把该路径
+     交给 runner（由它按 KEY=VALUE 解析，不 source），换 token 只改那个文件、不用重装。 -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>__LABEL__</string>
