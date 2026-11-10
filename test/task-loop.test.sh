@@ -448,9 +448,15 @@ D="$TMP/h2/.harness/task-loop"
 check "凭据文件 0600" "600" "$(mode_of "$D/task-loop.env")"
 check "包装脚本 0700（定时器实际执行的是它）" "700" "$(mode_of "$D/run-round.sh")"
 check "凭据目录 0700" "700" "$(mode_of "$D")"
-check "plist 0600" "600" "$(mode_of "$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist")"
-grep -q "$FAKE_TOKEN" "$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist" 2>/dev/null
-check "plist 不含 token" "1" "$?"
+# 定时器配置文件的平台分支：macOS 写 plist、Linux 写 systemd unit——凭据安全断言等价
+if [ "$(uname)" = "Darwin" ]; then
+  UNIT_FILE="$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist"
+else
+  UNIT_FILE="$TMP/h2/.config/systemd/user/com.harness.task-loop.service"
+fi
+check "定时器配置文件权限" "600" "$(mode_of "$UNIT_FILE")"
+grep -q "$FAKE_TOKEN" "$UNIT_FILE" 2>/dev/null
+check "定时器配置不含 token" "1" "$?"
 grep -q "GITLAB_TOKEN=$FAKE_TOKEN" "$D/task-loop.env"; check "token 落在 0600 文件里" "0" "$?"
 
 echo "== 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd）下仍能取到 token =="
@@ -494,7 +500,12 @@ printf '<plist><dict><key>GITLAB_TOKEN</key><string>old-plaintext</string></dict
   > "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
 HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
 grep -q "明文凭据" "$TMP/legacy.txt"; check "旧 plist 含 token → 提示撤销重建" "0" "$?"
-grep -q "GITLAB_TOKEN" "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"; check "重装后 plist 已无 token" "1" "$?"
+if [ "$(uname)" = "Darwin" ]; then
+  grep -q "GITLAB_TOKEN" "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
+else
+  grep -q "GITLAB_TOKEN" "$TMP/h3/.config/systemd/user/com.harness.task-loop.service"
+fi
+check "重装后定时器配置已无 token" "1" "$?"
 
 echo "== 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） =="
 cat > "$TMP/envprobe.mjs" <<'JSEOF'
