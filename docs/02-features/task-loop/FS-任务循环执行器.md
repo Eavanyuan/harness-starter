@@ -103,7 +103,12 @@
 - 输入：MR 或 bug 上下文、历轮日志、失败指纹；CI pipeline 状态
 - 处理：`session-pack.mjs` 组 R1/Rn prompt；`ci-watch.mjs` 零 LLM 轮询终态；`install-task-loop.sh` 渲染 launchd/systemd 单元（默认 180s）；`--dry-run` 累积 `shadow.jsonl`，`--report` 出统计
 - 输出：`acks.json`/`todo.json`/`round-N.md`；终态或 `timeout`；影子周报告（唯一触发 N / 重复命中 / 按天分布）
-- 失败分支：产物缺件 fail-closed（不拿部分产物当完成）；CI 盯梢超时返回 `timeout` 交上层升级（不判红）；安装前校验目标仓库 hook 接线，无接线 `exit 69`；凭据只渲染进用户级 0600 配置，绝不进仓库
+- 失败分支：产物缺件 fail-closed（不拿部分产物当完成）；CI 盯梢超时返回 `timeout` 交上层升级（不判红）；安装前校验目标仓库 hook 接线，无接线 `exit 69`；**凭据不进 plist / unit**（见下）
+- 定时器的执行体不是 `node`，而是 `$HOME/.harness/task-loop/run-round.sh`（0700）：它 `source` 同目录的 `task-loop.env`（0600）把凭据注入环境，再 `exec node`。plist / unit 只写"用 `/bin/bash` 跑这个脚本"，**不含任何秘密**。理由不是洁癖——这两个文件会被 `launchctl print` / `systemctl cat` 原样打印到终端，也经常被"贴配置求助"带出去；旧版安装器直接把 `GITLAB_TOKEN` 渲染进去，等于把口令落在一个随时会被展示的文件里。副作用是换 token 只改 `task-loop.env`，不用重装（重装会丢 launchd 的已加载状态）。
+  - `--no-activate` 只写文件不 `launchctl load` / `systemctl enable`：测试要验证落盘与权限，但不该在跑测试的机器上注册一个真定时器。
+  - `--status` 顺带查凭据文件权限：`cp` / `rsync` 都保留不了 0600，被改宽是常事，报出来并给 `chmod 600`。
+  - 重装时**只更新本次提供的键**，其余行原样保留——否则"换个 url"会把上次配好的 token 清掉；用户手加的 `HARNESS_*` 也不该被抹掉。
+  - 旧版写过明文 token 的 plist / unit 会被检测并提示：重写文件不会让已落盘的 token 失效，写过就当泄露，去 GitLab 撤销重建。
 
 ### 4.8 T6 剖面 B（飞书 bug）
 
@@ -146,7 +151,7 @@
   | 配置写了一半 | `url` 有、`token` 无（或反之） | 算未接入，但把缺的那一半写进提示 |
 - **任务类型可由用户指定**：`--type 缺陷,需求`（可重复）优先于 `runtime.feishu.taskTypes`。一个 MQL 只能查一种工作项——表名就是类型名，把两种塞进同一句不可能，所以多类型 = 多条 MQL、结果合并。类型名写错时服务端只回 `ErrMetadataError: metadata error`（看不出是自己填错），runner 补一句上下文并点名"该空间没有这个工作项类型名"。
 - **GitLab 的用户名不配置**：用 token 调 `GET /user` 取，token 是谁就是谁。空 `username` 会让判定**反向**（`n.author.username !== ''` 恒真 → 自己写的未解决留言全算"他人的打回意见"，实测同一讨论 `triggered` 由 `false` 变 `true`），所以 `unresolvedByOthers` 直接抛错而不是返回空数组。
-- **runner 与 doctor 读同一份 GitLab 配置**（`scripts/lib/gitlab-config.mjs`）：`url` 空 = 不接（不算故障）；填成 `/api/v4` 整段 → 判红（代码会再拼一次路径，症状是每次 404、报错像"接口不存在"）。token 除 env 外还认 `$HOME/.harness/task-loop/gitlab-token`（0600）——定时器把 env 写进 plist/unit，那是全机可读的，凭据不该多开一个读者。
+- **runner 与 doctor 读同一份 GitLab 配置**（`scripts/lib/gitlab-config.mjs`）：`url` 空 = 不接（不算故障）；填成 `/api/v4` 整段 → 判红（代码会再拼一次路径，症状是每次 404、报错像"接口不存在"）。token 除 env 外还认 `$HOME/.harness/task-loop/gitlab-token`（0600）——给"不走定时器、直接 `node scripts/task-loop.mjs`"的场景留一个不必天天 `export` 的落点；定时器自己走 `task-loop.env`（见 §4.7），两者都不进 plist / unit。
 
 ## 5 接口契约
 
@@ -196,7 +201,9 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | `runtime.gitlab.url` | 空（= 不接） | GitLab 实例**根**地址（不是 `/api/v4`）。扩展项：空即跳过剖面 A，不算故障 | 否 |
 | `GITLAB_URL` / `HARNESS_GITLAB_URL` | 无 | 临时指向别的实例（CI 指假服务器）；优先级 env > 配置 | 否 |
 | `GITLAB_TOKEN` / `HARNESS_GITLAB_TOKEN` | 无 | PAT（`private-token` 头只认 PAT，OAuth access token 会 401） | 剖面 A 必填 |
-| `$HOME/.harness/task-loop/gitlab-token` | 不存在 | token 落点（0600）。定时器的 env 写在 plist/unit 里是全机可读的，凭据走文件不多开读者 | 否 |
+| `$HOME/.harness/task-loop/gitlab-token` | 不存在 | token 落点（0600），给直接 `node scripts/task-loop.mjs` 的场景；定时器走 `task-loop.env` | 否 |
+| `$HOME/.harness/task-loop/task-loop.env` | 安装时生成（0600） | 定时器的凭据来源，由 `run-round.sh` source 进环境。**plist / unit 里没有 token**，换 token 只改这个文件 | 装定时器时生成 |
+| `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：注入凭据 → `exec node` | 装定时器时生成 |
 | `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
 | `HARNESS_GITLAB_PROJECT` | 无 | doctor 门禁在场性检查的目标项目（`group/project`）；不配则只提醒"未检查" | 否 |
 | `GIT_REMOTE` | `origin` | 认领 push 的目标远端 | 否 |
@@ -230,7 +237,13 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | 预算 | 轮次第 N 轮才耗尽；100s 等待不计墙钟；活动 1100ms/上限 1000ms 才耗尽 | `resume()` 记的是"此刻"，时钟顺序反了测不到 |
 | 三分流 + 三道闸 | 五形态 + 过期/指纹不同/豁免率 60% 告警 + 7% 不误报 + 分母缺失不猜 | 分母由调用方给 |
 | 影子周统计 | 3×#42+1×#43 → 唯一 2；脏行（裸数字/null）不污染 | 按天分布 + 验收口径印出 |
-| 定时器安装 | `--print` 无残留占位符；无接线仓库 `exit 69` | 凭据不进仓库 |
+| 定时器安装 | `--print` 无残留占位符；无接线仓库 `exit 69` | 结构判据：`deploy/task-loop/*.template` 里禁止出现 `__*TOKEN/SECRET/PASSWORD/KEY*__` 占位符 |
+| 凭据不外泄 | 传假 token 后 `--print` 输出、plist、unit **都不含它** | 明文配置会被 `launchctl print` / `systemctl cat` 原样打出来 |
+| 落盘权限 | `task-loop.env` 0600 / `run-round.sh` 0700 / 目录 0700 / plist 0600 | 用 `stat` 不用 `ls -l \| cut`（macOS 带 ACL 时列会错位） |
+| wrapper 是唯一入口 | `env -i` 干净环境跑 `run-round.sh` 仍能取到凭据并进入 runner | 必须显式给假 `HOME`：node 的 `os.homedir()` 在 HOME 缺失时回落 passwd 真实家目录，会读到本机真凭据并对外发请求 |
+| 重装幂等 | 未提供的键保留、提供的键更新、手加的键不被抹掉、权限仍 0600 | 整体重写会把上次配好的 token 清掉 |
+| 权限漂移 | `--status` 对 644 报"过宽"并给 `chmod 600` | `cp` / `rsync` 都保留不了 0600 |
+| 旧版泄露 | 旧 plist 含明文 token → 重装时提示撤销重建 | 重写文件不会让已落盘的 token 失效 |
 
 > 判据有效性用**变异**检验：已做过的九处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据）分别产生新增红。绿不算证据，能变红才算。
 

@@ -249,9 +249,9 @@
       ],
       "audit": {
         "compile": "node --check 全过；bash -n 安装器过",
-        "tests": "task-loop 26/26（A/B/续轮打包要素+产物缺失 fail-closed；CI 盯梢终态/超时两态；安装器 print 渲染无残留占位符+无接线仓库拒装 69；影子周去重统计/按天分布/验收口径印出/脏行不污染）",
-        "feature_complete": "T5 共用件全落：会话打包器（R1 合一/续轮换法指令/制品契约验收）、CI 盯梢（零 LLM、超时=无法判定交上层）、launchd/systemd 双模板+安装器（接线闸同款）、影子周 dry-run 积累+--report 统计（验收口径 N≥30/0 误触发印在报告里）",
-        "quality_clean": "会话永不持凭据（acks/resolves 由 runner 代发）；凭据渲染进 0600 用户级配置不进仓库；printf 额外参数复用格式串的坑（裸数字行混进统计）已在产品侧防御"
+        "tests": "task-loop 65/65（T5 相关 21 条：A/B/续轮打包要素 + 产物缺失 fail-closed；CI 盯梢终态/超时两态；影子周去重统计/按天分布/验收口径印出/脏行不污染；安装器 print 渲染无残留占位符 + 无接线仓库拒装 69；**凭据边界 18 条**——模板里禁止秘密占位符、print 与 plist 都不含 token、task-loop.env 0600 / run-round.sh 0700 / 目录 0700 / plist 0600、wrapper 在 env -i 干净环境下仍能注入凭据、重装只更新提供的键、--status 查出 644、旧版明文 token 提示轮换）",
+        "feature_complete": "T5 共用件全落：会话打包器（R1 合一/续轮换法指令/制品契约验收）、CI 盯梢（零 LLM、超时=无法判定交上层）、launchd/systemd 双模板+安装器（接线闸同款；执行体是 0700 的 run-round.sh，凭据在 0600 的 task-loop.env，plist/unit 不含秘密）、影子周 dry-run 积累+--report 统计（验收口径 N≥30/0 误触发印在报告里）",
+        "quality_clean": "会话永不持凭据（acks/resolves 由 runner 代发）；**plist / unit 不再含任何秘密**——它们是明文配置，会被 launchctl print / systemctl cat 原样打印；换 token 只改 0600 文件、不用重装（重装会丢 launchd 已加载状态）；重装不覆盖未提供的键；旧版写过明文 token 的文件被检测并提示撤销重建（重写文件不会让已落盘的 token 失效）；printf 额外参数复用格式串的坑（裸数字行混进统计）已在产品侧防御"
       },
       "verify": {
         "log_path": ".ai/verify/TL4.log",
@@ -314,7 +314,7 @@
       ],
       "audit": {
         "compile": "node --check 全过（task-loop / doctor / gitlab-config / config-checks / feishu-bug-source）",
-        "tests": "task-loop 45/45（新增 4 条：未接入退出 0 并逐条说明 / 显式 --profile 缺配置 exit 1 / 空 username 两处抛错 / username 从 GET /user 派生且只把他人那条算待修）；feishu-bug-source 43/43（新增 2 条：多任务类型各生成不同表名 / 空 projectKey 不再是字符串 \"undefined\"）；doctor-gates 16/16（新增 3 条：GitLab 地址形状 8 种形态 / 配置同源优先级 7 项 / 0644 的 token 文件判宽）",
+        "tests": "task-loop 65/65（新增 4 条：未接入退出 0 并逐条说明 / 显式 --profile 缺配置 exit 1 / 空 username 两处抛错 / username 从 GET /user 派生且只把他人那条算待修）；feishu-bug-source 43/43（新增 2 条：多任务类型各生成不同表名 / 空 projectKey 不再是字符串 \"undefined\"）；doctor-gates 16/16（新增 3 条：GitLab 地址形状 8 种形态 / 配置同源优先级 7 项 / 0644 的 token 文件判宽）",
         "feature_complete": "两条通道都按扩展条件工作：一个都没接 → exit 0 并列出缺项；接了就轮询；两个都接就都跑（--profile 默认 auto）。任务类型可用户指定（--type 优先于 runtime.feishu.taskTypes，一条 MQL 一种工作项）。GitLab 用户名不配置，由 token 调 /user 取",
         "quality_clean": "修掉三处静默失败：① GITLAB_USERNAME 从未被安装器注入 → 空串让\"自己的留言\"变成\"他人的打回\"（实测 triggered false→true），现在判据层直接抛错；② runner 认 GITLAB_*、doctor 认 HARNESS_GITLAB_*，配好了 doctor 仍在喊未配置，现在同源；③ pick() 全空时返回 undefined 被 String 成 \"undefined\" 拼进表名，查询成功零行"
       },
@@ -380,9 +380,9 @@
     },
     {
       "id": "KI-6",
-      "text": "定时器安装器 install-task-loop.sh 仍把 GITLAB_URL / GITLAB_TOKEN 写进 launchd plist / systemd unit（全机可读）。runner 已支持把 token 放 0600 的 $HOME/.harness/task-loop/gitlab-token，但安装器尚未改为写文件，装定时器的机器上 token 仍可能被同机其他用户读到",
+      "text": "定时器的凭据链路已收敛到 run-round.sh（0700）+ task-loop.env（0600），plist/unit 不含秘密。剩余风险：task-loop.env 是 shell 语法（`source` 执行），谁能写它谁就能以定时器身份执行任意命令——文件权限 0600 是唯一防线，故 --status 会检查权限漂移",
       "owner": "task-loop",
-      "status": "open"
+      "status": "closed"
     }
   ],
   "gate_result": {

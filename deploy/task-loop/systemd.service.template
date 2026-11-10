@@ -4,10 +4,6 @@ Description=harness task-loop single round (A/B 共用，由 timer 触发)
 [Service]
 Type=oneshot
 WorkingDirectory=__ROOT__
-ExecStart=__NODE__ __SCRIPT__ --once --root __ROOT__
-Environment=GITLAB_URL=__GITLAB_URL__
-Environment=GITLAB_TOKEN=__GITLAB_TOKEN__
-Environment=FEISHU_MCP_URL=__FEISHU_MCP_URL__
-Environment=HARNESS_LEDGER_DIR=__LOGDIR__
-# 凭据经 EnvironmentFile 注入更佳（上述 __*__ 留空时）：不进 unit 文件（unit 对所有用户可读）
-EnvironmentFile=-__ENVFILE__
+# 执行体是 0700 的包装脚本，不是 node 本身：凭据在 0600 的 task-loop.env 里，
+# 由它 source 进环境。**unit 文件不含任何秘密**——`systemctl cat` 谁都能看。
+ExecStart=/bin/bash __WRAPPER__

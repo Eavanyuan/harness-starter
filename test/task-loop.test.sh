@@ -422,6 +422,69 @@ grep -q "task-loop.mjs" "$TMP/plist.txt" && grep -qv "__ROOT__" "$TMP/plist.txt"
 mkdir -p "$TMP/bare-repo"; bash "$HERE/scripts/install-task-loop.sh" "$TMP/bare-repo" --print >/dev/null 2>&1
 check "无 hook 接线的仓库拒绝安装（同 runner 闸）" "69" "$?"
 
+echo "== 10b. 凭据不进 plist/unit（明文配置会被 launchctl print / systemctl cat 打出来） =="
+FAKE_TOKEN="glpat-SHOULD-NEVER-LEAK-9f3a"
+# 结构级判据：模板里只要存在「秘密类占位符」，渲染结果就必然带秘密，逐个平台查太脆弱。
+# 这里直接禁止 token/secret/password 类占位符出现在 deploy/task-loop 的任何模板里。
+if grep -qE "__[A-Z_]*(TOKEN|SECRET|PASSWORD|KEY)[A-Z_]*__" "$HERE"/deploy/task-loop/*.template 2>/dev/null; then
+  check "模板不含秘密占位符" "有" "无"; else check "模板不含秘密占位符" "无" "无"; fi
+PL="$(HOME="$TMP/h1" GITLAB_TOKEN="$FAKE_TOKEN" GITLAB_URL=https://g.example.com \
+      bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --print 2>&1)"
+case "$PL" in *"$FAKE_TOKEN"*) check "print 输出不含 token" "含" "不含" ;; *) check "print 输出不含 token" "不含" "不含" ;; esac
+# 注意：别把 case 塞进 $( )——`in *x*)` 的右括号会被当成命令替换的结尾
+case "$PL" in *task-loop.env*) HAS_CRED=0 ;; *) HAS_CRED=1 ;; esac
+check "print 仍给出凭据落点（人要知道去哪儿配）" "0" "$HAS_CRED"
+
+echo "== 10c. 实装落盘权限与内容（--no-activate：不在跑测试的机器上注册真定时器） =="
+HOME="$TMP/h2" GITLAB_URL=http://127.0.0.1:1 GITLAB_TOKEN="$FAKE_TOKEN" FEISHU_MCP_URL=https://m.example.com/x \
+  bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/inst.txt" 2>&1
+check "安装成功" "0" "$?"
+mode_of(){ if [ "$(uname)" = "Darwin" ]; then stat -f %Lp "$1"; else stat -c %a "$1"; fi; }
+D="$TMP/h2/.harness/task-loop"
+check "凭据文件 0600" "600" "$(mode_of "$D/task-loop.env")"
+check "包装脚本 0700（定时器实际执行的是它）" "700" "$(mode_of "$D/run-round.sh")"
+check "凭据目录 0700" "700" "$(mode_of "$D")"
+check "plist 0600" "600" "$(mode_of "$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist")"
+grep -q "$FAKE_TOKEN" "$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist" 2>/dev/null
+check "plist 不含 token" "1" "$?"
+grep -q "GITLAB_TOKEN=$FAKE_TOKEN" "$D/task-loop.env"; check "token 落在 0600 文件里" "0" "$?"
+
+echo "== 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd）下仍能取到 token =="
+# launchd 不继承登录 shell 的 env，systemd 的 unit 也不再写 Environment=。
+# 所以这条必须用 env -i 跑：带环境的测试证明不了"定时器环境里能读到凭据"。
+bash -n "$D/run-round.sh"; check "wrapper 语法合法" "0" "$?"
+# HOME 必须显式给假目录：node 的 os.homedir() 在 HOME 缺失时回落 passwd 里的真实家目录，
+# 于是会读到本机真实的 feishu-oauth.json 并对生产飞书发请求——测试不该有外部副作用。
+OUT="$(env -i HOME="$TMP/h2" PATH=/usr/bin:/bin /bin/bash "$D/run-round.sh" 2>&1 | head -3)"
+# 地址指向不可达端口：连不上恰好证明 GITLAB_URL/TOKEN 被读进来了（没读到会走"未接入"分支退出 0）
+case "$OUT" in *"剖面 A 触发轮询失败"*) check "wrapper 注入凭据并进入 runner" "0" "0" ;; *) check "wrapper 注入凭据并进入 runner" "0" "1: $OUT" ;; esac
+
+echo "== 10e. 重装不覆盖已有凭据（换一个变量不该把上次的 token 清掉） =="
+printf 'HARNESS_EXTRA=kept\n' >> "$D/task-loop.env"
+HOME="$TMP/h2" GITLAB_URL=https://g2.example.com \
+  bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate >/dev/null 2>&1
+grep -q "GITLAB_TOKEN=$FAKE_TOKEN" "$D/task-loop.env"; check "未提供的 token 保留" "0" "$?"
+grep -q "^GITLAB_URL=https://g2.example.com$" "$D/task-loop.env"; check "提供的 url 被更新" "0" "$?"
+grep -q "HARNESS_EXTRA=kept" "$D/task-loop.env"; check "手加的键不被抹掉" "0" "$?"
+check "重装后仍是 0600" "600" "$(mode_of "$D/task-loop.env")"
+
+echo "== 10f. --status 能查出被改宽的权限（cp/rsync 保留不了 0600） =="
+HOME="$TMP/h2" bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --status > "$TMP/st1.txt" 2>&1
+grep -q "0600" "$TMP/st1.txt"; check "正常权限 → 报 0600" "0" "$?"
+chmod 644 "$D/task-loop.env"
+HOME="$TMP/h2" bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --status > "$TMP/st2.txt" 2>&1
+grep -q "权限过宽" "$TMP/st2.txt"; check "644 → 报过宽并给修法" "0" "$?"
+chmod 600 "$D/task-loop.env"
+
+echo "== 10g. 旧版安装器写过明文 token 的 plist：重装后必须提示轮换 =="
+# 重写文件不会让已经落盘的 token 失效。写过就当泄露处理——这是唯一诚实的处置。
+mkdir -p "$TMP/h3/Library/LaunchAgents"
+printf '<plist><dict><key>GITLAB_TOKEN</key><string>old-plaintext</string></dict></plist>\n' \
+  > "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"
+HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
+grep -q "明文凭据" "$TMP/legacy.txt"; check "旧 plist 含 token → 提示撤销重建" "0" "$?"
+grep -q "GITLAB_TOKEN" "$TMP/h3/Library/LaunchAgents/com.harness.task-loop.plist"; check "重装后 plist 已无 token" "1" "$?"
+
 echo "== 11. T5 影子周：dry-run 积累与 --report 统计 =="
 SHADOW="$ROOT/.ai/task-loop/shadow.jsonl"; rm -f "$SHADOW"
 for i in 1 2 3; do printf '{"ts":"2026-11-10T0%s:00:00Z","kind":"mr","id":42,"summary":"s","unresolved":2}\n' "$i" >> "$SHADOW"; done
