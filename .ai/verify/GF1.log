@@ -1,6 +1,6 @@
 # cmd: bash test/evidence.test.sh
-# started: 2026-11-10T02:47:33Z
-# finished: 2026-11-10T02:47:41Z
+# started: 2026-11-10T08:54:49Z
+# finished: 2026-11-10T08:54:57Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. 干净检出 + 合规证据 → 必须通过（上一版必红的回归）==
