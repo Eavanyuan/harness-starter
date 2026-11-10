@@ -1,6 +1,6 @@
-# cmd: bash -c bash\ test/task-loop.test.sh
-# started: 2026-11-10T10:06:03Z
-# finished: 2026-11-10T10:06:17Z
+# cmd: bash test/task-loop.test.sh
+# started: 2026-11-10T10:54:16Z
+# finished: 2026-11-10T10:54:22Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
 == 1. kill switch ==

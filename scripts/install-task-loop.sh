@@ -186,7 +186,7 @@ if [ "$(uname)" = "Darwin" ]; then
   echo "已安装：${PLIST}（每 ${INTERVAL}s 一轮，日志 $LOGDIR/task-loop.{out,err}）"
 else
   mkdir -p "$UNIT_DIR"
-  render_service > "$UNIT_DIR/$UNIT"; render_timer > "$UNIT_DIR/$TIMER"
+  render_service > "$UNIT_DIR/$UNIT" && chmod 600 "$UNIT_DIR/$UNIT"; render_timer > "$UNIT_DIR/$TIMER" && chmod 600 "$UNIT_DIR/$TIMER"
   if [ "$ACTIVATE" = "1" ]; then systemctl --user daemon-reload && systemctl --user enable --now "$TIMER"; else echo "（--no-activate：未启用 systemd timer）"; fi
   echo "已安装：$UNIT_DIR/${TIMER}（每 ${INTERVAL}s 一轮）"
 fi
