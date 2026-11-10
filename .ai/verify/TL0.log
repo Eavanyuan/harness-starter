@@ -1,6 +1,27 @@
-# cmd: bash -c bash\ test/task-loop-contract.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ OK
-# started: 2026-11-10T02:51:01Z
-# finished: 2026-11-10T02:51:49Z
+# cmd: bash -c bash\ test/task-loop-contract.test.sh\ \&\&\ node\ scripts/ci-verify.mjs\ --local
+# started: 2026-11-10T10:08:26Z
+# finished: 2026-11-10T10:08:28Z
 # exit_code: 0
 # ---- output tail (last 200 lines) ----
-OK
+== 1. 产物声明：artifacts 里登记的每一份都必须真实存在 ==
+  [32m✓[0m 登记过的产物文件都在
+== 2. 账实进度：todo 全绿时 stage 不能还停在产出阶段 ==
+  [32m✓[0m stage 与 todo 完成度一致（已完成实现项却停在 fs_review 会红）
+== 3. WBS 与账本用同一套 TODO 编号（写了没立项 / 立项了没写 都算不一致）=
+  [32m✓[0m WBS 的 TODO 编号与 state.todos 完全一致
+== 4. 阶段历史：每个阶段都要有门禁结论，waived/deferred 必须记名 ==
+  [32m✓[0m 阶段历史无裸结论 / 无未记名豁免
+== 5. 反向自检：把账本改回代码先行的形态，第 2 条必须变红 ==
+  [32m✓[0m 变异（stage 退回 fs_review）→ 判据变红
+
+结果：5 通过，0 失败
+[ci-verify] 提示（不判失败）：
+  ! ai-review-notify: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! apse-doctrine: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! drill-gaps-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! harness-builder-hardening: 阶段 impl 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! harness-builder-hardening: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! harness-gate-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! review-p2-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! task-loop: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+[ci-verify] 状态与证据链校验通过（口径 local）
