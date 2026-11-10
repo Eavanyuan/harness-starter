@@ -13,7 +13,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "fs_review",
+  "stage": "impl",
   "stage_history": [
     {
       "stage": "rs",
@@ -34,12 +34,39 @@
       "agent": "tech-selector",
       "model": "glm-5.3",
       "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-09T06:55:00Z",
+      "exited_at": "2026-11-10T10:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "spec-writer",
+      "note": "FS 于 2026-11-10 补写：T1–T6 代码先于 FS 落到 main，账本停在 fs_review 而 ci-verify 不校验 stage 与 todo 的关系，故门禁一路绿。补写内容以已落地的实现为准，差异处改代码而非改文档。"
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-09T06:55:00Z",
+      "exited_at": "2026-11-10T10:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "feature-decomposer",
+      "note": "WBS 与 FS 同期补记；TODO 编号（T0–T6）与 state.todos 由 test/task-loop-contract.test.sh 机器校验一致性。"
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-10T10:20:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "note": "P0 批（T1–T4b）+ P1（T5）+ P2 代码侧（T6）已落地；本次修完审核发现的三处 P0 接线断点。"
     }
   ],
   "artifacts": {
     "rs": "docs/01-requirements/RS-task-loop.md",
     "adr": "docs/06-reference/adr/ADR-010-task-loop.md",
-    "fs": null,
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md",
     "wbs": "docs/02-features/task-loop/task-loop.wbs.md",
     "matrix": null,
     "review": null
@@ -48,15 +75,29 @@
     {
       "id": "T0",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "仓库税预算：本任务文档自身过门工时（RS/FS/WBS/CR 打回预期）",
-      "files": [],
+      "files": [
+        "docs/01-requirements/RS-task-loop.md",
+        "docs/06-reference/adr/ADR-010-task-loop.md",
+        "docs/02-features/task-loop/task-loop.wbs.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md",
+        "test/task-loop-contract.test.sh"
+      ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "文档类，无编译",
+        "tests": "bash test/task-loop-contract.test.sh（产物存在性 / stage 与 todo 一致 / WBS 与账本编号一致 / 阶段历史无裸结论）",
+        "feature_complete": "RS + ADR-010 + WBS + FS 四份齐；FS 为 2026-11-10 补写，已在文档头写明补记事实与原因",
+        "quality_clean": "补写不是补白：契约套件同时把\"代码先行\"这个偏差变成会红的判据（stage < impl 且已有完成项 → 红）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL0.log",
+        "command": "bash test/task-loop-contract.test.sh && node scripts/ci-verify.mjs --local"
+      }
     },
     {
       "id": "T1",
@@ -119,7 +160,8 @@
         "scripts/lib/task-loop-core.mjs",
         "scripts/lib/claim.mjs",
         "harness.rules.json",
-        "test/task-loop.test.sh"
+        "test/task-loop.test.sh",
+        "scripts/lib/gitlab-triggers.mjs"
       ],
       "required_skills": [
         "harness"
@@ -239,11 +281,51 @@
         "log_path": ".ai/verify/TL5.log",
         "command": "bash test/task-loop.test.sh && npm run gate"
       }
+    },
+    {
+      "id": "V1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "统一验证：本需求新增/改动的套件一起跑（全量门禁由 CI 承担）",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "全仓库 node --check / bash -n 已由各套件内部覆盖",
+        "tests": "npm run gate：全绿 0 失败（新增 task-loop 39 条、契约 5 条、doctor-gates 12 条）",
+        "feature_complete": "覆盖 T0–T6 全部产物；三个套件同时进 gate 与 quality-gate.yml，CI 不再漏跑",
+        "quality_clean": "新判据逐条做变异检验（反转触发判定 / 拿掉 createBudget / 短路 release / 僵尸退回单机 / 豁免率退回恒等 1），均能变红"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL6.log",
+        "command": "bash test/task-loop.test.sh && bash test/task-loop-contract.test.sh && bash test/doctor-gates.test.sh && bash test/init.test.sh"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
-  "known_issues": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "test/wiring.test.sh 的 find -newer 在秒级粒度下有假通过窗口（busybox 只比到秒）",
+      "owner": "harness",
+      "status": "open"
+    },
+    {
+      "id": "KI-2",
+      "text": "GitHub Actions Node 20 deprecation 警告（未升 action 版本）",
+      "owner": "harness",
+      "status": "open"
+    },
+    {
+      "id": "KI-3",
+      "text": "真实 GitLab 若既无审批系统留言又无 /approvals 权限，审批状态只能判\"无法判定\"→ 按不通过处理（不猜，但会多跑一轮）",
+      "owner": "task-loop",
+      "status": "open"
+    }
+  ],
   "gate_result": {
     "last_check": null,
     "stage": null,

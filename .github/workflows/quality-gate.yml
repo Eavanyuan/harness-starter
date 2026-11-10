@@ -80,6 +80,28 @@ jobs:
       - name: 飞书长连接（换端点 / 握手 / 分片 / 去重 / 失败重投）
         run: bash test/feishu-ws.test.sh
 
+      # task-loop 的两个套件此前哪都不在：连本地 `npm run gate` 都没进。
+      # 后果是实测过的——runner 在"真检测到触发"这条路上 100% 崩（budget 从未被创建），
+      # 而 gate 全绿只说明它**周围**的东西没坏。判据必须穿过被测的那条路，不是覆盖它旁边。
+      - name: task-loop 触发 / 认领 / 预算 / 释放（含假 GitLab 端到端）
+        run: bash test/task-loop.test.sh
+
+      # 账本说 stage=fs_review、代码已到 T6，门禁照绿——因为没人校验"账上写的和仓库里有的
+      # 是不是同一件事"。这条契约把那个偏差变成会红的判据。
+      - name: task-loop 账实一致契约（产物声明 / stage 与 todo / WBS 编号）
+        run: bash test/task-loop-contract.test.sh
+
+      - name: MCP 数据档探测（三档 health，离线可跑）
+        run: bash test/doctor-gates.test.sh
+
+      # 追溯门禁（--related feishu:<id> / remote_id 双向锚）与任务生命周期此前只在本地跑：
+      # 它们坏了不会立刻有人发现，正是"判据只在人记得敲的时候才存在"的那一类。
+      - name: 初始化与追溯锚（外部单号建档 / remote_id 一致性）
+        run: bash test/init.test.sh
+
+      - name: harness CLI（任务生命周期 / 阶段推进 / 门禁自检）
+        run: bash test/harness-cli.test.sh
+
       - name: Agent 定义与生成物一致
         run: node scripts/build-agents.mjs --check
 
