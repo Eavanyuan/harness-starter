@@ -16,6 +16,8 @@ import { recordEvent } from '../../hooks/lib/ledger.mjs';
 
 export class McpPermError extends Error {}
 export class McpProtocolError extends Error {}
+/** 身份层失败（HTTP 401 / invalid_token）：与"数据档未配"不同，重试无用，只能重新登录。 */
+export class McpAuthError extends Error {}
 
 const DEFAULT_URL = 'https://project.feishu.cn/mcp_server/v1';
 
@@ -29,7 +31,7 @@ export function resolveEndpoint(env = process.env) {
 }
 
 /** 建会话：initialize + initialized。返回 { call, sessionId, serverInfo }。 */
-export async function connect(endpoint, { fetchImpl = fetch, timeoutMs = 30_000, client = 'harness-task-loop' } = {}) {
+export async function connect(endpoint, { fetchImpl = fetch, timeoutMs = 30_000, client = 'harness-task-loop', token = null } = {}) {
   let sessionId = null;
   const post = async (body) => {
     const res = await fetchImpl(endpoint, {
@@ -37,11 +39,18 @@ export async function connect(endpoint, { fetchImpl = fetch, timeoutMs = 30_000,
       headers: {
         'content-type': 'application/json',
         accept: 'application/json, text/event-stream',
+        // OAuth 走标准 Bearer（实测：裸请求 401 unauthorized，带坏 token 401 invalid_token，
+        // 说明端点认这个头）；mcpKey 方案仍靠 query，二者不冲突。
+        ...(token ? { authorization: `Bearer ${token}` } : {}),
         ...(sessionId ? { 'mcp-session-id': sessionId } : {}),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (res.status === 401) {
+      const body = await res.text().catch(() => '');
+      throw new McpAuthError(`MCP 身份被拒（401 ${body.slice(0, 80)}）——token 过期或无效，重新 login，别重试`);
+    }
     if (!res.ok) throw new McpProtocolError(`MCP HTTP ${res.status}`);
     const sid = res.headers.get('mcp-session-id');
     if (sid) sessionId = sid;
@@ -75,12 +84,19 @@ export async function connect(endpoint, { fetchImpl = fetch, timeoutMs = 30_000,
 
 /**
  * 通道健康探测（doctor 的"task-loop 前提在场性"用）。
- * 三档结论：ok（数据档已配）/ perm（通道通、数据档未配——后台勾选问题，不是代码问题）/ off（未配置凭据）。
+ * 四档结论：
+ *   ok    通道与数据档均通
+ *   perm  通道通（有身份），但该空间数据范围未授权
+ *   auth  身份被拒（401）——token 过期/无效，需重新 login
+ *   off   未配置凭据
+ *   error 网络/协议层故障
+ * 分档的意义：perm 要去找空间管理员，auth 自己点一下就好，off 是还没配——三件事三种处置。
  */
-export async function probe(endpoint, { fetchImpl = fetch, projectKey = null } = {}) {
-  if (!endpoint) return { level: 'off', detail: '未配置 FEISHU_MCP_URL / FEISHU_MCP_KEY' };
+export async function probe(endpoint, { fetchImpl = fetch, projectKey = null, token = null } = {}) {
+  if (!endpoint && !token) return { level: 'off', detail: '未配置凭据：FEISHU_MCP_URL/FEISHU_MCP_KEY，或先运行 feishu-auth.mjs login' };
+  const url = endpoint || DEFAULT_URL;
   try {
-    const c = await connect(endpoint, { fetchImpl });
+    const c = await connect(url, { fetchImpl, token });
     // 探测顺序有讲究：先探目标空间（perm=数据档未配），空间不存在再探通道本身（ok=通道与数据档均通）。
     try {
       if (projectKey) {
@@ -102,12 +118,16 @@ export async function probe(endpoint, { fetchImpl = fetch, projectKey = null } =
     } catch (e) {
       if (e instanceof McpPermError) {
         recordEvent('feishu-mcp', 'probe_perm', { detail: e.message.slice(0, 100) });
-        return { level: 'perm', detail: '通道通（46 工具可见），数据档未授权：飞书项目后台给 MCP 应用勾选工作项数据读取范围' };
+        return { level: 'perm', detail: '通道通（工具可见），数据档未授权：飞书项目后台给 MCP 应用勾选工作项数据读取范围' };
       }
       if (/ProjectNotFound/.test(e.message)) return { level: 'ok', detail: `通道通（${c.serverInfo?.name ?? '?'}，错误穿透权限层=身份档正常）` };
       throw e;
     }
   } catch (e) {
+    if (e instanceof McpAuthError) {
+      recordEvent('feishu-mcp', 'probe_auth', { detail: e.message.slice(0, 100) });
+      return { level: 'auth', detail: 'token 过期或无效：node scripts/feishu-auth.mjs login（或 token 命令触发刷新）' };
+    }
     return { level: 'error', detail: e.message.slice(0, 140) };
   }
 }

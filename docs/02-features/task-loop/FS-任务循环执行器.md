@@ -108,9 +108,12 @@
 ### 4.8 T6 剖面 B（飞书 bug）
 
 - 输入：`search_by_mql` 返回的"指派给我的待处理缺陷"
+- **身份两条路，优先 OAuth**：`mcpKey`/`userKey` 是**插件身份**，开放平台按"空间是否安装该插件"判权限——没有空间管理权限的人取不到任何数据，这不是代码能修的缺陷。`project.feishu.cn/mcp_server/v1` 同时支持标准 MCP OAuth，用户身份凭证代表"用户本人"，数据边界是本人可见范围，**不需要空间管理员**。故：有 OAuth 凭据用它；没有且配了插件凭据才退回插件身份；两者皆无则报错并把两条路都写进提示。
+- 授权形态：device code（`verification_uri_complete` + `user_code` + 轮询），不用回调——runner 跑在 launchd/systemd 里可能无可开浏览器的会话，device code 在任意设备点一次同意即可。
+- 凭据落点：`$HOME/.harness/task-loop/feishu-oauth.json`，目录 0700 / 文件 0600，`FEISHU_OAUTH_FILE` 可覆盖；过期前 2 分钟自动 `refresh_token`，刷新结果回写（否则每次调用都刷一次）。
 - 处理：`parseMqlResult()`（JSON 与 Markdown 表格双形态）→ `gateBySeverity()`（致命/严重=auto，一般=confirm_first，其余=skip）→ 接单三连（评论 / 状态流转 / 读回）
 - 输出：`{auto, confirm, skip}`；auto 进本轮触发
-- 失败分支：MCP 权限不足 → `McpPermError`，`exit 1` 并打印"去飞书后台勾工作项读取范围"（**数据档未批就是这个分支**，是明确的降级形态，不是半成品）；目标状态不在 `get_transitable_states` 里 → 拒绝硬转；读回不一致 → 评论兜底留凭，兜底也失败才判红
+- 失败分支：身份被拒（HTTP 401 / `invalid_token`）→ `McpAuthError`，提示重新 login（重试无用）；MCP 权限不足 → `McpPermError`，`exit 1` 并打印"去飞书后台勾工作项读取范围"；token 响应认不出 → 抛错，**绝不返回空 token**（那会让上层以为"通了但没数据"）；目标状态不在 `get_transitable_states` 里 → 拒绝硬转；读回不一致 → 评论兜底留凭，兜底也失败才判红
 
 ## 5 接口契约
 

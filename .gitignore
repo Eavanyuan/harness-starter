@@ -17,6 +17,11 @@ node_modules/
 # 本地临时验证输出（正式证据在 .ai/verify，要入库）
 .ai/verify/*.tmp
 
+# 飞书项目凭据（refresh_token 等同于长期口令）。默认落 $HOME/.harness/task-loop/，
+# 这里再兜一道：万一 FEISHU_OAUTH_FILE 被指到仓库内，也不许提交。
+feishu-oauth.json
+.harness/
+
 # ai-review 增量缓存（键=文件内容 sha，属本机状态；结论 md 才入库）
 .ai/reviews/.cache-*.json
 

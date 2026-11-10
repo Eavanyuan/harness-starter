@@ -120,18 +120,33 @@ if (opt.profile === 'a') {
   } catch (e) { die(1, `触发轮询失败：${e.message}`); }
 } else if (opt.profile === 'b') {
   // 剖面 B：MQL 轮询指派给我的待处理缺陷 → P0/P1 自动、P2 confirm_first（确认卡片走订阅 T2）
-  const { resolveEndpoint, connect, McpPermError } = await import('./lib/feishu-project-mcp.mjs');
+  const { resolveEndpoint, connect, McpPermError, McpAuthError } = await import('./lib/feishu-project-mcp.mjs');
   const { buildMyBugsMql, parseMqlResult, gateBySeverity } = await import('./lib/feishu-bug-source.mjs');
-  const endpoint = resolveEndpoint();
-  if (!endpoint) die(1, '剖面 B 需要 FEISHU_MCP_URL（或 FEISHU_MCP_KEY + FEISHU_USER_KEY）');
+  const { ensureToken } = await import('./lib/feishu-oauth.mjs');
+
+  // 身份优先级：OAuth（用户身份，只代表你自己，不需要空间管理员安装任何插件）→ mcpKey（插件身份，需空间安装）。
+  // 之所以先 OAuth：没有空间管理权限的人走插件身份永远取不到数据，而这条卡点不是代码问题，
+  // 报错再多也救不了——只能换一种身份。
+  let token = null;
   try {
-    const c = await connect(endpoint);
+    token = await ensureToken();
+    recordEvent('task-loop', 'feishu_auth', { mode: 'oauth' });
+  } catch (e) {
+    // 未登录 ≠ 配置错误。有插件凭据就退回插件身份；两者都没有才 die，并把两条路都写进提示。
+    if (!resolveEndpoint()) {
+      die(1, `${e.message}\n  或改用插件身份：FEISHU_MCP_URL（或 FEISHU_MCP_KEY + FEISHU_USER_KEY），但需要空间管理员安装插件`);
+    }
+  }
+  const endpoint = resolveEndpoint() || 'https://project.feishu.cn/mcp_server/v1';
+  try {
+    const c = await connect(endpoint, { token });
     const raw = await c.call('search_by_mql', { project_key: process.env.FEISHU_PROJECT_KEY || '', mql: buildMyBugsMql() });
     const { auto, confirm, skip } = gateBySeverity(parseMqlResult(raw));
     recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length });
     triggers = auto.map((b) => ({ kind: 'task', id: b.work_item_id, bug: b, unresolved: [] }));
     if (confirm.length > 0) console.log(`[task-loop] ${confirm.length} 张 P2 单待确认（confirm_first，卡片确认后 --task <单号> 启动）`);
   } catch (e) {
+    if (e instanceof McpAuthError) die(1, `剖面 B 身份被拒：${e.message}`);
     if (e instanceof McpPermError) die(1, `剖面 B 数据档未授权：${e.message}（飞书后台给 MCP 应用勾选工作项读取范围；探测见 doctor-gates 套件）`);
     die(1, `剖面 B 触发轮询失败：${e.message}`);
   }
