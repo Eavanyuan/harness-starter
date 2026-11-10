@@ -100,6 +100,10 @@ else
   mkdir -p "$UNIT_DIR"
   render_service > "$UNIT_DIR/$UNIT"; render_timer > "$UNIT_DIR/$TIMER"
   # 凭据建议走 EnvironmentFile（unit 文件全局可读）：有 env 就生成 0600 的 task-loop.env
+  # 注意：剖面 B 的**空间身份**（projectKey / 工作项类型 / 字段 key / 词表）不在环境变量里，
+  # 它们在目标仓库的 harness.rules.json runtime.feishu 里，跟着代码走。所以这里只渲染真正的
+  # 秘密（GitLab token、插件身份 URL）——以前靠 env 传 projectKey 时，这个渲染函数漏一个变量
+  # 就是一次"定时任务每轮都静默失败"，而失败原因隔着 cron 日志两层才看得见。
   if [ -n "${GITLAB_TOKEN:-}" ]; then
     { [ -n "${GITLAB_URL:-}" ] && echo "GITLAB_URL=${GITLAB_URL}"; echo "GITLAB_TOKEN=${GITLAB_TOKEN}"; [ -n "${FEISHU_MCP_URL:-}" ] && echo "FEISHU_MCP_URL=${FEISHU_MCP_URL}"; } > "$LOGDIR/task-loop.env"
     chmod 600 "$LOGDIR/task-loop.env"

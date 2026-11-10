@@ -84,6 +84,21 @@
       "maxRounds": 3,
       "maxActiveMs": 1800000,
       "claimTtlMs": 86400000
+    },
+    "feishu": {
+      "$comment": "剖面 B 接的那个飞书项目（Meego）空间。这些值不是'偏好'而是**该空间的事实**：类型名、字段 key、状态 label 换一个空间全都不一样，写错不会报错——查询照常成功，只是一张单都没有。所以放在仓库配置里，跟着代码一起 review。凭据不在这里：OAuth token 等于长期口令，只落用户级 $HOME/.harness/task-loop/feishu-oauth.json（0600），进 git 就是泄露。环境变量仍可覆盖（临时切空间/CI 指向假端点），优先级 env > 本段 > 内置兜底。",
+      "projectKey": "taosdata_td",
+      "workItemType": "Defect",
+      "assigneeField": "current_status_operator",
+      "newStatus": "New",
+      "mqlLimit": 20,
+      "issuer": "https://project.feishu.cn",
+      "severity": {
+        "$comment": "该空间的严重级是自定义字段（不是 severity/priority），枚举只有 高/中/低。map 把平台的词表映射到门槛用的 P 档：P0/P1 自动接、P2 待确认、P3 不接。换空间只改这里，不动代码。",
+        "field": "field_6bff71",
+        "fieldName": "故障严重级别",
+        "map": { "高": "P1", "中": "P2", "低": "P3" }
+      }
     }
   },
   "notify": {

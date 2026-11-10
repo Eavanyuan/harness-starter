@@ -174,6 +174,33 @@ const dead = CONSUMED.filter((k) => !code.includes(k));
 if (dead.length) err(`配置键没有任何代码消费（看起来是门禁，实际不生效）：${dead.join(', ')}`);
 else ok.push(`配置键均有消费者（${CONSUMED.length} 个）`);
 
+// 4b. 剖面 B 的空间配置。这里是本项目最容易"配了不生效"的一段：
+// projectKey / 字段 key / 状态 label 错一个，查询仍然成功，只是没有任何单子——
+// 症状与"今天真的没有待办"完全一样。所以值域与消费情况必须在这里先判一遍。
+const feishuCfg = json('harness.rules.json').value?.runtime?.feishu;
+if (feishuCfg && typeof feishuCfg === 'object') {
+  const need = [
+    ['projectKey', feishuCfg.projectKey],
+    ['workItemType', feishuCfg.workItemType],
+    ['severity.field', feishuCfg.severity?.field],
+    ['assigneeField', feishuCfg.assigneeField],
+    ['newStatus', feishuCfg.newStatus],
+  ];
+  const empty = need.filter(([, v]) => !v || !String(v).trim()).map(([k]) => k);
+  if (empty.length) err(`runtime.feishu 缺值：${empty.join(', ')} —— 剖面 B 会拼出坏 MQL 或取不到严重级，且不会报错`);
+
+  const map = feishuCfg.severity?.map;
+  if (map && typeof map === 'object' && !Array.isArray(map)) {
+    const bad = Object.entries(map).filter(([, v]) => !/^P[0-3]$/.test(String(v)));
+    if (bad.length) err(`runtime.feishu.severity.map 的值必须是 P0-P3（门槛只认这四档）：${bad.map(([k, v]) => `${k}→${v}`).join(', ')}`);
+    // 配了词表却没人读 = 换空间时改了配置、行为一点没变——比没配更难查。
+    if (!code.includes('severityMap')) err('runtime.feishu.severity.map 没有任何代码消费 —— 改了配置不会改变分级，属于空转键');
+  } else if (feishuCfg.severity && !map) {
+    warn('runtime.feishu.severity.map 未配置，将退回内置词表（高/中/低 + P 档 + 英文）——换过空间的话词表大概率对不上');
+  }
+  if (empty.length === 0) ok.push(`剖面 B 空间：${feishuCfg.projectKey}.${feishuCfg.workItemType}（指派判据 ${feishuCfg.assigneeField}，严重级 ${feishuCfg.severity?.field}）`);
+}
+
 // 5. 门禁代码改动必须有对应测试
 const testDir = join(ROOT, 'test');
 const tests = existsSync(testDir) ? readdirSync(testDir).filter((n) => n.endsWith('.test.sh')) : [];

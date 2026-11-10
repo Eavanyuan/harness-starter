@@ -159,7 +159,47 @@ contains "$(fc notJson)" "throw:"; check "半个 JSON 抛错" "0" "$?"
 contains "$(fc semantic)" "throw:"; check "服务端 error= 文本抛错（不被当成 0 条）" "0" "$?"
 
 echo
-echo "== 9. 变异检验：把判据改坏，套件必须变红 =="
+echo "== 9. 配置驱动：harness.rules.json 是唯一真相，env 只做临时覆盖 =="
+cat > "$TMP/cfg.mjs" <<JS
+import { readFileSync } from 'node:fs';
+import { resolveFeishuConfig, buildMyBugsMql, parseMqlResult, gateBySeverity } from '$LIB';
+const rules = JSON.parse(readFileSync('$HERE/harness.rules.json', 'utf8'));
+const fromRules = resolveFeishuConfig({ rules, env: {} });
+const overridden = resolveFeishuConfig({ rules, env: { FEISHU_PROJECT_KEY: 'other_space', FEISHU_MQL_LIMIT: '7' } });
+const emptyEnv = resolveFeishuConfig({ rules, env: { FEISHU_PROJECT_KEY: '', FEISHU_WORK_ITEM_TYPE: '  ' } });
+const noRules = resolveFeishuConfig({ rules: null, env: {} });
+// 配置里的词表真的被消费吗：把「高」映射到 P3，同一批单的去向必须变
+// （词表在**解析时**生效——解析一完平台词就变成 P 档了，这时再传词表已经晚了）
+const bugs = parseMqlResult(readFileSync('$FIX_MIX', 'utf8'), { severityField: 'field_6bff71' });
+const flipped = gateBySeverity(parseMqlResult(readFileSync('$FIX_MIX', 'utf8'), { severityField: 'field_6bff71', severityMap: { 高: 'P3', 中: 'P2', 低: 'P3' } }));
+const custom = buildMyBugsMql({ projectKey: fromRules.projectKey, workItemType: fromRules.workItemType, assigneeField: 'owner', severityField: fromRules.severityField });
+console.log(JSON.stringify({
+  projectKey: fromRules.projectKey, workItemType: fromRules.workItemType,
+  severityField: fromRules.severityField, mapHigh: fromRules.severityMap['高'],
+  ovProject: overridden.projectKey, ovLimit: overridden.mqlLimit,
+  emptyProject: emptyEnv.projectKey, emptyType: emptyEnv.workItemType,
+  fallbackType: noRules.workItemType, fallbackMap: noRules.severityMap['高'],
+  flippedAuto: flipped.auto.length, flippedSkip: flipped.skip.map((b) => b.work_item_id).join(','),
+  ownerMql: /\`owner\`/.test(custom),
+}));
+JS
+node "$TMP/cfg.mjs" > "$TMP/cfg.json" 2>&1
+if [ ! -s "$TMP/cfg.json" ]; then cat "$TMP/cfg.json"; fi
+val9(){ node -e "const j=require('$TMP/cfg.json'); process.stdout.write(String(j['$1']))"; }
+check "配置读到 projectKey" "$(val9 projectKey)" "taosdata_td"
+check "配置读到工作项类型" "$(val9 workItemType)" "Defect"
+check "配置读到严重级字段 key" "$(val9 severityField)" "field_6bff71"
+check "配置读到严重级词表（高→P1）" "$(val9 mapHigh)" "P1"
+check "环境变量覆盖配置（临时切空间）" "$(val9 ovProject)" "other_space"
+check "环境变量覆盖数值配置" "$(val9 ovLimit)" "7"
+check "空字符串环境变量不覆盖（按\"没配\"处理）" "$(val9 emptyProject):$(val9 emptyType)" "taosdata_td:Defect"
+check "配置整个缺失时退回内置兜底" "$(val9 fallbackType):$(val9 fallbackMap)" "Defect:P1"
+check "改配置里的词表真会改变去向（高→P3 后 auto 归零）" "$(val9 flippedAuto)" "0"
+check "被改判的单确实落进 skip" "$(val9 flippedSkip)" "9001,9003,9004"
+check "指派字段可配（改成 owner 后 MQL 跟着变）" "$(val9 ownerMql)" "true"
+
+echo
+echo "== 10. 变异检验：把判据改坏，套件必须变红 =="
 # 变异一：解析时严重级字段传错（模拟换了空间没改 FEISHU_SEVERITY_FIELD）→ 全部 P3 → 有人也变没人
 node --input-type=module -e '
 import { readFileSync } from "node:fs";

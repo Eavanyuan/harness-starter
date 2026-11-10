@@ -280,9 +280,9 @@
       ],
       "audit": {
         "compile": "node --check 全过；MCP 工具 schema 从活通道 tools/list 实捞（update_field/get_transitable_states/add_comment/search_by_mql）",
-        "tests": "feishu-bug-source 30/30（离线，fixture 抓自真实空间）：MQL 形状（两段式表名 / current_status_operator / 状态用 =）、真实 moql_field_list 解析（含取 label 不取 key）、严重级三套词汇归一、分级门槛、截断可见、fail-closed；变异三处（改回 owner / 改回中文待处理 / 严重级 key 配错）均变红。feishu-oauth 15 条；task-loop 39 条",
-        "feature_complete": "剖面 B 全链首次实跑通过（2026-11-10，OAuth 用户身份，taosdata_td）：待我处理 10 张 → 中 3 张 confirm_first、低 7 张 skip、高 0 张 auto。数据契约（表名两段式 / 指派字段 / 状态枚举 / 严重级自定义字段 / 响应形态）全部写入 FS §4.8 并由套件锚定",
-        "quality_clean": "四个错里只有\"表名单段\"会报错，其余三个静默（取到别人的单 / 结果为 0 / 全部判 P3 丢弃）——每个都配了会红的断言；LIMIT 截断单独告警并落账 profile_b_truncated，\"少了几张单\"不再和\"本来就没几张\"长得一样"
+        "tests": "feishu-bug-source 41/41（离线，fixture 抓自真实空间）：MQL 形状（两段式表名 / current_status_operator / 状态用 =）、真实 moql_field_list 解析（含取 label 不取 key）、严重级三套词汇归一、分级门槛、截断可见、配置驱动（读到值 / env 覆盖 / 空串不覆盖 / 缺配置兜底 / 改词表真改变去向 / 指派字段可配）、fail-closed；变异三处（改回 owner / 改回中文待处理 / 严重级 key 配错）均变红。feishu-oauth 15 条；task-loop 39 条",
+        "feature_complete": "剖面 B 全链首次实跑通过（2026-11-10，OAuth 用户身份，taosdata_td）：待我处理 10 张 → 中 3 张 confirm_first、低 7 张 skip、高 0 张 auto。空间身份全部移入 harness.rules.json runtime.feishu（projectKey/类型/指派字段/状态/严重级字段与词表/上限/端点），零环境变量即可运行；凭据仍单独存用户级 0600",
+        "quality_clean": "四个错里只有\"表名单段\"会报错，其余三个静默（取到别人的单 / 结果为 0 / 全部判 P3 丢弃）——每个都配了会红的断言；LIMIT 截断单独告警并落账 profile_b_truncated；配置化的词表必须在解析时生效，否则\"配置改了行为不变\"（测试用高→P3 证明真被消费）"
       },
       "verify": {
         "log_path": ".ai/verify/TL5.log",
@@ -334,7 +334,7 @@
     },
     {
       "id": "KI-4",
-      "text": "剖面 B 的工作项类型名（Defect）、严重级字段 key（field_6bff71）、状态 label（New）是 taosdata_td 的实测值，换空间必须同改四个环境变量；配错的症状是\"查询成功但一张单都没有\"，与\"真的没有待办\"无法从结果区分（只能靠 doctor 或人工核对）",
+      "text": "剖面 B 的空间身份已移入 harness.rules.json runtime.feishu（换空间改一处，doctor 校验必填项与词表值域）。剩下的风险是字段 key 写错仍属静默失败：查询照常成功、结果为零，与\"今天真没有待办\"无法从结果区分——只能靠 doctor 的必填项检查 + 空结果时人工核对字段配置发现",
       "owner": "task-loop",
       "status": "open"
     },

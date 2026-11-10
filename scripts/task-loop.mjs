@@ -121,8 +121,13 @@ if (opt.profile === 'a') {
 } else if (opt.profile === 'b') {
   // 剖面 B：MQL 轮询指派给我的待处理缺陷 → P0/P1 自动、P2 confirm_first（确认卡片走订阅 T2）
   const { resolveEndpoint, connect, McpPermError, McpAuthError } = await import('./lib/feishu-project-mcp.mjs');
-  const { buildMyBugsMql, parseMqlPage, gateBySeverity, DEFAULT_SEVERITY_FIELD, DEFAULT_NEW_STATUS } = await import('./lib/feishu-bug-source.mjs');
+  const { resolveFeishuConfig, buildMyBugsMql, parseMqlPage, gateBySeverity } = await import('./lib/feishu-bug-source.mjs');
   const { ensureToken } = await import('./lib/feishu-oauth.mjs');
+
+  // 空间身份来自配置（harness.rules.json runtime.feishu），env 只做临时覆盖。
+  // 这样定时器装到别的机器上不用逐条渲染环境变量——install-task-loop.sh 漏注入一个变量
+  // 就是一个静默失败，而配置文件跟着仓库走，不存在"漏注入"。
+  const cfg = resolveFeishuConfig({ rules });
 
   // 身份优先级：OAuth（用户身份，只代表你自己，不需要空间管理员安装任何插件）→ mcpKey（插件身份，需空间安装）。
   // 之所以先 OAuth：没有空间管理权限的人走插件身份永远取不到数据，而这条卡点不是代码问题，
@@ -137,29 +142,33 @@ if (opt.profile === 'a') {
       die(1, `${e.message}\n  或改用插件身份：FEISHU_MCP_URL（或 FEISHU_MCP_KEY + FEISHU_USER_KEY），但需要空间管理员安装插件`);
     }
   }
-  const endpoint = resolveEndpoint() || 'https://project.feishu.cn/mcp_server/v1';
-  const projectKey = process.env.FEISHU_PROJECT_KEY || '';
-  const itemType = process.env.FEISHU_WORK_ITEM_TYPE || 'Defect';
-  const severityKey = process.env.FEISHU_SEVERITY_FIELD || DEFAULT_SEVERITY_FIELD;
-  const newStatus = process.env.FEISHU_NEW_STATUS || DEFAULT_NEW_STATUS;
-  const mqlLimit = Number(process.env.FEISHU_MQL_LIMIT || 20);
-  if (!projectKey) die(1, '剖面 B 需要 FEISHU_PROJECT_KEY（如 taosdata_td）：MQL 的表名是 `<空间>.<工作项类型>`，缺空间名服务端只会回一句 semantic error');
+  const endpoint = resolveEndpoint() || `${cfg.issuer}/mcp_server/v1`;
+  if (!cfg.projectKey) {
+    die(1, '剖面 B 不知道接哪个空间：在 harness.rules.json 的 runtime.feishu.projectKey 填空间标识（如 taosdata_td），或临时用 FEISHU_PROJECT_KEY 覆盖。MQL 的表名是 `<空间>.<工作项类型>`，缺空间名服务端只会回一句 semantic error');
+  }
   let mql = '';
   try {
-    mql = buildMyBugsMql({ projectKey, type: itemType, statuses: [newStatus], severityKey, limit: mqlLimit });
+    mql = buildMyBugsMql({
+      projectKey: cfg.projectKey,
+      workItemType: cfg.workItemType,
+      assigneeField: cfg.assigneeField,
+      statuses: [cfg.newStatus],
+      severityField: cfg.severityField,
+      limit: cfg.mqlLimit,
+    });
   } catch (e) { die(1, e.message); }
   try {
     const c = await connect(endpoint, { token });
-    const raw = await c.call('search_by_mql', { project_key: projectKey, mql });
-    const page = parseMqlPage(raw, { severityKey });
+    const raw = await c.call('search_by_mql', { project_key: cfg.projectKey, mql });
+    const page = parseMqlPage(raw, { severityField: cfg.severityField, severityMap: cfg.severityMap });
     // 单次上限 50、LIMIT 只是截断不是分页：待办多于 LIMIT 时必须说出来，
     // 否则"少了 10 张单"和"本来就只有 10 张"在日志里一模一样。
     if (page.count != null && page.count > page.bugs.length) {
-      console.warn(`[task-loop] 剖面 B 命中 ${page.count} 张，本轮只取回 ${page.bugs.length} 张（LIMIT 截断）——剩余需翻页或提高 FEISHU_MQL_LIMIT，别当"没有更多"`);
+      console.warn(`[task-loop] 剖面 B 命中 ${page.count} 张，本轮只取回 ${page.bugs.length} 张（LIMIT 截断）——剩余需翻页或提高 runtime.feishu.mqlLimit，别当"没有更多"`);
       recordEvent('task-loop', 'profile_b_truncated', { count: page.count, taken: page.bugs.length });
     }
-    const { auto, confirm, skip } = gateBySeverity(page.bugs);
-    recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length, status: newStatus });
+    const { auto, confirm, skip } = gateBySeverity(page.bugs, undefined, cfg.severityMap);
+    recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length, status: cfg.newStatus, space: cfg.projectKey });
     triggers = auto.map((b) => ({ kind: 'task', id: b.work_item_id, bug: b, unresolved: [] }));
     if (confirm.length > 0) console.log(`[task-loop] ${confirm.length} 张 P2 单待确认（confirm_first，卡片确认后 --task <单号> 启动）`);
   } catch (e) {
