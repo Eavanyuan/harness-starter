@@ -217,18 +217,28 @@
     {
       "id": "T6",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "observe",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "剖面 B：飞书 MCP 客户端已落地（三档探测 ok/perm/off，实测 perm 档=后台数据档未配）；待数据档授权后接事件源+回写读回+doctor 前提在场性接线",
       "files": [
-        "scripts/lib/feishu-project-mcp.mjs",
-        "test/doctor-gates.test.sh"
+        "scripts/lib/feishu-bug-source.mjs",
+        "scripts/lib/feishu-sync.mjs",
+        "scripts/task-loop.mjs",
+        "test/task-loop.test.sh"
       ],
       "required_skills": [
         "harness"
       ],
-      "audit": null,
-      "verify": null
+      "audit": {
+        "compile": "node --check 全过；MCP 工具 schema 从活通道 tools/list 实捞（update_field/get_transitable_states/add_comment/search_by_mql）",
+        "tests": "task-loop 30/30（MQL 构造含 current_login_user/双形态解析 JSON+表格/P0-P3 分级门槛含裸对象防御/垃圾结果 fail-closed/同步四路：拒硬转、读回成功、静默丢弃→评论兜底、兜底失败显式红/runner 集成：缺凭据点名、活通道 perm 报错带后台指引）",
+        "feature_complete": "剖面 B 代码侧全齐：触发（MQL 轮询+分级门槛）、接单三连（评论+状态流转+读回）、perm 错误分类指引；数据档授权后第一次实测若确认 MQL 返回形态，删另一形态解析（代码已留标记）",
+        "quality_clean": "目标状态不在可流转列表时拒绝硬转（get_transitable_states 前置）；读回验证失败不静默（评论兜底留凭，兜底也败才红）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TL5.log",
+        "command": "bash test/task-loop.test.sh && npm run gate"
+      }
     }
   ],
   "blockers": [],

@@ -106,6 +106,23 @@ if (opt.profile === 'a') {
   try {
     triggers = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username: process.env.GITLAB_USERNAME || '' });
   } catch (e) { die(1, `触发轮询失败：${e.message}`); }
+} else if (opt.profile === 'b') {
+  // 剖面 B：MQL 轮询指派给我的待处理缺陷 → P0/P1 自动、P2 confirm_first（确认卡片走订阅 T2）
+  const { resolveEndpoint, connect, McpPermError } = await import('./lib/feishu-project-mcp.mjs');
+  const { buildMyBugsMql, parseMqlResult, gateBySeverity } = await import('./lib/feishu-bug-source.mjs');
+  const endpoint = resolveEndpoint();
+  if (!endpoint) die(1, '剖面 B 需要 FEISHU_MCP_URL（或 FEISHU_MCP_KEY + FEISHU_USER_KEY）');
+  try {
+    const c = await connect(endpoint);
+    const raw = await c.call('search_by_mql', { project_key: process.env.FEISHU_PROJECT_KEY || '', mql: buildMyBugsMql() });
+    const { auto, confirm, skip } = gateBySeverity(parseMqlResult(raw));
+    recordEvent('task-loop', 'profile_b_polled', { auto: auto.length, confirm: confirm.length, skip: skip.length });
+    triggers = auto.map((b) => ({ kind: 'task', id: b.work_item_id, bug: b, unresolved: [] }));
+    if (confirm.length > 0) console.log(`[task-loop] ${confirm.length} 张 P2 单待确认（confirm_first，卡片确认后 --task <单号> 启动）`);
+  } catch (e) {
+    if (e instanceof McpPermError) die(1, `剖面 B 数据档未授权：${e.message}（飞书后台给 MCP 应用勾选工作项读取范围；探测见 doctor-gates 套件）`);
+    die(1, `剖面 B 触发轮询失败：${e.message}`);
+  }
 }
 
 if (triggers.length === 0) { console.log('[task-loop] 无打回待修触发，本轮结束'); process.exit(0); }

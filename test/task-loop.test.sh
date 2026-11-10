@@ -221,6 +221,33 @@ grep -q "N≥30" "$TMP/report.txt"; check "验收口径印在报告里" "0" "$?"
 printf '%s\n' '42' 'null' >> "$SHADOW"   # 裸数字/null：合法 JSON 但非对象——统计必须无视
 node "$HERE/scripts/task-loop.mjs" --report --root "$ROOT" 2>/dev/null | grep -q "唯一触发：2"; check "脏行（裸数字/null）不污染统计" "0" "$?"
 
+echo "== 12. T6 剖面 B 触发源：MQL/解析/分级/同步四路 =="
+node --input-type=module -e '
+import { buildMyBugsMql, parseMqlResult, gateBySeverity } from "'"$HERE"'/scripts/lib/feishu-bug-source.mjs";
+const mql = buildMyBugsMql();
+const a = parseMqlResult(JSON.stringify([{work_item_id:1,severity:"致命"},{work_item_id:2,severity:"严重"}]));
+const b = parseMqlResult("| work_item_id | name | severity |\n|---|---|---|\n| 3 | x | 一般 |");
+const g = gateBySeverity([...a, ...b]);
+let threw = false; try { parseMqlResult("junk"); } catch { threw = true; }
+process.exit(mql.includes("current_login_user()") && a.length===2 && b.length===1
+  && g.auto.length===2 && g.confirm.length===1 && threw ? 0 : 1);'
+check "MQL 构造/双形态解析/P0-P3 分级/垃圾结果 fail-closed" "0" "$?"
+node --input-type=module -e '
+import { transitionStatus, readbackOrComment } from "'"$HERE"'/scripts/lib/feishu-sync.mjs";
+const mk = (b) => async (n) => { const f = b[n]; if (!f) throw new Error("no "+n); return typeof f==="function"?f():f; };
+const r1 = await transitionStatus({ call: mk({ get_transitable_states: "可流转:[开发中]", update_field: "ok" }), projectKey: "t", workItemId: "1", toStatus: "处理中" });
+const r2 = await readbackOrComment({ call: mk({ get_workitem_brief: "status: 处理中", add_comment: "ok" }), projectKey: "t", workItemId: "1", expect: { status: "处理中" }, fallbackNote: "n" });
+const r3 = await readbackOrComment({ call: mk({ get_workitem_brief: "空", add_comment: "ok" }), projectKey: "t", workItemId: "1", expect: { status: "x" }, fallbackNote: "n" });
+const r4 = await readbackOrComment({ call: mk({ get_workitem_brief: "空", add_comment: () => { throw new Error("403"); } }), projectKey: "t", workItemId: "1", expect: { status: "x" }, fallbackNote: "n" });
+process.exit(!r1.ok && r2.ok && r3.ok && r3.via==="comment-fallback" && !r4.ok ? 0 : 1);'
+check "同步四路：拒硬转/读回成功/静默丢弃→评论兜底/兜底失败显式红" "0" "$?"
+# runner 集成：无凭据 fail 显式；有凭据但数据档未开 → perm 指引（活通道）
+node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb1.txt" 2>&1
+grep -q "FEISHU_MCP_URL" "$TMP/pb1.txt"; check "剖面 B 缺凭据 → 点名缺什么" "0" "$?"
+FEISHU_MCP_URL="https://project.feishu.cn/mcp_server/v1?mcpKey=m-dca0c1ab-4fec-4e26-97b7-81aabe932c97&userKey=7231777938960613378" FEISHU_PROJECT_KEY=taosdata_td \
+  node "$HERE/scripts/task-loop.mjs" --once --profile b --root "$ROOT" > "$TMP/pb2.txt" 2>&1
+grep -q "数据档未授权" "$TMP/pb2.txt"; check "数据档未开 → perm 报错带后台指引（活通道）" "0" "$?"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

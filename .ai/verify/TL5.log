@@ -1,0 +1,6 @@
+# cmd: bash -c bash\ test/task-loop.test.sh\ \>/dev/null\ 2\>\&1\ \&\&\ npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ TL5_OK
+# started: 2026-11-10T01:52:47Z
+# finished: 2026-11-10T01:53:32Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+TL5_OK
