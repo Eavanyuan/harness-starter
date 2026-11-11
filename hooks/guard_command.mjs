@@ -13,7 +13,7 @@
  * `cat .env` 不经过 sensitiveRead —— 规则再多，有一条不经过它的路，威慑力就打折。
  *
  * allowlist 是**段级豁免**，不是整条命令的短路：
- *   早先命中前缀就 exit 0，于是 `mvn test; git push --force` 整条放行。
+ *   早先命中前缀就 exit 0，于是 `mvn test; git push --force` 整条放行。（scan-ok: 注释里举例，不是要执行的命令）
  *   现在先按 `;` `&&` `||` 换行切段，逐段判；allowlist 只豁免它命中的那一段，
  *   且**不豁免**路径判据（没有任何一条命令前缀应该允许写凭据文件）。
  *

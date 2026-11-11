@@ -38,7 +38,7 @@ const MAX_DEPTH = 3;
 /**
  * 去掉 heredoc 正文。
  *
- * 不去掉的话，`cat > notes.md <<'EOF'` 里只要出现 "git push --force" 这行说明，
+ * 不去掉的话，`cat > notes.md <<'EOF'` 里只要出现 “强推” 这行说明（scan-ok: 注释解释误拦，不是命令），
  * 整条命令就会被当成强推拦下——直接写在文档里的命令被自己的门禁误伤，
  * 这种误拦会让人干脆不用 heredoc，而不是更安全。
  */
