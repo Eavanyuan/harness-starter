@@ -71,7 +71,10 @@ CMDLINE="${CMDLINE% }"
 # 脏树同样写 unknown（复审 M1 抓回）：工作树有未提交改动时，日志内容来自"HEAD+改动"，
 # 在 HEAD 的 checkout 上不可复现——盖一个真 hash 等于伪造可复现性。要拿到绑定的证据，
 # 提交后重跑一次（DFG 的刷新就是这个用法）。
-if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+# 脏的口径要窄：只看**跟踪文件的源码改动**（staged+unstaged，排除 .ai/verify/——日志是
+# 本次流程的产物，重写它不影响命令结果的可复现性）；未跟踪文件不参与（?? 在 porcelain 里
+# 也会出现，但一个无关的临时文件不该让全部证据失去提交绑定）。
+if ! git diff --quiet HEAD -- . ':(exclude).ai/verify' 2>/dev/null; then
   HEAD_COMMIT="unknown"
 else
   HEAD_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
