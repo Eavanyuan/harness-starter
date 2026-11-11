@@ -442,8 +442,14 @@ log T1 0
 git add -A && git commit -qm "restore-17"
 
 echo "== 17b. 证据绑提交（P1-③后半）：# commit: 必须在当前 HEAD 历史线上 =="
-# 正向：绑定当前 HEAD —— 通过（restore-17 的提交就是 fixture 的 HEAD）
-sed -i '' "s|^# exit_code: 0|# exit_code: 0\n# commit: $(git rev-parse --short=7 HEAD)|" .ai/verify/T1.log
+# 正向：绑定当前 HEAD —— 通过（restore-17 的提交就是 fixture 的 HEAD）。
+# 注：改日志用 node 而不是 sed -i —— `sed -i ''` 是 BSD 专属语法，GNU sed 会把 '' 当
+# 文件名读、整条命令静默失败（CI 在 Linux 上就这么红的，本地 macOS 却绿，平台巧合）。
+node -e '
+  const fs = require("fs"); const p = ".ai/verify/T1.log";
+  const t = fs.readFileSync(p, "utf8");
+  fs.writeFileSync(p, t.replace("# exit_code: 0", "# exit_code: 0\n# commit: " + require("child_process").execSync("git rev-parse --short=7 HEAD").toString().trim()));
+'
 git add -A && git commit -qm "bind-current"
 check "绑当前 HEAD → 过" 0 "$(ci)"
 # 负向：绑一条侧分支上的新提交（不是当前 HEAD 的祖先）→ 拦
@@ -452,13 +458,20 @@ echo x > dropped-marker && git add -A && git -c user.email=t@t -c user.name=t co
 DROPPED="$(git rev-parse --short=7 HEAD)"
 git checkout -q master 2>/dev/null || git checkout -q main
 git branch -qD dropped
-sed -i '' "s|^# commit: [0-9a-f]*|# commit: $DROPPED|" .ai/verify/T1.log
+node -e '
+  const fs = require("fs"); const p = ".ai/verify/T1.log";
+  const t = fs.readFileSync(p, "utf8");
+  fs.writeFileSync(p, t.replace(/^# commit: [0-9a-f]*/m, "# commit: " + process.argv[1]));
+' "$DROPPED"
 git add -A && git commit -qm "bind-dropped"
 check "绑被丢弃分支的提交 → 拦" 1 "$(ci)"
 grep -q "不在当前 HEAD 的历史里" "$TMP/err" && r=0 || r=1
 check "拒绝理由指向跨线证据" 0 "$r"
 # 旧日志（无 commit 行）不追溯
-sed -i '' '/^# commit: /d' .ai/verify/T1.log
+node -e '
+  const fs = require("fs"); const p = ".ai/verify/T1.log";
+  fs.writeFileSync(p, fs.readFileSync(p, "utf8").split("\n").filter((l) => !/^# commit: /.test(l)).join("\n"));
+'
 git add -A && git commit -qm "bind-legacy"
 check "旧日志无 commit 行 → 不追溯，放行" 0 "$(ci)"
 
