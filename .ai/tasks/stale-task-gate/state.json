@@ -1,0 +1,209 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "stale-task-gate",
+    "task_type": "bugfix",
+    "created_at": "2026-11-11T03:40:00Z",
+    "flow_tier": "S",
+    "risk_tier": "HIGH",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "缺陷修复：自定的「3 天」规则一直只有一行 warn，两个任务停在 impl 9~10 天、gate 却全绿。改动是判据 + 一条出口命令 + 契约字段说明，写进 docs/06-reference/state-fields.md 的「封闭」一节，不新增产品能力，不需要 RS/FS/WBS。",
+    "related_task": "harness-gate-fix",
+    "affected_ids": [
+      "doctor",
+      "verify",
+      "harness-cli",
+      "session_start",
+      "state-fields"
+    ]
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-11T03:40:00Z",
+      "exited_at": "2026-11-11T03:41:00Z",
+      "gate": "deferred",
+      "waived_by": "缺陷修复：期望行为就是「停太久的任务要被判红」，红灯日志 STG-RED（10 条红，跑在修复前的 doctor 上）即复现",
+      "agent": null
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-11T03:41:00Z",
+      "exited_at": "2026-11-11T03:42:00Z",
+      "gate": "deferred",
+      "waived_by": "两个取舍已在代码注释里定案：时钟用 git 提交时间而非 mtime；封存不改 stage（stage 是「死在哪一阶段」的证据）",
+      "agent": null
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-11T03:42:00Z",
+      "exited_at": "2026-11-11T03:43:00Z",
+      "gate": "deferred",
+      "waived_by": "无对外接口：新增一个 state 字段（meta.status/abandoned）、一个配置键（gates.staleTaskDays）、一个 CLI 动词（abandon），均已进 doctor 的消费名录",
+      "agent": null
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-11T03:43:00Z",
+      "exited_at": "2026-11-11T03:44:00Z",
+      "gate": "deferred",
+      "waived_by": "四个 TODO 按「判据 / 出口 / 契约 / 收口」拆分，改动文件逐个列全，无并行拆分点",
+      "agent": null
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-11T03:44:00Z",
+      "exited_at": "2026-11-11T04:29:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder"
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-11T04:29:00Z",
+      "exited_at": "2026-11-11T04:31:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer"
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-11T04:31:00Z",
+      "exited_at": "2026-11-11T04:33:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify"
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-11T04:33:00Z",
+      "exited_at": "2026-11-11T04:35:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    },
+    {
+      "stage": "done",
+      "entered_at": "2026-11-11T04:35:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    }
+  ],
+  "artifacts": [],
+  "todos": [
+    {
+      "id": "STG0",
+      "stack": "harness",
+      "kind": "regression",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "先复现再修：把停滞判据的套件跑在 HEAD 版 doctor（7 天 + mtime + 只 warn）上必须红，修完必须绿",
+      "files": [
+        "scripts/doctor.mjs",
+        "test/stale-task.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 通过（套件是 bash，被测对象由 node --check 保证）",
+        "tests": "红灯日志 STG-RED.log：exit_code=1、10 条 ✗（一条判据都没落地，含「touch 后仍然判红」——旧实现用 mtime，本来就过不了这条）；修后 16/16",
+        "feature_complete": "三种形态（停滞 / 完工未收尾 / 已封存或 blocked 或新近）各有一组断言，且都能被变异打断",
+        "quality_clean": "夹具是临时 git 仓库（相对日期算提交时间），不碰真实 .ai/tasks；断言到具体文案而非只判退出码"
+      },
+      "verify": {
+        "log_path": ".ai/verify/STG0.log",
+        "command": "bash test/stale-task.test.sh"
+      },
+      "red_log_path": ".ai/verify/STG-RED.log"
+    },
+    {
+      "id": "STG1",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "停滞判据长成机器判据：阈值进配置（gates.staleTaskDays=3）、时钟换成 git 提交时间、有未提交改动算「正在动」、abandoned/done/未决 blocker 豁免、判红并印出两条出路",
+      "files": [
+        "scripts/doctor.mjs",
+        "hooks/lib/verify.mjs",
+        "hooks/session_start.mjs",
+        "harness.config.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过（三个文件）",
+        "tests": "test/stale-task.test.sh 16/16；hooks 87/87（新增 session_start 封存过滤 2 条）",
+        "feature_complete": "时钟/豁免/阈值/错误配置四条主线各有断言；变异：时钟退回 mtime 7 红、不豁免 abandoned 1 红、不豁免 blocker 1 红、阈值硬编码 4 红、阈值写错静默 3 红",
+        "quality_clean": "pathActivity 只在 doctor 里用，git 调用按任务数（开着的任务很少）；非 git 仓退回 mtime 并在报告里标注弱时钟"
+      },
+      "verify": {
+        "log_path": ".ai/verify/STG1.log",
+        "command": "bash test/stale-task.test.sh && bash test/hooks.test.sh"
+      }
+    },
+    {
+      "id": "STG2",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "红必须能变绿：新增 harness-cli abandon（强制理由、slug 白名单、不改 stage、写入 at_stage/open_todos），并让 resume 清单与 session_start 不再列已封存任务",
+      "files": [
+        "scripts/harness-cli.mjs",
+        "hooks/lib/verify.mjs",
+        "scripts/ci-verify.mjs",
+        "test/harness-cli.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "harness-cli 202→223；变异：去掉理由校验 1 红（断言到文案才拦得住）、封存顺手改写 stage 1 红、isAbandoned 恒 false 3 红",
+        "feature_complete": "六种拒绝（缺理由/太短/占位/slug 穿越/任务不存在/已完成）+ 成功写入 + 重复封存 + 清单剔除，逐条断言",
+        "quality_clean": "封存走 writeAtomic；只改 meta，不动 stage/todos/证据；已封存豁免「必须做完」，不豁免「做过就得有证据」"
+      },
+      "verify": {
+        "log_path": ".ai/verify/STG2.log",
+        "command": "bash test/harness-cli.test.sh"
+      }
+    },
+    {
+      "id": "STG3",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "契约与文档闭合：state-fields.md 登记 meta.status / meta.abandoned（双向契约通过），新增「封闭：stage 与 status 是两条轴」一节并写清四个判据设计选择",
+      "files": [
+        "docs/06-reference/state-fields.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "不涉及代码",
+        "tests": "npm run doctor 通过：state 字段契约双向一致（代码读的 21 个字段都在契约里，15 个判据字段都有读者）",
+        "feature_complete": "新增字段有等级（判据）与判据出处；三条豁免与时钟选择的理由各一段，对应一次踩坑",
+        "quality_clean": "只写已实现的行为，未把「僵尸任务自动重建」「retro 闭合」写成已做——那两项仍在 retro 的未动清单里"
+      },
+      "verify": {
+        "log_path": ".ai/verify/STG3.log",
+        "command": "npm run doctor && bash test/stale-task.test.sh"
+      }
+    }
+  ],
+  "gate_result": {
+    "at": "2026-11-11T04:40:00Z",
+    "command": "npm run gate",
+    "exit_code": 0,
+    "note": "doctor / check:* / verify:state / 28 个套件全过；新增 test:stale 已进 gate；两个僵尸任务已按 abandon 封存，仓库里不再有「红着没人管」的任务"
+  }
+}

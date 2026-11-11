@@ -1,0 +1,53 @@
+# cmd: bash -c npm\ run\ --silent\ doctor\ \&\&\ bash\ test/stale-task.test.sh
+# started: 2026-11-11T04:28:07Z
+# finished: 2026-11-11T04:28:16Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+[doctor] 配置体检
+
+  说明：project.name 仍是 "harness-starter"，按模板态体检（占位目录只算提醒）。
+        接到真实项目后先改 harness.config.json 的 project.name 与 stacks，再重跑。
+
+  ✓ claude hook 接线完整（4 个）
+  ✓ zcode hook 接线完整（4 个）
+  ✓ 配置键均有消费者（19 个）
+  ✓ 剖面 B 空间：taosdata_td.Defect（指派判据 current_status_operator，严重级 field_6bff71）
+  ✓ GitLab 未接入（扩展项，不接不算故障）——接入后填 runtime.gitlab.url 或 GITLAB_URL
+  ✓ 门禁自测 23 个
+  ✓ 任务停滞判据：10 个任务，阈值 3 天（时钟=git 提交时间）
+  ✓ agent 源 11 个
+  ✓ agents.enabled 11/11 个启用
+  ✓ AGENTS.md 67/70 行
+  ✓ state 字段契约：15 个判据字段均有读者
+  ✓ state 字段契约：代码读取的 21 个字段都在契约里（双向一致）
+  ✓ 外部命令齐备（3 个）
+  ! projects[backend].dir="backend" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失
+  ! projects[frontend].dir="frontend" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失
+  ! target "deepseek" 没有 hook 机制 —— 只有 CI 兜底，文档里不要写"hook 硬拦"
+  ! 门禁在场性未检查：GitLab 未完整接入（缺 url / token / project）——不接不算故障，接入后在 runtime.gitlab.url 写实例地址并提供 GITLAB_TOKEN 与 HARNESS_GITLAB_PROJECT，此处才会给出结论
+
+结果：通过（4 个提醒）
+== 1. 停滞 = 判红（不再是提醒）==
+  [32m✓[0m 有停滞任务时 doctor 退出码非 0
+  [32m✓[0m 停滞任务被点名
+  [32m✓[0m 报出天数和阈值（可核对，不是黑箱）
+  [32m✓[0m 给出 resume 出口
+  [32m✓[0m 给出 abandon 出口（红必须能变绿）
+== 2. 完工未收尾 vs 停滞：两种形态必须分开说 ==
+  [32m✓[0m 全部完成 → 说成完工未收尾
+  [32m✓[0m 完工未收尾也点名
+== 3. 不该判的三类：新近动过 / 有未决 blocker / 已封存 ==
+  [32m✓[0m 刚提交的不判
+  [32m✓[0m 未决 blocker 是正当暂停，不判
+  [32m✓[0m 已封存的不判（否则封存等于把红焊死在仓库里）
+== 4. 时钟是 git 提交时间，不是 mtime ==
+  [32m✓[0m touch 后仍然判红（与 mtime 无关）
+== 5. 有未提交改动 = 正在动（不冤 WIP）==
+  [32m✓[0m 本地改了还没提交 → 不算停滞
+== 6. 阈值可配：设大就没人算停滞；设错必须报出来 ==
+  [32m✓[0m 阈值 30 天 → 10 天的不算停滞
+  [32m✓[0m staleTaskDays=0 → 判配置错误，不静默失效
+  [32m✓[0m staleTaskDays=-3 → 判配置错误，不静默失效
+  [32m✓[0m staleTaskDays=abc → 判配置错误，不静默失效
+
+结果：16 通过，0 失败
