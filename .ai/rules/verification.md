@@ -45,3 +45,30 @@
 > 工作树里有差异的文件零容忍；与 HEAD 一致的文件落在检出窗口内（`gates.verifyFreshnessGraceSec`，
 > 默认 120 秒）的差不作数。超过窗口的时间差仍然算"之后被写过"。
 > 换句话说：这条判据能证明的是"这份证据不是检出顺序的产物"，不能证明"你改完真的重跑过"。
+
+---
+
+## 门禁覆盖哪条通道（2026-11-11 补）
+
+门禁曾经只认 Write / Edit 工具，于是 Bash 是**整条敞开的旁路**：`echo … > state.json`
+不经过 `guard_state`，`cat .env` 不经过 `sensitiveRead`。现在两条通道共用同一套判据
+（`hooks/lib/path_guards.mjs` + `hooks/lib/shell.mjs`）：
+
+| 动作 | 判据 |
+|---|---|
+| Write / Edit / str_replace_editor 写敏感 / 生成物 / 受保护区 | `guard_write`（路径 glob，配置在 `gates.writeGuards`） |
+| `>` `>>` `tee` `cp` `mv` `sed -i` `dd` `truncate` 落到同样三类路径 | `guard_command` 用**同一份**分类函数判 |
+| 任何方式写 `.ai/tasks/*/state.json` | 一律拦：state 必须过 Write/Edit，才能先过证据校验 |
+| 任何方式写 `.ai/verify/` | 一律拦：日志只能由 `scripts/verify-run.sh` 生成（手写与真跑过无法区分） |
+| `cat` `head` `grep` `cp` 等碰到 `.env` / 私钥 / 凭据 | 与 Read 工具同一条 `sensitiveRead` 清单 |
+| `bash -c '<脚本>'` / `eval '<脚本>'` | 内层按同一条判据再走一遍（递归封顶 3 层） |
+
+**allowlist 是段级豁免，不是整条命令的短路。** 命令先按 `;` `&&` `||` 换行切段，逐段判；
+allowlist 只豁免它命中的那一段，且不豁免路径判据、不豁免"管道送进解释器"。
+旧实现命中前缀就 `exit 0`，于是 `mvn test; git push --force` 整条放行。
+
+**边界（写清楚，不假装）**：变量拼出来的路径（`$D/state.json`）拿不到展开值；
+`node -e` / `python -c` 里的写文件调用不在词法判据内。这两类归 CR 与人审。
+门禁的作用是让"绕过"变成需要刻意为之的动作，而不是一条顺手就能走的路——
+**它守诚实，不守正确**。
+

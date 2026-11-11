@@ -21,6 +21,10 @@ reset() {
   mkdir -p "$TMP/repo/scripts"
   cp "$ROOT/scripts/check-skills.mjs" "$TMP/repo/scripts/"
   cp "$ROOT/scripts/resolve-skills.mjs" "$TMP/repo/scripts/"
+  # resolve-skills 的 glob 与门禁共用 hooks/lib/glob.mjs（安装后的项目里两者本来都在）。
+  # 夹具少了这个目录，测的就不是"装好的项目"，而是一个不存在的形态。
+  mkdir -p "$TMP/repo/hooks"
+  cp -R "$ROOT/hooks/lib" "$TMP/repo/hooks/"
 }
 
 # mut <形态> —— 在 fixture 上制造一种坏形态。

@@ -19,8 +19,9 @@
 ┌───────────────────── 会话层（每个开发者的本地）─────────────────────┐
 │ CLI（Claude Code / ZCode / DeepSeek）× 11 个 agent                  │
 │ agent 唯一源 agents/*.agent.md → 生成三套产物，改一处处处同步        │
-│ 本地三道门：guard_command（高危）guard_write（考卷区）              │
-│             guard_state（无证据不得标完成）← verify-run 产证据       │
+│ 本地三道门：guard_command（高危命令 + Bash 写/读通道）              │
+│             guard_write（考卷区）guard_state（无证据不得标完成）    │
+│             ← verify-run 产证据；两道写门共用同一套路径判据          │
 └──────────────────────────┬─────────────────────────────────────────┘
                            │ git —— 唯一序列化点
                            │ （任务状态、证据日志、路由规则、代码全部入库）

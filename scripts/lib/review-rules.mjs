@@ -9,27 +9,13 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { globToRe } from '../../hooks/lib/glob.mjs';
 
 export class RulesError extends Error {}
 
-/** glob → 正则：* 单层、** 任意层。只支持这两种通配，够路由用，别长成第二个 glob 引擎。 */
-export function globToRegExp(glob) {
-  let s = '';
-  let i = 0;
-  while (i < glob.length) {
-    const c = glob[i];
-    if (c === '*') {
-      if (glob[i + 1] === '*') {
-        // `**/` 跨目录前缀：`a/**/b` 也应命中 `a/b`；裸 `**` = 任意
-        if (glob[i + 2] === '/') { s += '(?:.*/)?'; i += 3; }
-        else { s += '.*'; i += 2; }
-      } else { s += '[^/]*'; i += 1; }
-    } else if ('\\^$.|?+()[]{}'.includes(c)) { s += `\\${c}`; i += 1; }
-    else { s += c; i += 1; }
-  }
-  return new RegExp(`^${s}$`);
-}
-
+/** glob 语义见 hooks/lib/glob.mjs：只留一份，避免路由与门禁判定不一致。 */
+// 只做别名导出：实现留在 hooks/lib/glob.mjs，这里不再有第二份。
+export const globToRegExp = globToRe;
 const matchAny = (patterns, file) => patterns.some((p) => globToRegExp(p).test(file));
 
 export function loadRules(root) {

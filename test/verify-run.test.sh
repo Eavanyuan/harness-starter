@@ -115,6 +115,16 @@ code=0
 bash scripts/verify-run.sh T9 bash -c true >/dev/null 2>&1 || code=$?
 check "缺少 -- 分隔符 → 64" 64 "$code"
 
+echo "== 7b. todo-id 不许把日志写出 .ai/verify =="
+# id 直接拼进路径：`../escape` 会让"证据"落在 .ai/ 甚至仓库别处，
+# 而门禁只看 .ai/verify/<id>.log 在不在——写到别处的日志等于没写，还不报错。
+code=0; bash scripts/verify-run.sh ../escape -- bash -c 'true' >/dev/null 2>"$TMP/e7b" || code=$?
+check "含 ../ 的 id → 64" 64 "$code"
+if [ -f .ai/escape.log ] || [ -f scripts/escape.log ]; then r=yes; else r=no; fi
+check "没有在 .ai/verify 之外落文件" no "$r"
+code=0; bash scripts/verify-run.sh "a b" -- bash -c 'true' >/dev/null 2>&1 || code=$?
+check "含空格的 id → 64" 64 "$code"
+
 echo "== 8. 日志 id 撞名 → 不静默覆盖别人的证据 =="
 # .ai/verify/<id>.log 是全局命名空间。两个任务都用 T1 时，后来者会静默冲掉前者，
 # 而门禁只看"有日志且 exit 0"，串台看不出来——证据被换成另一件事的输出，账还是绿的。

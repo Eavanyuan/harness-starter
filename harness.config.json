@@ -31,9 +31,20 @@
   "skills": {
     "dir": ".skills",
     "maxLines": 200,
-    "requiredKeys": ["name", "stack", "version", "stage0"],
-    "requiredSections": ["## Stage 0", "## 硬规则", "## 交付"],
-    "extraStacks": ["harness"],
+    "requiredKeys": [
+      "name",
+      "stack",
+      "version",
+      "stage0"
+    ],
+    "requiredSections": [
+      "## Stage 0",
+      "## 硬规则",
+      "## 交付"
+    ],
+    "extraStacks": [
+      "harness"
+    ],
     "note": "skill 按 applies_to 的文件 glob 选择，不是按 stack 一对一：同一 stack 可以有多份（如 frontend 与 e2e 都服务 frontend）。命中多份则全部加载。extraStacks 是技术栈之外的受管区域（harness = 门禁与生成器自身），不算 stacks。"
   },
   "agents": {
@@ -54,33 +65,59 @@
   },
   "capabilityMap": {
     "fs.read": {
-      "claude": ["Read"],
-      "zcode": ["Read"],
+      "claude": [
+        "Read"
+      ],
+      "zcode": [
+        "Read"
+      ],
       "deepseek": []
     },
     "fs.search": {
-      "claude": ["Grep", "Glob"],
-      "zcode": ["Grep", "Glob"],
+      "claude": [
+        "Grep",
+        "Glob"
+      ],
+      "zcode": [
+        "Grep",
+        "Glob"
+      ],
       "deepseek": []
     },
     "fs.write": {
-      "claude": ["Write"],
-      "zcode": ["Write"],
+      "claude": [
+        "Write"
+      ],
+      "zcode": [
+        "Write"
+      ],
       "deepseek": []
     },
     "fs.edit": {
-      "claude": ["Edit"],
-      "zcode": ["Edit"],
+      "claude": [
+        "Edit"
+      ],
+      "zcode": [
+        "Edit"
+      ],
       "deepseek": []
     },
     "shell.exec": {
-      "claude": ["Bash"],
-      "zcode": ["Bash"],
+      "claude": [
+        "Bash"
+      ],
+      "zcode": [
+        "Bash"
+      ],
       "deepseek": []
     },
     "agent.spawn": {
-      "claude": ["Agent"],
-      "zcode": ["Agent"],
+      "claude": [
+        "Agent"
+      ],
+      "zcode": [
+        "Agent"
+      ],
       "deepseek": []
     }
   },
@@ -118,14 +155,20 @@
     {
       "id": "strong",
       "label": "高能力模型",
-      "agents": ["claude-*", "deepseek-v4*", "glm-4.6*"],
+      "agents": [
+        "claude-*",
+        "deepseek-v4*",
+        "glm-4.6*"
+      ],
       "scaffold": "light",
       "note": "豁免流程脚手架：SessionStart 不注入逐任务 TODO 提醒（session_start.mjs 按 scaffold 分流输出）；技能加载与 verify 证据链不豁免"
     },
     {
       "id": "standard",
       "label": "常规模型",
-      "agents": ["*"],
+      "agents": [
+        "*"
+      ],
       "scaffold": "full",
       "note": "全量脚手架"
     }
@@ -236,7 +279,21 @@
         "**/id_rsa*",
         "**/credentials*"
       ],
-      "sensitiveExempt": ["**/.env.example", "**/.env.sample", "**/.env.template"]
-    }
+      "sensitiveExempt": [
+        "**/.env.example",
+        "**/.env.sample",
+        "**/.env.template"
+      ]
+    },
+    "shell": {
+      "note": "Bash 通道的路径判据。state/evidence 是仓库目录约定（本文件），命令词表在 hooks/lib/shell.mjs（那是 shell 知识，不是策略）。",
+      "stateGlob": ".ai/tasks/*/state.json",
+      "evidenceGlob": ".ai/verify/**"
+    },
+    "extraSourceGlobs": [
+      "hooks/**/*.{mjs,sh}",
+      "scripts/**/*.{mjs,sh}",
+      "templates/**"
+    ]
   }
 }

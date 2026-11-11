@@ -1,0 +1,241 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "gate-channel-fix",
+    "task_type": "bugfix",
+    "created_at": "2026-11-11T02:40:00Z",
+    "flow_tier": "S",
+    "risk_tier": "HIGH",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "缺陷修复：两处通道性绕过（Bash 门禁旁路、allowlist 整条短路）与两处一致性债（glob 四份实现、verify-run id 未过滤）。行为边界写进 .ai/rules/verification.md 的「门禁覆盖哪条通道」，不新增产品能力，不需要 RS/FS/WBS。",
+    "related_task": "harness-gate-fix",
+    "affected_ids": [
+      "guard_command",
+      "guard_write",
+      "glob",
+      "verify-run",
+      "verification"
+    ]
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-11T02:40:00Z",
+      "exited_at": "2026-11-11T02:41:00Z",
+      "gate": "deferred",
+      "waived_by": "缺陷修复：期望行为就是「绕过应当被拦」，红灯日志 GC-RED（20 条红）给出复现，无需另写需求",
+      "agent": null
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-11T02:41:00Z",
+      "exited_at": "2026-11-11T02:42:00Z",
+      "gate": "deferred",
+      "waived_by": "无选型空间：判据下沉到既有两道门，新增的是共享模块（glob / path_guards / shell），不是新架构层",
+      "agent": null
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-11T02:42:00Z",
+      "exited_at": "2026-11-11T02:42:00Z",
+      "gate": "deferred",
+      "waived_by": "无对外接口与数据模型变化；新增配置项 gates.shell 与 gates.extraSourceGlobs 已进 doctor 的消费名录（配置项空转会判红）",
+      "agent": null
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-11T02:42:00Z",
+      "exited_at": "2026-11-11T02:43:00Z",
+      "gate": "deferred",
+      "waived_by": "四个 TODO 按通道拆分（写/读、allowlist、glob、证据口径），改动文件已逐个列全，无并行拆分点",
+      "agent": null
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-11T02:43:00Z",
+      "exited_at": "2026-11-11T02:52:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder"
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-11T02:52:00Z",
+      "exited_at": "2026-11-11T02:54:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer"
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-11T02:54:00Z",
+      "exited_at": "2026-11-11T02:56:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "ci-verify"
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-11T02:56:00Z",
+      "exited_at": "2026-11-11T02:58:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    },
+    {
+      "stage": "done",
+      "entered_at": "2026-11-11T02:58:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": null
+    }
+  ],
+  "artifacts": [],
+  "todos": [
+    {
+      "id": "GC0",
+      "stack": "harness",
+      "kind": "regression",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "先复现再修：把新增的通道断言跑在 HEAD 版 guard_command 上必须红（20 条），修完必须绿",
+      "files": [
+        "hooks/guard_command.mjs",
+        "test/hooks.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "测试脚本，语法由执行验证",
+        "tests": "红灯日志 GC-RED.log exit_code=1、20 条 ✗（写通道 8、证据目录 2、敏感读 3、受保护区 2、allowlist 3、误伤 2），修后 85/85",
+        "feature_complete": "两条 P0 各有一组断言，且都能被变异打断（去掉 judgeWrite 13 红 / 退回整条 allowlist 3 红 / 去掉 judgeRead 3 红）",
+        "quality_clean": "用例只构造最小现场（临时 ROOT + 假 allowlist），不碰真实 .ai/ 与真实 allowlist"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GC0.log",
+        "command": "bash test/hooks.test.sh && bash test/verify-run.test.sh"
+      },
+      "red_log_path": ".ai/verify/GC-RED.log"
+    },
+    {
+      "id": "GC1",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "Bash 通道接上与 Write/Edit 同源的路径判据：写重定向 / cp / mv / sed -i / dd / tee 落到 state、证据目录、敏感、生成物、受保护区一律拦；读类命令按 sensitiveRead 拦；bash -c / eval 递归一层；heredoc 正文不算命令",
+      "files": [
+        "hooks/guard_command.mjs",
+        "hooks/lib/shell.mjs",
+        "hooks/lib/path_guards.mjs",
+        "harness.config.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过（ESM 由执行验证）",
+        "tests": "bash test/hooks.test.sh 85/85；变异：去掉写判据 13 红、去掉读判据 3 红、不剥 heredoc 1 红",
+        "feature_complete": "三类写入判据（state / 证据 / 受保护区）+ 敏感读 + 递归 shell 全覆盖；误伤用例（.env.example、grep 裸词、grep 正则片段、/tmp 输出、提交信息）逐条放行",
+        "quality_clean": "判据与 guard_write 共用 hooks/lib/path_guards.mjs，不复制顺序；shell 词法只做有限解析，边界写进注释与 .ai/rules/verification.md"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GC1.log",
+        "command": "bash test/hooks.test.sh"
+      }
+    },
+    {
+      "id": "GC2",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "allowlist 改成段级豁免：先按 ; && || 换行切段，逐段判规则；allowlist 只豁免命中的那一段，且不豁免路径判据与「管道送进解释器」",
+      "files": [
+        "hooks/guard_command.mjs",
+        "test/hooks.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "hooks 85/85；变异：把 allowlist 提前到整条命令短路 → 3 条红（; 分隔 / && 分隔 / 管道进解释器）",
+        "feature_complete": "前缀命中仍能豁免本来要拦的那一段（mvn test -DskipTests 放行），后半段照判",
+        "quality_clean": "测试自己的 allowlist 文件写在临时 ROOT 下，不污染仓库"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GC2.log",
+        "command": "bash test/hooks.test.sh"
+      }
+    },
+    {
+      "id": "GC3",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "一致性债：glob 四份实现收敛到 hooks/lib/glob.mjs（语义统一为 * 单层 / ** 任意层 / **/ 零层 / {a,b}），并加结构断言防止再抄一份",
+      "files": [
+        "hooks/lib/glob.mjs",
+        "hooks/guard_write.mjs",
+        "hooks/lib/verify.mjs",
+        "scripts/resolve-skills.mjs",
+        "scripts/lib/review-rules.mjs",
+        "test/glob.test.sh",
+        "package.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 通过；四个消费者都能 import",
+        "tests": "test/glob.test.sh 6/6（语义 15 条 + 单源结构 5 条）；变异：去掉 {a,b} → 1 红，**/ 不允许零层 → 1 红",
+        "feature_complete": "四份实现全部改为 import；结构断言覆盖「不得再有 function globTo…」",
+        "quality_clean": "语义取四者的并集（不丢任何一处原有能力），a/**/b 对 a/b 的差异被统一为匹配"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GC3.log",
+        "command": "bash test/glob.test.sh && bash test/skills.test.sh && bash test/review-router.test.sh"
+      }
+    },
+    {
+      "id": "GC4",
+      "stack": "harness",
+      "kind": "fix",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "证据口径：verify-run 的 todo-id 加白名单（拦住 ../ 把日志写出 .ai/verify）；新鲜度候选集加 gates.extraSourceGlobs，把 hooks/ scripts/ templates/ 纳入本仓自身",
+      "files": [
+        "scripts/verify-run.sh",
+        "test/verify-run.test.sh",
+        "hooks/lib/verify.mjs",
+        "harness.config.json",
+        ".ai/rules/verification.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 通过",
+        "tests": "verify-run 24/24；变异：删掉 id 白名单 → 3 条红（含「没在 .ai/verify 之外落文件」）",
+        "feature_complete": "id 白名单同时挡住 ../ 与空格；extraSourceGlobs 让 hook/script 改动进入新鲜度口径（本仓 dogfood）",
+        "quality_clean": "只加判据与配置，不改判据强度分档；副作用（未提交时会大面积判旧）已在规则文档写明"
+      },
+      "verify": {
+        "log_path": ".ai/verify/GC4.log",
+        "command": "bash test/hooks.test.sh && bash test/glob.test.sh && bash test/verify-run.test.sh"
+      }
+    }
+  ],
+  "gate_result": {
+    "at": "2026-11-11T02:58:00Z",
+    "command": "npm run gate",
+    "exit_code": 0,
+    "note": "doctor / check:* / verify:state / 26 个套件全过；新增 test:glob 已进 gate"
+  }
+}

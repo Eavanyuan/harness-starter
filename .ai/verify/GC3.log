@@ -1,0 +1,73 @@
+# cmd: bash -c bash\ test/glob.test.sh\ \&\&\ bash\ test/skills.test.sh\ \&\&\ bash\ test/review-router.test.sh
+# started: 2026-11-11T02:51:22Z
+# finished: 2026-11-11T02:52:16Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+  [32m✓[0m 语义 15 条
+== 2. 只有一份实现（结构断言）==
+  [32m✓[0m 除 hooks/lib/glob.mjs 外没有第二份 glob 实现
+  [32m✓[0m hooks/guard_write.mjs 引用共享引擎
+  [32m✓[0m hooks/lib/verify.mjs 引用共享引擎
+  [32m✓[0m scripts/resolve-skills.mjs 引用共享引擎
+  [32m✓[0m scripts/lib/review-rules.mjs 引用共享引擎
+
+结果：6 通过，0 失败
+check-skills 自测
+  ✓ 原样通过
+  ✓ 新增一个合法 skill 仍通过
+  ✓ name 与目录名不一致
+  ✓ 缺少必备章节
+  ✓ references 指向不存在的文件
+  ✓ 引用其他 skill 的入口（级联）
+  ✓ stack 不在 config.stacks 里
+  ✓ 缺 applies_to
+  ✓ 超过行数上限
+  ✓ required_skills 无法解析
+  ✓ 缺 frontmatter
+  ✓ 外部素材声明了来源却没写 commit 锚
+  ✓ 外部素材带 commit 锚则放行
+
+resolve-skills 自测
+  ✓ 后端文件只命中 backend
+  ✓ e2e 文件只命中 e2e（不命中 frontend/src）
+  ✓ 前端业务文件命中 frontend（不命中 e2e）
+  ✓ 多栈改动命中多个 skill
+  ✓ 范围外文件不加载 skill
+  ✓ 非 git 仓库时 --diff 明确报错而非静默
+
+通过 19，失败 0
+== 1. 命中与分流 ==
+  [32m✓[0m RS 文档 → rs + evidence
+  [32m✓[0m 任务目录 rs.md（单层 *）命中
+  [32m✓[0m 任务目录深层 rs.md（跨层）不命中 rs
+  [32m✓[0m ADR 命中（docs/plans 下 ADR- 前缀）
+  [32m✓[0m 源码（projects 槽 backend）→ cr
+  [32m✓[0m RS + 源码混合 → 三类并存
+  [32m✓[0m 未匹配文件（README）→ 仅 evidence
+== 2. 噪声与 trivial ==
+  [32m✓[0m 纯噪声 → 无任何审核
+  [32m✓[0m 纯噪声 → trivial=true（evidence 也跳过）
+  [32m✓[0m 噪声+真实混合 → 噪声不进 rs
+== 3. projects 无配置时 fallback 兜底 ==
+  [32m✓[0m 无 config → cr 走 fallback
+  [32m✓[0m fallback 槽 src/** 命中 python 源码
+== 4. fail-closed：规则坏了不许装没事 ==
+  [32m✓[0m 规则缺失 → exit 2
+  [32m✓[0m schema_version 越界 → exit 2
+  [32m✓[0m harness.config.json 解析失败 → exit 2（不静默降级 fallback）
+  [32m✓[0m projects 写成字符串 → exit 2（不静默退到 fallback）
+  [32m✓[0m 项目项漏 dir → exit 2
+  [32m✓[0m 项目 dir 是空白 → exit 2
+  [32m✓[0m v1 栈项漏 dir → exit 2
+  [32m✓[0m v1 stacks 写法仍被认（老配置不炸）
+== 5. 无槽可见化与 fs 路由（演练 G1/B3） ==
+  [32m✓[0m 无槽代码不改变退出码（可见不阻断）
+  [32m✓[0m uncovered 列出槽外代码文件
+  [32m✓[0m stderr 有覆盖洞提示
+  [32m✓[0m 账本记 uncovered_code
+  [32m✓[0m 槽外 md 不误报 uncovered
+  [32m✓[0m FS 变更 → fs + evidence
+== 6. git 模式（--base 真实 diff） ==
+  [32m✓[0m --base diff 只取新文件
+
+结果：27 通过，0 失败

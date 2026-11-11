@@ -24,6 +24,8 @@ import { fileURLToPath } from 'node:url';
 import { readStdinJson } from './lib/verify.mjs';
 import { WRITE_TOOLS, writeTarget } from './lib/write_tools.mjs';
 import { recordDeny } from './lib/ledger.mjs';
+import { globToRe } from './lib/glob.mjs';
+import { classifyPath, loadGuards } from './lib/path_guards.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -56,17 +58,7 @@ function loadConfig() {
   }
 }
 
-/** `**` 与 `*` 的区别必须保留：前者跨目录，后者不跨。用占位符避免二次替换。 */
-function globToRe(glob) {
-  let s = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  s = s
-    .replace(/\*\*\//g, '\u0000S')
-    .replace(/\*\*/g, '\u0000A')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\u0000S/g, '(?:.*/)?')
-    .replace(/\u0000A/g, '.*');
-  return new RegExp('^' + s + '$');
-}
+/** `**` 与 `*` 的区别在 lib/glob.mjs 里统一维护——门禁与 CI 不能各有一份 glob。 */
 
 function activeAllowlist() {
   const p = join(ROOT, 'hooks/write-allowlist.txt');
@@ -98,17 +90,12 @@ if (rel.startsWith('..') || isAbsolute(rel)) {
   deny(`写入仓库外路径：${target}`, '只改本仓库内的文件；仓库外操作属于环境变更，交给人做', target);
 }
 
-const guards = (loadConfig().gates || {}).writeGuards || {};
-
-function hit(list) {
-  return (list || []).find((g) => globToRe(g).test(rel));
-}
+const guards = loadGuards(loadConfig());
 
 // 示例文件必须先判：否则 deny 提示"改写 .env.example"，而它自己又被 sensitive 拦住，
 // 门禁就把自己给出的唯一出路堵死了（这是上一版真实存在的死循环）。
-const exempt = hit(guards.sensitiveExempt);
-const sensitive = exempt ? null : hit(guards.sensitive);
-if (sensitive) {
+const cls = classifyPath(rel, guards);
+if (cls.sensitive) {
   const example = (guards.sensitiveExempt || [])[0] || '.env.example';
   deny(
     `写入凭据类文件 ${rel}`,
@@ -117,7 +104,7 @@ if (sensitive) {
   );
 }
 
-const generated = hit(guards.generated);
+const generated = cls.generated;
 if (generated) {
   deny(
     `${rel} 是生成物（命中 ${generated}），手工修改会在下一次 build 被覆盖`,
@@ -126,7 +113,7 @@ if (generated) {
   );
 }
 
-const protectRule = hit(guards.protected);
+const protectRule = cls.protect;
 if (protectRule) {
   const allowed = activeAllowlist().some((g) => globToRe(g).test(rel));
   if (!allowed) {

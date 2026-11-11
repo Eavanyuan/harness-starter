@@ -26,6 +26,7 @@ import { existsSync, statSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { globToRe } from './glob.mjs';
 import {
   checkCompleteness as checkDocCompleteness,
   missingDeclarations as missingDocDeclarations,
@@ -228,30 +229,27 @@ export function gitTracked(repo, relPath) {
   }
 }
 
-/** `**` 跨目录、`*` 不跨目录、`{a,b}` 是或。与 guard_write 的 glob 语义保持一致。 */
-function globToRe(glob) {
-  let s = glob.replace(/\{([^{}]*)\}/g, (_, inner) => '\u0001' + inner.split(',').join('\u0002') + '\u0003');
-  s = s
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*\*\//g, '\u0000S')
-    .replace(/\*\*/g, '\u0000A')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\u0001/g, '(?:')
-    .replace(/\u0002/g, '|')
-    .replace(/\u0003/g, ')')
-    .replace(/\u0000S/g, '(?:.*/)?')
-    .replace(/\u0000A/g, '.*');
-  return new RegExp('^' + s + '$');
-}
+/** glob 语义见 lib/glob.mjs：四种实现漂过一次，现在只留一份。 */
 
-/** 各栈声明的源码 glob（v2 projects 数组 + v1 stacks 对象统一提取）。 */
+/**
+ * 各栈声明的源码 glob（v2 projects 数组 + v1 stacks 对象统一提取），
+ * 加上 gates.extraSourceGlobs 里显式列出的目录。
+ *
+ * 为什么要有 extraSourceGlobs：本仓库最大的使用场景就是 dogfood —— 改的是
+ * hooks/ 与 scripts/，而模板配置默认只声明了 backend/ frontend/。
+ * 那两个目录在本仓不存在，于是"改完门禁却没重跑证据"完全不在新鲜度口径内，
+ * 证据链对自己最该管的地方是瞎的。加一条显式清单，比往 stacks 里塞一个
+ * 没有 lint/test 的假栈干净。
+ */
 export function stackSourceGlobs(config) {
   const projects = Array.isArray(config && config.projects)
     ? config.projects
     : Object.values((config && config.stacks) || {});
+  const extra = ((config && config.gates) || {}).extraSourceGlobs || [];
   return projects
     .map((s) => s && s.srcGlob)
-    .filter(Boolean);
+    .filter(Boolean)
+    .concat(extra.filter(Boolean));
 }
 
 /**

@@ -1,0 +1,137 @@
+# cmd: bash test/hooks.test.sh
+# started: 2026-11-11T02:47:51Z
+# finished: 2026-11-11T02:48:12Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+== 1. 合规完成态（日志晚于源码）→ 应放行 ==
+  [32m✓[0m 完整证据链放行
+== 2. 缺审计项 → 应阻断 ==
+  [32m✓[0m 缺 3 项审计必拦
+== 3. 日志早于源码修改 → 应阻断（防复述历史输出）==
+  [32m✓[0m 证据不新鲜必拦
+== 4. 日志 exit_code 非 0 → 应阻断 ==
+  [32m✓[0m 失败命令不能标完成
+== 5. 日志超过 72 小时 → 应阻断（verifyFreshnessHours 真的生效）==
+  [32m✓[0m 过期证据必拦
+== 6. OODA 跳阶段 → 应阻断 ==
+  [32m✓[0m 跳过 observe 必拦
+== 7. 完成态缺 id → 应阻断 ==
+  [32m✓[0m 无 id 无法定位证据必拦
+== 8. id 重复 → 应阻断（证据会互相覆盖）==
+  [32m✓[0m 重复 id 必拦
+== 9. 写完之后不是合法 JSON → 应阻断 ==
+  [32m✓[0m 坏 JSON 必拦
+== 9b. Edit 把 doing 改成 completed（审计为空）→ 应阻断 ==
+  [32m✓[0m Edit 也要重建后校验
+== 9c. Edit 同一次补齐审计 + ooda → 应放行 ==
+  [32m✓[0m 补齐后可放行
+== 10. 非 state 路径的写入 → 不干预 ==
+  [32m✓[0m 普通文件不归它管
+== 11. 高危命令：force push → 应拦截 ==
+  [32m✓[0m git push --force 必拦
+== 12. force-with-lease → 应放行（可回滚形式）==
+  [32m✓[0m force-with-lease 放行
+== 13. 绕过形态：rm 反序 flag → 应拦截 ==
+  [32m✓[0m rm -fr / 必拦
+== 14. 绕过形态：rm 分离 flag → 应拦截 ==
+  [32m✓[0m rm -r -f / 必拦
+== 15. 普通临时目录清理 → 应放行 ==
+  [32m✓[0m rm -rf /tmp/build 放行
+== 16. 绕过形态：+refspec 强推 → 应拦截 ==
+  [32m✓[0m git push origin +main:main 必拦
+== 17. 绕过形态：wget 管道执行 → 应拦截 ==
+  [32m✓[0m wget | bash 必拦
+== 18. curl 管道执行 → 应拦截 ==
+  [32m✓[0m curl | sh 必拦
+== 19. 常规命令 → 应放行 ==
+  [32m✓[0m ls -la src 放行
+== 19b. 跳过测试 flag：-DskipTests → 应拦截（=false 显式打开除外） ==
+  [32m✓[0m -DskipTests 必拦
+  [32m✓[0m -DskipTests=true 仍拦
+  [32m✓[0m -DskipTests=false（显式打开测试，模块默认 skipTests=true 时必须带）放行
+== 19c. 跳过测试 flag：maven.test.skip → 应拦截（=false 除外） ==
+  [32m✓[0m -Dmaven.test.skip=true 必拦
+  [32m✓[0m -Dmaven.test.skip=false 放行
+== 19d. 跳过测试 flag：--passWithNoTests → 应拦截 ==
+  [32m✓[0m --passWithNoTests 必拦
+== 19e. 正常验证命令 → 应放行（不误伤 -Dtest= 等形近参数）==
+  [32m✓[0m mvn -q test -Dtest=FooTest 放行
+  [32m✓[0m mvn -q compile 放行
+== 20. 读 .env.production → 应拦截 ==
+  [32m✓[0m 禁读真实 env 必拦
+== 21. 读 .env.example → 应放行（门禁不能堵死自己给的出路）==
+  [32m✓[0m 示例 env 放行
+== 22. 读普通源码 → 应放行 ==
+  [32m✓[0m 普通文件放行
+== 23. 拦截提示指向真实 allowlist 路径 ==
+  [32m✓[0m 提示路径为 hooks/allowlist.txt
+== 24. session_start：常规档 → 注入逐任务提醒 ==
+  [32m✓[0m 常规档输出任务清单
+== 25. session_start：light 档 → 豁免逐任务提醒（scaffold 真实分流）==
+  [32m✓[0m light 档跳过任务清单
+== 26. 拼错的 TODO 状态 → 必拦（枚举闭合，状态不能藏出门禁）==
+  [32m✓[0m 拼错状态必拦
+  [32m✓[0m 拦截信息点名了非法状态
+== 27. stage=done 但 TODO 未收尾 → 必拦（退出条件）==
+  [32m✓[0m stage=done 带未完成 TODO 必拦
+== 28. change 完成态缺追溯字段 → 必拦；补齐后放行 ==
+  [32m✓[0m change 缺 baseline/affected_ids/change_tier 必拦
+  [32m✓[0m 拦截信息标注 trace 规则
+  [32m✓[0m change 关联任务不存在必拦（meta 被改断也能抓到）
+  [32m✓[0m change 追溯字段齐备放行
+== 29. bugfix 完成态：回归 TODO 须带红灯日志（修复前的失败运行）==
+  [32m✓[0m bugfix 缺回归 TODO 必拦
+  [32m✓[0m 回归 TODO 缺红灯日志必拦
+  [32m✓[0m 拦截信息点名缺红灯日志
+  [32m✓[0m 红灯日志 exit_code=0 必拦（修复前必须失败过）
+  [32m✓[0m 红灯日志（exit 1）就位 → 放行
+== 30. 用 str_replace_editor 写 state.json → 同样要过门禁（工具集合单源）==
+  [32m✓[0m str_replace_editor 不能绕过证据门禁
+  [32m✓[0m 拦截原因仍然是证据不足（不是别的错）
+== 31. stage 拼错 → 必拦（阶段名是判据，不是标签）==
+  [32m✓[0m 连字符写法被判非法
+  [32m✓[0m 报错点名「stage 非法」
+  [32m✓[0m 报错给出合法阶段（含 fs_review）
+== 32. impl 里留着 pending → 写盘放行（收尾是退出条件，不是写入条件）==
+  [32m✓[0m impl 进行中允许写 state（pending 是常态）
+  [32m✓[0m 同一个 TODO 到 done 反而不许留
+== 33. 空 todos + done → 必拦；写了理由才放（全绿捷径）==
+  [32m✓[0m 零 TODO 的完成态没有理由 → 拦
+  [32m✓[0m 报错点名该写哪个字段
+  [32m✓[0m 写了理由 → 放行（S 档琐碎任务合法）
+== 34. Bash 重定向写 state.json → 必拦（通道性绕过）==
+  [32m✓[0m echo > state.json 必拦
+  [32m✓[0m 拦截信息点名 state.json
+  [32m✓[0m 给出了唯一合法出路（Write/Edit 过校验）
+  [32m✓[0m 追加重定向 >> 也拦
+  [32m✓[0m cp 覆盖 state.json 也拦
+  [32m✓[0m sed -i 改 state.json 也拦
+  [32m✓[0m bash -c 里藏的重定向也拦
+  [32m✓[0m eval 里藏的重定向也拦
+== 35. Bash 写证据目录 → 必拦（手写日志与真跑过无法区分）==
+  [32m✓[0m echo > .ai/verify 必拦
+  [32m✓[0m tee 到 .ai/verify 必拦
+  [32m✓[0m 拦截信息给出 verify-run.sh
+== 36. Bash 读敏感文件 → 必拦；同形搜索/示例放行 ==
+  [32m✓[0m cat .env 必拦
+  [32m✓[0m cat .env.example 放行
+  [32m✓[0m head .env.production 必拦
+  [32m✓[0m cp .env 出去也拦（源是凭据）
+  [32m✓[0m grep 裸词 credentials 放行（不是路径）
+  [32m✓[0m grep "\.env" 放行（正则片段不是路径）
+== 37. Bash 写受保护区 → 必拦；非受保护路径照常 ==
+  [32m✓[0m echo > hooks/*.mjs 必拦
+  [32m✓[0m echo > harness.config.json 必拦
+  [32m✓[0m 输出到 /tmp 放行
+  [32m✓[0m npm run gate 2>&1 | tail 放行
+== 38. 不误伤：heredoc 正文与提交信息里的敏感字样 ==
+  [32m✓[0m heredoc 正文里的强推字样不算命令
+  [32m✓[0m 提交信息里提到 .env 放行
+== 39. allowlist 是段级豁免，不是整条命令的短路 ==
+  [32m✓[0m 命中前缀的那一段放行
+  [32m✓[0m 同一行后半段仍按规则判（; 分隔）
+  [32m✓[0m 同一行后半段仍按规则判（&& 分隔）
+  [32m✓[0m allowlist 不豁免管道进解释器
+  [32m✓[0m 同前缀的非管道用法放行
+
+结果：85 通过，0 失败

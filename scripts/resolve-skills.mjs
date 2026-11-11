@@ -15,6 +15,7 @@ import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { globToRe } from '../hooks/lib/glob.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SKILLS_DIR = join(ROOT, '.skills');
@@ -29,12 +30,7 @@ function die(msg) {
   process.exit(1);
 }
 
-// glob → 正则。先转义元字符，再用占位符处理 ** 与 *，避免二次替换。
-function globToRe(glob) {
-  let s = glob.trim().replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  s = s.replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*');
-  return new RegExp('^' + s + '$');
-}
+// glob 语义见 hooks/lib/glob.mjs（此前这里有第二份实现，`a/**/b` 与 verify 判定不同）。
 
 function parseFrontmatter(text) {
   const m = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
