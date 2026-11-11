@@ -424,7 +424,7 @@ export function analyzeSegment(segment, cfg, depth = 0) {
  * 为什么不能用原始 seg.text：
  *   · 续行 `git push \\$⏎--force` —— 规则正则失配，但 bash 执行的是强推；
  *   · 词内转义 `git pu\\sh --force` —— tokenize 已归一成 push，可规则跑在原文上；
- *   · 引号里的说明文字 `git commit -m "never run rm -rf /"` —— 文档被自己的门禁误拦。
+ *   · 引号里的说明文字 `git commit -m "never run rm -rf /"` —— 文档被自己的门禁误拦。  // scan-ok: 注释在解释被拦的写法，不是要执行的命令
  * 做法：剥续行 → 遮蔽引号内容（路径判定不受影响，它走 analyzeSegment 的原始 token）→
  * tokenize 重建。遮蔽后的文本只用于关键词/旗标匹配，宁可漏一条夸张的文档，不拦一次真的提交。
  */
@@ -432,7 +432,7 @@ export function ruleView(segment) {
   let s = String(segment || '').replace(/\\\n/g, ' ');
   s = s.replace(/'(?:[^'\\]|\\.)*'/g, "'…'").replace(/"(?:[^"\\]|\\.)*"/g, '"…"');
   const tokens = tokenize(s);
-  // 管道符保留在重建文本里：高危规则里有一整族靠 `\|` 锚定（curl|sh 等），
+  // 管道符保留在重建文本里：高危规则里有一整族靠 `\|` 锚定（curl|sh 等），  // scan-ok: 注释在解释被拦的写法，不是要执行的命令
   // 只拼词会把管道压掉，那族规则全部失配（A08/B37 回归的教训）。
   const words = tokens.filter((t) => t.t === 'w').map((t) => t.v).filter(Boolean);
   return { text: tokens.map((t) => t.v).join(' '), tokens: words, hasUnquotedSub: /\$\(|`/.test(s) };
@@ -498,7 +498,7 @@ export function hardTokenRule(tokens) {
  *
  * heredoc 喂给解释器（`bash <<'EOF' … EOF`）时，正文是会被执行的脚本：
  * 只把正文的读/写判定并进来，不做关键词扫描——否则往文档里写一段命令示例
- * （`cat > guide.md <<EOF` 内含 `git push --force` 文字）会被自己的门禁误拦，
+ * （`cat > guide.md <<EOF` 内含 `git push --force` 文字）会被自己的门禁误拦，  // scan-ok: 注释在解释被拦的写法，不是要执行的命令
  * 那正是 stripHeredocs 存在的理由。读/写判定只看路径，正文文字不命中路径词表。
  */
 export function analyzeCommand(command, cfg) {

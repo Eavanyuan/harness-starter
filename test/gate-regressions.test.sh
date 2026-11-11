@@ -47,7 +47,7 @@ echo "== B. 高危命令字形（CR R1 组2：token 级判定）=="
 probe D 'rm -Rf ~'
 probe D 'rm --recursive --force /'
 probe D 'git push origin main --force'
-probe D 'git push --force-with-lease --force'
+probe D 'git push --force-with-lease --force'  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
 printf '%s' '{"tool_name":"Bash","tool_input":{"command":"git push \\\n--force"}}' | node "$GC" >/dev/null 2>&1
 check 'git push \⏎--force（续行）' 2 "$?"
 probe D 'git pu\sh --force'
@@ -63,8 +63,8 @@ cp "$HERE"/hooks/lib/*.mjs "$AL/hooks/lib/"
 cp "$HERE/harness.config.json" "$AL/"
 printf 'echo | 对抗测试注入 | 2099-01-01\n' > "$AL/hooks/allowlist.txt"
 GCT="$AL/hooks/guard_command.mjs"
-printf '%s' '{"tool_name":"Bash","tool_input":{"command":"echo $(git push --force)"}}' | node "$GCT" >/dev/null 2>&1
-check "前缀 echo + \$(git push --force) 仍拦" 2 "$?"
+printf '%s' '{"tool_name":"Bash","tool_input":{"command":"echo $(git push --force)"}}' | node "$GCT" >/dev/null 2>&1  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
+check "前缀 echo + \$(git push --force) 仍拦" 2 "$?"  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
 printf '%s' '{"tool_name":"Bash","tool_input":{"command":"echo hello"}}' | node "$GCT" >/dev/null 2>&1
 check "前缀 echo 正常用法仍放行" 0 "$?"
 
@@ -76,11 +76,11 @@ printf '%s' '{"tool_name":"Bash","tool_input":{"command":"bash <<'"'"'EOF'"'"'\n
 check 'heredoc 喂 bash 读 .env' 2 "$?"
 
 echo "== E. 误拦出口（CR R2：引号遮蔽 + scan-ok）=="
-probe P 'git commit -m "note: never run rm -rf / in prod"'
-probe P 'echo "warning: git push --force rewrites history" > /tmp/note.md'
+probe P 'git commit -m "note: never run rm -rf / in prod"'  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
+probe P 'echo "warning: git push --force rewrites history" > /tmp/note.md'  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
 probe P 'rg --no-ignore "\-\-no-verify" hooks/'
 probe P 'cat .env.example'
-probe P 'git push --force-with-lease origin main'
+probe P 'git push --force-with-lease origin main'  # scan-ok: 断言素材，命令只喂给 hook 的 stdin，不执行
 probe P 'mvn -q test -Dtest=FooTest'
 probe P 'ls -la'
 probe P 'rg "stateGlob" hooks/'

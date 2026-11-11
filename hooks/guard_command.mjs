@@ -200,7 +200,7 @@ if (tool === 'Bash') {
     const rv = ruleView(seg.text);
 
     // 段内含未引号的 $( ) 或反引号时，前缀豁免一律不适用：前缀描述的是一条命令的
-    // 字面形态，而命令替换的内容在豁免时刻还没判过（`echo $(git push --force)`）。
+    // 字面形态，而命令替换的内容在豁免时刻还没判过（`echo $(git push --force)`）。  // scan-ok: 注释在解释被拦的写法，不是要执行的命令
     const allowed =
       !pipesToInterpreter.test(seg.text) && !rv.hasUnquotedSub && allow.find((prefix) => seg.text.startsWith(prefix));
     if (allowed) {
