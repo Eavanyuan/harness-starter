@@ -1,8 +1,8 @@
 # cmd: npm run -s test:ai-review
-# started: 2026-11-11T07:13:29Z
-# finished: 2026-11-11T07:13:30Z
+# started: 2026-11-11T07:16:45Z
+# finished: 2026-11-11T07:16:47Z
 # exit_code: 0
-# commit: unknown
+# commit: 016f658eeb3eda4a51e7e7f63b530b18e0ee7de7
 # task: deferred-fixes
 # ---- output tail (last 200 lines) ----
 == 1. L0 机器判据：零 token 先阻断 ==
