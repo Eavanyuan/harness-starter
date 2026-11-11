@@ -1,8 +1,8 @@
 # cmd: npm run gate
-# started: 2026-11-11T06:31:38Z
-# finished: 2026-11-11T06:32:43Z
+# started: 2026-11-11T06:36:59Z
+# finished: 2026-11-11T06:38:06Z
 # exit_code: 0
-# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# commit: e85bd2e866aa3f01c1fcc02989bf00bc06c72578
 # ---- output tail (last 200 lines) ----
   [32m✓[0m 停滞任务被点名
   [32m✓[0m 报出天数和阈值（可核对，不是黑箱）
