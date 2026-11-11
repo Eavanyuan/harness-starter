@@ -22,7 +22,7 @@ import { loadTaskLoopEnv } from './lib/env-file.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // 规则清单的规范化与 guard_command 共用同一份实现：doctor 若自己解析一遍，
 // 两种写法（字符串 / {pattern,hint}）迟早有一边认错，体检就会对着空气报绿。
-import { blockedRules } from '../hooks/lib/verify.mjs';
+import { blockedRules, isAbandoned, pathActivity } from '../hooks/lib/verify.mjs';
 const errors = [];
 const warns = [];
 const ok = [];
@@ -243,28 +243,82 @@ const tests = existsSync(testDir) ? readdirSync(testDir).filter((n) => n.endsWit
 if (tests.length === 0) warn('test/ 下没有测试 —— 门禁坏掉时不会有人知道');
 else ok.push(`门禁自测 ${tests.length} 个`);
 
-// 6. 僵尸任务：stage 未完成且超过 7 天没动
+// 6. 未封闭任务：超过 gates.staleTaskDays（默认 3）没有任何动作
+//
+// 这条以前是"7 天 + 看 mtime + 只提醒"，等于**规则是装饰**：两个僵尸任务停在 impl
+// 9~10 天，doctor 只在终端里小声说了一句，`npm run gate` 照样绿——绿灯说"没问题"，
+// 而问题在原处。三个判决变更：
+//
+//   · 时钟换成 git 提交时间（pathActivity）：mtime 是检出顺序的副产品，clone 一下
+//     历史的先后就被重排，`touch` 还能把它推到未来。判"停滞了几天"必须用"最后一次
+//     把这进度的进度落进仓库"的时间，那是可复现的事实，不是文件系统状态。
+//   · 阈值进配置（gates.staleTaskDays）：3 天是约定，不该硬编码在一个 480 行的脚本里。
+//   · 提醒升为错误：但**必须同时给出把红变绿的命令**。判据不能只有"你错了"——
+//     没有出口的红灯，训练出来的只会是"忽略红灯"。
+//
+// 三种任务不在此列：已完成（done）、已封存（abandoned）、有未决 blocker 在等人
+// （那是正当的暂停，判它停滞等于逼人别把"等决策"记下来）。
+const staleDays = Number((config.gates || {}).staleTaskDays ?? 3);
 const tasksDir = join(ROOT, '.ai/tasks');
-if (existsSync(tasksDir)) {
-  const WEEK = 864e5 * 7;
+if (!(staleDays > 0)) {
+  // 0 / 负数 / 非数字：配置写错时**不能**静默变成"永不报"或"全都报"。
+  err(`gates.staleTaskDays=${JSON.stringify((config.gates || {}).staleTaskDays)} 不是正数 —— 停滞判据会静默失效，改成 3 或更大`);
+} else if (existsSync(tasksDir)) {
+  const DAY = 864e5;
+  let checked = 0;
+  let weakClock = 0;
   for (const d of readdirSync(tasksDir, { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
+    const rel = `.ai/tasks/${d.name}`;
     const p = join(tasksDir, d.name, 'state.json');
     if (!existsSync(p)) {
-      warn(`.ai/tasks/${d.name}/ 没有 state.json`);
+      warn(`${rel}/ 没有 state.json`);
       continue;
     }
     let st;
     try {
       st = JSON.parse(readFileSync(p, 'utf8'));
     } catch {
-      err(`.ai/tasks/${d.name}/state.json 无法解析`);
+      err(`${rel}/state.json 无法解析`);
       continue;
     }
-    const age = Date.now() - statSync(p).mtimeMs;
-    if (st.stage !== 'done' && age > WEEK) {
-      warn(`${d.name} 停在 stage=${st.stage}，已 ${Math.round(age / 864e5)} 天未动 —— 视为僵尸，重建而非续跑`);
+    checked++;
+    if (st.stage === 'done') continue;
+    if (isAbandoned(st)) continue;
+    if ((st.blockers || []).some((b) => b && !b.resolved)) continue;
+
+    const act = pathActivity(ROOT, rel);
+    // 三种时钟，按可靠性排：
+    //   有未提交改动 → 此刻（正在动，别把 WIP 判成停滞，否则人会去给判据加白名单）
+    //   有提交      → 最后一次提交时间（唯一可复现的事实：进度有没有落进仓库）
+    //   不是 git 仓 → 退回 mtime，并在报告里说清"这条判据用的是弱时钟"
+    const at = act.dirty ? Date.now() : (act.at ?? (act.clock === 'none' ? statSync(p).mtimeMs : null));
+    if (act.clock === 'none') weakClock += 1;
+    const age = at === null ? 0 : Date.now() - at;
+    const days = Math.round(age / DAY);
+    if (age <= staleDays * DAY) continue;
+
+    const todos = st.todos || [];
+    const open = todos.filter((t) => t.status !== 'completed' && t.status !== 'done');
+    const head = `${d.name} 停在 stage=${st.stage}，已 ${days} 天没有任何提交（阈值 ${staleDays} 天）`;
+    // 两条出路必须都给全：只给一条时，另一种意图的人就会去手改 state.json（绕开 guard_state），
+    // 而这次改动的全部价值就在于留下理由。
+    const ways =
+      `接着做：node scripts/harness-cli.mjs resume . ${d.name}　不做了：node scripts/harness-cli.mjs abandon . ${d.name} --reason "为什么停、产物在哪"`;
+    if (!open.length && todos.length) {
+      // 完工未收尾：不是"没人管"，是"做完了但没走完收尾"。这两件事的下一步完全不同，
+      // 混成一条"停滞"会把人送去 resume 一个其实已经做完的任务。
+      err(`${head}，但 ${todos.length} 个 TODO 全部已完成 —— 完工未收尾。${ways}`);
+    } else {
+      err(`${head}，还有 ${open.length} 项未完成（${open.map((t) => t.id || '?').join('、') || '—'}）。${ways}`);
     }
+  }
+  if (checked) {
+    ok.push(
+      `任务停滞判据：${checked} 个任务，阈值 ${staleDays} 天（时钟=git 提交时间` +
+        (weakClock ? `；其中 ${weakClock} 个不在 git 里，退回 mtime——那种时钟会被 checkout 重排，只能算提醒` : '') +
+        '）'
+    );
   }
 }
 

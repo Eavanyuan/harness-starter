@@ -891,13 +891,122 @@ check "拼错的 --mode 不许静默降级 → 64" 64 "$?"
 CLI verify "$TMP" >/dev/null 2>&1
 check "非 harness 目录 → 明确拒绝（非 0）" 1 "$?"
 
+
+
 echo "== 46. 发布包必须带齐 init 声明要拷的模板文件 =="
 # 实测过的坑：harness.rules.json 进了 TEMPLATE_FILES，却漏在 package.json 的 files 里。
 # 源码仓库一切正常，装出来的项目 init 成功、审核路由每次 exit 2——装的时候不报错，
 # 用的时候才红，而且红在一个跟"安装"看不出因果关系的地方。
-PACKED="$(cd "$HERE" && npm pack --dry-run 2>&1)"
+# 用 --json：文件清单走 stdout 数据通道，不受 loglevel 影响——`npm run -s` 会注入
+# loglevel=silent，把 notice 形式的清单全部吞掉，本地跑必红而 CI（不带 -s）绿，
+# 两边不同答案（2026-11-11 CR Y4 根因）。
+PACKED="$(cd "$HERE" && npm pack --dry-run --json 2>/dev/null)"
 check "发布包含 harness.rules.json" 0 "$(printf '%s' "$PACKED" | grep -q 'harness\.rules\.json' && echo 0 || echo 1)"
 check "发布包含 harness.config.json（对照组）" 0 "$(printf '%s' "$PACKED" | grep -q 'harness\.config\.json' && echo 0 || echo 1)"
+
+echo "== 47. abandon：封存要带理由，且不改 stage（stage 是「死在哪一阶段」的证据）=="
+# 这条命令存在的唯一理由：让 doctor 的停滞判据有**出口**。判据不能只有"你错了"——
+# 没有一条命令能把红变绿，人学会的只会是忽略红灯。所以这里每条拒绝都要断言。
+AB="$TMP/ab"
+mkdir -p "$AB/.ai/tasks/z1" "$AB/.ai/tasks/z2" "$AB/.ai/tasks/z3"
+mkab() { # mkab <slug> <stage> <todo状态>
+  node -e '
+  const fs = require("fs");
+  const [root, slug, stage, todoStatus] = process.argv.slice(1);
+  fs.writeFileSync(`${root}/.ai/tasks/${slug}/state.json`, JSON.stringify({
+    meta: { schema_version: 1, task: slug, task_type: "feature", flow_tier: "S", created_at: "2026-10-01T00:00:00Z" },
+    stage, todos: [{ id: "T1", status: todoStatus }],
+  }, null, 2) + "\n");
+  ' "$AB" "$1" "$2" "$3"
+}
+mkab z1 impl pending      # 正常目标
+mkab z2 done completed    # 已完成：不该被封存
+mkab z3 impl pending      # 重复封存用
+
+out="$(CLI abandon "$AB" z1 2>&1)"
+check "缺 --reason → 64（没有理由的封存等于静默删除）" 64 "$?"
+# 光判退出码不够：缺理由和理由太短都是 64，所以"删掉缺理由那条检查"不会让它变红。
+# 断言到具体文案，才真的在守"两种拒绝说两句话"。
+expect_out "缺理由说的是「必须带 --reason」，而不是笼统的「太短」" "封存必须带 --reason" "$out"
+CLI abandon "$AB" z1 --reason "停了" >/dev/null 2>&1
+check "理由太短 → 64（写不清为什么，等于没写）" 64 "$?"
+CLI abandon "$AB" z1 --reason "TODO" >/dev/null 2>&1
+check "占位理由 → 64" 64 "$?"
+CLI abandon "$AB" ../x --reason "想写到别处去试试" >/dev/null 2>&1
+check "slug 含 ../ → 64（它会拼进写入路径）" 64 "$?"
+CLI abandon "$AB" nope --reason "不存在的任务也要报出来" >/dev/null 2>&1
+check "任务不存在 → 64" 64 "$?"
+CLI abandon "$AB" z2 --reason "已经做完的任务不该被封存" >/dev/null 2>&1
+check "stage=done → 3（封存是给「不再往下走」用的）" 3 "$?"
+
+out="$(CLI abandon "$AB" z1 --reason "对账登记任务，产物已在 abc1234 交付，不补收尾" --by "张三" 2>&1)"; code=$?
+check "合规封存 → 0" 0 "$code"
+expect_out "打印未收尾项（封存时留下现场）" "T1" "$out"
+st="$(node -e 'const s=require(process.argv[1]);const a=s.meta.abandoned||{};console.log([s.meta.status,a.at_stage,a.by,s.stage,a.open_todos.join(",")].join("|"))' "$AB/.ai/tasks/z1/state.json")"
+check "写入 status/at_stage/by，且 stage 保持 impl 不被覆盖" "abandoned|impl|张三|impl|T1" "$st"
+CLI abandon "$AB" z1 --reason "重复封存不该叠加第二条记录" >/dev/null 2>&1
+check "重复封存 → 3（不叠第二条记录）" 3 "$?"
+out="$(CLI resume "$AB" 2>&1)"
+if printf '%s' "$out" | grep -q "z1"; then
+  check "封存后不再出现在 resume 清单（清单有噪音就没人读）" 1 0
+else
+  check "封存后不再出现在 resume 清单（清单有噪音就没人读）" 1 1
+fi
+
+echo "== 48. 封存豁免「必须做完」的判据，不豁免「做过就得有证据」 =="
+# 两个方向都要断言：只证"封存后不红了"是给自己发绿灯——
+# 它必须红的场景是"把没做的事记成做了"（completed 但没日志）。
+SV="$TMP/sv"
+mkdir -p "$SV/scripts" "$SV/hooks/lib" "$SV/.ai/tasks/sealed" "$SV/.ai/tasks/live"
+cp "$HERE/scripts/ci-verify.mjs" "$SV/scripts/"
+cp "$HERE"/hooks/lib/*.mjs "$SV/hooks/lib/"
+cp "$HERE/harness.config.json" "$SV/"
+cp -R "$HERE/templates" "$SV/templates"
+node -e '
+const fs = require("fs");
+const root = process.argv[1];
+// 两个任务都越过产出阶段却没登记产物、gate_result 也停在旧阶段——
+// 唯一的差别是 status。
+const base = (slug, extra) => ({
+  meta: Object.assign({ schema_version: 1, task: slug, task_type: "feature", flow_tier: "S", created_at: "2026-11-01T00:00:00Z" }, extra),
+  stage: "impl",
+  stage_history: [{ stage: "rs", gate: "pass" }, { stage: "adr", gate: "deferred", waived_by: "张三（无架构级取舍）" }, { stage: "fs_review", gate: "pass" }, { stage: "wbs", gate: "pass" }, { stage: "impl" }],
+  todos: [{ id: "T1", status: "pending" }],
+  artifacts: {},
+  gate_result: { stage: "impl", checks: [] },
+});
+fs.writeFileSync(root + "/.ai/tasks/live/state.json", JSON.stringify(base("live", {}), null, 2));
+fs.writeFileSync(root + "/.ai/tasks/sealed/state.json", JSON.stringify(base("sealed", {
+  status: "abandoned",
+  abandoned: { at: "2026-11-02T00:00:00Z", by: "张三", reason: "对账登记任务，产物已在 abc1234 交付，不补收尾", at_stage: "impl", open_todos: ["T1"], todos_total: 1 },
+}), null, 2));
+' "$SV"
+out="$(CLI verify "$SV" --json 2>&1)"
+# 这一条是**提示**不是阻塞（产物登记归人审），所以断言消息、不判断退出码——
+# 拿 exit code 去测一条 notice，测出来的是"它变了没"，不是"它对不对"。
+expect_out "未封存的任务缺产物登记 → 提示" "live: 阶段 impl 已越过产出阶段" "$out"
+if printf '%s' "$out" | grep -q "sealed: 阶段 impl 已越过产出阶段"; then
+  check "已封存的任务不再要求补登记" 1 0
+else
+  check "已封存的任务不再要求补登记" 1 1
+fi
+
+# 判据本身直接断言（不经 CLI）：封存豁免「必须做完」，但不豁免「封存要写理由」，
+# 也不豁免「status 拼错」——后者才是真正会静默的那种错（拼错 = 永远 active）。
+verdict="$(cd "$HERE" && node --input-type=module -e '
+import { checkStageTodoClosure, checkStage } from "./hooks/lib/verify.mjs";
+const base = { meta: { schema_version: 1, created_at: "2026-11-01T00:00:00Z" }, stage: "impl", todos: [{ id: "T1", status: "pending" }] };
+const open = (m) => checkStageTodoClosure({ ...base, meta: { ...base.meta, ...m } }).length;
+const stage = (m) => checkStage({ ...base, meta: { ...base.meta, ...m } }).filter((f) => f.rule === "stage").length;
+const out = [
+  open({}),
+  open({ status: "abandoned", abandoned: { reason: "有理由的封存" } }),
+  stage({ status: "abandoned", abandoned: { reason: "  " } }),
+  stage({ status: "closed" }),
+];
+console.log(out.join(","));
+' 2>&1)"
+check "未封存拦 1 条 / 已封存 0 条 / 封存无理由判 / status 拼错判" "1,0,1,1" "$verdict"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

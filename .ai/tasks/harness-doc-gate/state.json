@@ -8,7 +8,16 @@
     "risk_tier": "MEDIUM",
     "ui_scope": "NONE",
     "trust_level": "L1",
-    "note": "两件事合成一个任务：① 把 a2f5b0c 的文档完备性判据补上三个 P1（中文/空格路径静默放行、链序变更误判存量 history、判据自身没被 dogfood 过）；② 用这个任务本身当 dogfood 样本——RS/FS/WBS 全部真写、走完 rs 到 impl 的阶段历史、证据日志入库。判据如果不能先在自己的改动上跑通，就没有资格拦住别人的改动。"
+    "note": "两件事合成一个任务：① 把 a2f5b0c 的文档完备性判据补上三个 P1（中文/空格路径静默放行、链序变更误判存量 history、判据自身没被 dogfood 过）；② 用这个任务本身当 dogfood 样本——RS/FS/WBS 全部真写、走完 rs 到 impl 的阶段历史、证据日志入库。判据如果不能先在自己的改动上跑通，就没有资格拦住别人的改动。",
+    "status": "abandoned",
+    "abandoned": {
+      "at": "2026-11-11T03:55:08Z",
+      "by": "Yuan Yuan",
+      "reason": "对账补登记任务：T1–T5 与 V1 全部完成、DOCGATE-*.log 齐全、gate 四项 pass，产物见 RS/FS/WBS；停在 impl 未走收尾，不为历史任务补编 retro",
+      "at_stage": "impl",
+      "open_todos": [],
+      "todos_total": 6
+    }
   },
   "stage": "impl",
   "stage_history": [

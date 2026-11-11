@@ -187,7 +187,7 @@
         "hint": "同上：递归强删根/home/父目录一律拦。清理工作树用 git clean 并先跑 --dry-run"
       },
       {
-        "pattern": "rm\\s+(-[A-Za-z]+\\s+){2}(/|~|\\$HOME)(?!\\w)",
+        "pattern": "rm\\s+(-[A-Za-z]+\\s+){2,}(/|~|\\$HOME)(?!\\w)",
         "hint": "拆开写的 -r -f 绕过不了规则。目标路径必须落在仓库内且写全"
       },
       {
@@ -294,6 +294,7 @@
       "hooks/**/*.{mjs,sh}",
       "scripts/**/*.{mjs,sh}",
       "templates/**"
-    ]
+    ],
+    "staleTaskDays": 3
   }
 }

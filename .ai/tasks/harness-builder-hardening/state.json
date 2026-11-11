@@ -8,7 +8,18 @@
     "risk_tier": "MEDIUM",
     "ui_scope": "NONE",
     "trust_level": "L1",
-    "note": "对账补登记（非新任务）：2026-10-30 起的 change/bugfix 双入口流、harness-builder v1 流、三轮评审修复的真实产出，当时未走本仓任务流程。files 在此声明归属以满足 #18 基建比对；正式收口在 retro 阶段统一处置。"
+    "note": "对账补登记（非新任务）：2026-10-30 起的 change/bugfix 双入口流、harness-builder v1 流、三轮评审修复的真实产出，当时未走本仓任务流程。files 在此声明归属以满足 #18 基建比对；正式收口在 retro 阶段统一处置。",
+    "status": "abandoned",
+    "abandoned": {
+      "at": "2026-11-11T03:55:08Z",
+      "by": "Yuan Yuan",
+      "reason": "对账补登记任务：2026-10-30 起的双入口流与三轮评审修复已在 a2f5b0c 交付，T1 从未单独开工；登记只为满足基建比对，不再续跑",
+      "at_stage": "impl",
+      "open_todos": [
+        "T1"
+      ],
+      "todos_total": 1
+    }
   },
   "stage": "impl",
   "stage_history": [],

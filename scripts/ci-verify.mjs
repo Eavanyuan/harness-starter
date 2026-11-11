@@ -43,6 +43,7 @@ import {
   gitStatusEntries,
   loadConfig,
   migrate,
+  isAbandoned,
 } from '../hooks/lib/verify.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,7 +125,8 @@ function report(statePath, name) {
 
   // 检查范围由 artifacts 声明决定。没声明就检不到，这件事必须可见——
   // 否则"完备性通过"会被读成"文档没问题"，而实际上一个字节都没看。
-  const undeclared = missingDeclarations(state);
+  // 已封存的任务豁免：它不再往前走，要求它补登记只会让人去补一份假产物。
+  const undeclared = isAbandoned(state) ? [] : missingDeclarations(state);
   if (undeclared.length) {
     notices.push(
       `${name}: 阶段 ${state.stage} 已越过产出阶段，但 artifacts 里没登记 ${undeclared.map((d) => d.label).join('、')} —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）`
@@ -151,7 +153,7 @@ function report(statePath, name) {
   // #20（实测：gate_result 停在 adr、stage 已到 impl，"能不能推进"没有输入）：
   // 过期的门禁结论在 CI 口径判红——上一阶段的 pass 冒充本阶段的评估，比没记录更误导。
   // local 口径维持提示：本地 WIP 阶段（进阶段后门禁还没跑）是常态。
-  if (state.gate_result && state.gate_result.stage && state.gate_result.stage !== state.stage) {
+  if (state.gate_result && state.gate_result.stage && state.gate_result.stage !== state.stage && !isAbandoned(state)) {
     const msg = `${name}: gate_result 记的是 ${state.gate_result.stage} 阶段，当前在 ${state.stage} —— 换阶段后门禁必须重新评估，旧结论不能顺延`;
     if (mode === 'ci') problems.push(msg);
     else notices.push(msg);

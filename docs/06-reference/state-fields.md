@@ -47,6 +47,8 @@
 | `related_task` / `baseline` / `affected_ids` / `change_tier` | 判据 | change/bugfix 追溯链（完成态复核）。`related_task` 支持外部来源形态 `feishu:<单号>`（task-loop 剖面 B） |
 | `remote_id` | 判据 | 外部来源双向锚 `{source, id}`。related_task 为外部形态时必填且两者一致（checkTaskTraceability 复核：两处各写各的等于没有锚，回写找不到平台实例）；仓库内关联时为 null |
 | `flow_tier` | 判据（弱） | `checkStage()` 只判枚举 `S/M/L/XL`。**档位不改变判据强度**——它记录"这套流程被裁剪过"，裁剪本身靠 `stage_history.waived_by` 记名 |
+| `status` | **判据** | `isAbandoned()` — `active`（缺省）/ `abandoned`。与 `stage` **正交的第二条轴**：stage 答"走到哪了"，status 答"还打算走吗"。缺省即 active，老 state 零影响；拼错的状态词（`abandond` / `closed`）会被 `checkStage()` 判红——否则"封存了"与"还在推进"长得一样，停滞判据会继续报它而人继续忽略 |
+| `abandoned` | **判据** | `checkStage()` — `status=abandoned` 时必须有 `reason`。没有理由的封存等于静默删除：事后没人知道这任务为什么停。形状 `{at, by, reason, at_stage, open_todos, todos_total}`，由 `abandon` 命令写入，不手改 |
 | `risk_tier` | 判据（弱） | `checkStage()` 判枚举 `LOW/MEDIUM/HIGH`。风险等级如何影响流程由人按 `guides/` 决定，机器不据此加减门禁 |
 | `no_todo_reason` | 判据 | `checkStageExit()` — `stage=done` 且 `todos` 为空时必须写清理由 |
 | `ui_scope` | 声明 | 目前无机器语义。写它是给人看的范围说明；**不要据此认为 UI 相关门禁存在** |
@@ -54,6 +56,37 @@
 | `deviations` | **判据** | `checkStageExit()` — `stage=done` 前每条偏离必须有 `disposition`（`fixed` 或 `acknowledged` + `by` 记名）。只写不处置等于没写：实测里 `@InternalApi` 按 FS 该加却被静默省略，记一句"时间不够"就收工了 |
 | `known_issues` | **判据** | `checkStageExit()` — `stage=done` 前每条必须有 `resolution`。已知红灯不许只活在 `audit.tests` 的一段文字里：实测 console 3 例集成测试因 MySQL 不可达长期红着，结论只写在一句"转 T7"里，机器查不到、下个会话看不见 |
 | `notes` | 声明 | 自由说明。`artifacts` 里混进来的整段文字（路径字段装不下的那种）挪到这里 |
+
+## 封闭：stage 与 status 是两条轴，不是一格
+
+`stage` 回答"走到哪了"，`status` 回答"还打算走吗"。合成一格（把 stage 覆盖成 `abandoned`）
+会丢掉"任务一般死在哪一阶段"——而那恰恰是流程该不该减重的证据（我们自己的两条僵尸
+都死在 `impl`，这就是"流程太重"最硬的一个数字）。
+
+所以封存**不改 stage**，只写 `status` + `abandoned`。语义边界一句话：
+**abandoned = 不再续跑，不是工作没做。** 对账补登记类任务（产物早已交付、只是补一张
+记录）也用它，理由里写清产物在哪。
+
+```bash
+node scripts/harness-cli.mjs abandon . <slug> --reason "为什么停、产物在哪" [--by <人>]
+```
+
+它豁免"必须做完"的判据（TODO 收尾、产物登记），**不豁免**"做过就得有证据"
+（已完成 TODO 的日志照样要能对上）——封存允许你停下，不允许你把没做的事记成做了。
+
+### 停滞判据（`gates.staleTaskDays`，默认 3 天）
+
+`npm run doctor` 会对超过阈值没有任何提交的未封闭任务**判红**，并直接印出把红变绿的命令。
+四个设计选择，每个都对应一次踩坑：
+
+| 选择 | 为什么 |
+|---|---|
+| 时钟用 **git 提交时间**，不用 mtime | mtime 是"上次写盘"，不是"上次编辑"：clone / checkout 会按检出顺序重排整棵树（实测新克隆里 14 个历史任务全被判成"刚改过源码"），`touch` 还能把它推到未来。提交时间回答的才是真问题——**这份进度有没有落到仓库里** |
+| 有未提交改动 → 按"正在动"算 | 否则"今天正在改"会被判成"停滞"，人就会去给判据加白名单 |
+| 已封存 / 已完成 / **有未决 blocker** 不判 | 最后一条是正当暂停。判它停滞等于逼人别把"等决策"记下来——那时真正丢失的是决策记录 |
+| 判红，但必须印出关闭命令 | 判据不能只有"你错了"。没有出口的红灯训练出来的只会是"忽略红灯"，那比没有判据更糟 |
+
+判红之后只有两条路，都是明文动作：`resume`（接着做）或 `abandon`（不做了，写理由）。
 
 ## artifacts 为什么是索引不是门禁
 

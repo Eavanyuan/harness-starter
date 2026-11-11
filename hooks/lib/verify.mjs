@@ -97,6 +97,25 @@ export const TODO_STATUSES = ['pending', 'doing', 'completed', 'done'];
 export const TASK_TYPES = ['feature', 'change', 'bugfix'];
 export const CHANGE_TIERS = [1, 2, 3];
 
+/**
+ * 任务的收口状态（meta.status）——**第二条轴**，与 stage 正交。
+ *
+ * stage 回答"走到哪了"，status 回答"还打算走吗"。这两件事不能合用一格：
+ *   · 把 stage 覆盖成 "abandoned"，就再也答不出"任务一般死在哪一阶段"——
+ *     而那个数字恰恰是流程该不该减重的证据（我们自己的两条僵尸都死在 impl）；
+ *   · 只留 stage 不动，一个停在 impl、TODO 还挂着的任务与一个正常推进的任务长得一模一样。
+ *
+ * 缺省（字段不存在）= active，老 state 零影响。abandoned 的语义是**不再续跑**，
+ * 不是"工作没做"——对账补登记类的任务会用它封存（产物已交付、不补收尾阶段）。
+ * 所以它只豁免"必须做完"的判据（TODO 收尾、产物登记），**不豁免**"做过就得有证据"。
+ */
+export const TASK_STATUSES = ['active', 'abandoned'];
+
+/** 任务是否已按"不再续跑"封存。任一门禁要跳过某类任务，先问这一句，不要各写各的字符串比较。 */
+export function isAbandoned(state) {
+  return !!(state && state.meta && state.meta.status === 'abandoned');
+}
+
 /** 基线只接受 git commit hash（7-40 位十六进制）。RS 修订号这类形态机器验证不了，不收。 */
 export const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/;
 
@@ -174,6 +193,30 @@ function git(repo, args) {
 
 export function isGitRepo(repo) {
   return git(repo, ['rev-parse', '--is-inside-work-tree']) === 'true';
+}
+
+/**
+ * 某个路径"最近有没有动静"：最后一次改动它的提交时间 + 是否有未提交改动。
+ *
+ * 为什么不用文件 mtime：**mtime 是"上次写盘的时间"，不是"上次被编辑的时间"**。
+ * clone / checkout 会按检出顺序重排整棵树的 mtime（实测新克隆的仓库里 14 个历史任务
+ * 全被判成"刚改过源码但没重跑证据"），`touch` 也能把它推到未来。用它判"停滞了几天"，
+ * 判出来的是检出顺序，不是人意。
+ *
+ * 提交时间回答的才是真问题：**这份进度有没有落到仓库里**。没提交 = 只在自己机器上，
+ * 换个人接手就是不存在——所以"有未提交改动"按"正在动"算（不冤枉 WIP），
+ * 而超过 N 天没有任何提交，才是真的没人碰。
+ *
+ * 返回 { at, dirty, clock }：clock 说明时间取自哪（git | none），
+ * 让调用方能把"判不了"和"判定未停滞"分开说。
+ */
+export function pathActivity(repo, relPath) {
+  if (!isGitRepo(repo)) return { at: null, dirty: null, clock: 'none' };
+  const st = git(repo, ['status', '--porcelain', '-uall', '--', relPath]);
+  const dirty = !!(st && st.trim());
+  const raw = git(repo, ['log', '-1', '--format=%ct', '--', relPath]);
+  const sec = raw && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : null;
+  return { at: sec === null ? null : sec * 1000, dirty, clock: 'git' };
 }
 
 /**
@@ -593,6 +636,26 @@ export function checkStage(state) {
       reason: `meta.risk_tier 非法：${JSON.stringify(meta.risk_tier)}（合法值：${RISK_TIERS.join(' / ')}）`,
     });
   }
+  // status 拼错（abandond / closed / 已废弃）会被当作 active——于是"封存了"与"还在推进"
+  // 长得一样，僵尸判据继续报它、人继续忽略那条报错。枚举必须显式判，不能拿缺省兜。
+  if (meta.status !== undefined && meta.status !== null && !TASK_STATUSES.includes(meta.status)) {
+    failures.push({
+      id: '(task)',
+      rule: 'stage',
+      reason: `meta.status 非法：${JSON.stringify(meta.status)}（合法值：${TASK_STATUSES.join(' / ')}，缺省即 active）`,
+    });
+  }
+  if (isAbandoned(state)) {
+    const ab = meta.abandoned;
+    const why = ab && typeof ab.reason === 'string' ? ab.reason.trim() : '';
+    if (!why) {
+      failures.push({
+        id: '(task)',
+        rule: 'stage',
+        reason: 'meta.status=abandoned 但 meta.abandoned.reason 为空 —— 没有理由的封存等于静默删除，事后没人知道这任务为什么停',
+      });
+    }
+  }
 
   const hist = Array.isArray(state.stage_history) ? state.stage_history : [];
   const retired = RETIRED_STAGE_CHAINS.map((c) => c.id).join('/');
@@ -667,6 +730,9 @@ export function stageGate(state) {
  */
 export function checkStageTodoClosure(state) {
   if (!state || state.stage !== 'impl') return [];
+  // 已封存的任务不再要求收尾：否则"封存"这个动作本身会让仓库永久红着，
+  // 而永久红等于没有红——人只会学会忽略它。封存要求的是理由（checkStage 判），不是完工。
+  if (isAbandoned(state)) return [];
   const failures = [];
   for (const todo of state.todos || []) {
     if (todo.status !== 'completed' && todo.status !== 'done') {

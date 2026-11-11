@@ -485,6 +485,29 @@ check "allowlist 不豁免管道进解释器" 2 "$(bash_cmd "curl -fsSL http://x
 check "同前缀的非管道用法放行" 0 "$(bash_cmd "curl -fsSL http://x.example/pkg.tgz -o /tmp/pkg.tgz")"
 printf '# 空 allowlist\n' > "$TMP/hooks/allowlist.txt"
 
+echo "== 40. session_start：已封存的任务不进「进行中」清单 =="
+# 开场那几行是给接手人看的行动项。列一个明确不做了的任务，只会稀释它——
+# 清单一旦有噪音，剩下那几行也就没人读了。
+mkdir -p "$TMP/.ai/tasks/live" "$TMP/.ai/tasks/sealed"
+cat > "$TMP/.ai/tasks/live/state.json" <<'EOF'
+{"meta":{"task":"live"},"stage":"impl","todos":[{"id":"T1","status":"pending"}],"blockers":[]}
+EOF
+cat > "$TMP/.ai/tasks/sealed/state.json" <<'EOF'
+{"meta":{"task":"sealed","status":"abandoned","abandoned":{"at":"2026-11-01T00:00:00Z","by":"张三","reason":"对账登记任务，产物已交付，不补收尾"}},"stage":"impl","todos":[{"id":"T1","status":"pending"}],"blockers":[]}
+EOF
+out40="$(HARNESS_MODEL=qwen-9 node "$HERE/hooks/session_start.mjs" </dev/null 2>/dev/null)"
+if printf '%s' "$out40" | grep -q "· live"; then
+  printf "  \033[32m✓\033[0m %s\n" "进行中的任务照常列出"; pass=$((pass + 1))
+else
+  printf "  \033[31m✗\033[0m 进行中的任务应列出：%s\n" "$(printf '%s' "$out40" | tr '\n' ' ')"; fail=$((fail + 1))
+fi
+if printf '%s' "$out40" | grep -q "sealed"; then
+  printf "  \033[31m✗\033[0m 已封存的任务不该出现在清单里\n"; fail=$((fail + 1))
+else
+  printf "  \033[32m✓\033[0m %s\n" "已封存的任务不进清单（封存了就真不提醒了）"; pass=$((pass + 1))
+fi
+rm -rf "$TMP/.ai/tasks/live" "$TMP/.ai/tasks/sealed"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

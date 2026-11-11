@@ -14,7 +14,7 @@
  */
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { REPO_ROOT, loadConfig } from './lib/verify.mjs';
+import { REPO_ROOT, loadConfig, isAbandoned } from './lib/verify.mjs';
 import { recordEvent } from './lib/ledger.mjs';
 
 // HARNESS_ROOT 只给自测与 vendored 安装用，语义与 guard_state 一致。
@@ -117,7 +117,9 @@ try {
 
   if (states.length === 0) process.exit(0);
 
-  const doing = states.filter((s) => s.stage && s.stage !== 'done');
+  // 已封存的任务不进"进行中"清单：开场那几行是给接手人看的行动项，列一个明确不做了的任务
+  // 只会稀释它——清单一旦有噪音，剩下那几行也就没人读了。
+  const doing = states.filter((s) => s.stage && s.stage !== 'done' && !isAbandoned(s));
   const stuck = doing.filter((s) => (s.blockers || []).some((b) => !b.resolved));
 
   // light 档：TODO 清单豁免，但"有人卡在等你拍板"这件事不豁免。
