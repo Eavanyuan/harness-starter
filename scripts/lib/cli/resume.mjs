@@ -295,6 +295,9 @@ export function cmdResume(target, slug, opts) {
   // 只提供"怎么绕过它"的动机。计数口径是**同阶段重复进入次数**——不是 gate=fail 条数：
   // 实测（ai-review-notify ci↔retro 三轮）真实 state 里 gate 只有 pass/deferred，
   // 循环靠"同一阶段反复出现"表达，数 fail 永远数不到（第一版就数错了，复审抓回）。
+  // 已知口径代价（复审记录在案）：合法的同阶段多次进入（如长任务 impl 几出几进）也会
+  // 把计数抬到 3——降档通道提前开。这不构成未授权放行（仍需具名 flag），只是提示时机
+  // 偏早；真要精确到"打回"需要 history 记录每次 gate 评估，留给需要时再做。
   // 降档不是免检：仍要求具名放行（--ack-strikes <人>），推进时记进 stage_history；
   // 其他拦截（blocker/校验/收尾）也一律不降档。
   const strikes = (Array.isArray(state.stage_history) ? state.stage_history : []).filter(

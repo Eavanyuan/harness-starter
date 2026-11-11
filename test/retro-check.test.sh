@@ -88,6 +88,30 @@ node --input-type=module -e '
 ' | grep -q alive && r=0 || r=1
 check "判据在（fromDate=1970 时任何 done 任务都该被查）" 0 "$r"
 
+echo "== 4. retro 归属唯一性（复审补）：同一文件两个任务声明 → CI 双红 =="
+UNIQ="$TMP/uniq"
+mkdir -p "$UNIQ/scripts" "$UNIQ/hooks/lib" "$UNIQ/.ai/verify" "$UNIQ/retro" "$UNIQ/.ai/tasks/ta" "$UNIQ/.ai/tasks/tb"
+cp "$HERE/scripts/ci-verify.mjs" "$UNIQ/scripts/"
+cp "$HERE"/hooks/lib/*.mjs "$UNIQ/hooks/lib/"
+cp "$HERE/harness.config.json" "$UNIQ/"
+echo shared > "$UNIQ/retro/shared-f.md"
+for t in ta tb; do
+  node -e '
+    const fs = require("fs");
+    const [dir, t] = process.argv.slice(1);
+    fs.writeFileSync(`${dir}/.ai/tasks/${t}/state.json`, JSON.stringify({
+      // 存量日期：本节专测归属唯一性，新任务的 slug 命名规则在别的节判
+      meta: { task: t, created_at: "2026-11-10T00:00:00Z" }, stage: "done", todos: [],
+      artifacts: { retro: "retro/shared-f.md" },
+    }, null, 2));
+  ' "$UNIQ" "$t"
+done
+(cd "$UNIQ" && node scripts/ci-verify.mjs --mode ci) > "$TMP/uniq-out" 2>&1
+rc=$?
+check "双任务同 retro → ci-verify 红（exit 1）" 1 "$rc"
+grep -q "同时声明" "$TMP/uniq-out" && r=0 || r=1
+check "报错点名两个任务与文件" 0 "$r"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

@@ -47,6 +47,8 @@
 | `related_task` / `baseline` / `affected_ids` / `change_tier` | 判据 | change/bugfix 追溯链（完成态复核）。`related_task` 支持外部来源形态 `feishu:<单号>`（task-loop 剖面 B） |
 | `remote_id` | 判据 | 外部来源双向锚 `{source, id}`。related_task 为外部形态时必填且两者一致（checkTaskTraceability 复核：两处各写各的等于没有锚，回写找不到平台实例）；仓库内关联时为 null |
 | `flow_tier` | 判据（弱） | `checkStage()` 只判枚举 `S/M/L/XL`。**档位不改变判据强度**——它记录"这套流程被裁剪过"，裁剪本身靠 `stage_history.waived_by` 记名 |
+
+| `init_flow_tier` | 判据 | 建档时由 init-harness 写入的档位存底（2026-11-11 复审起）；`checkStage()` 比对它与 `flow_tier`，中途改档即拦——档位是门禁条件，改档=重写考卷。存量 state 无此字段不追溯 |
 | `status` | **判据** | `isAbandoned()` — `active`（缺省）/ `abandoned`。与 `stage` **正交的第二条轴**：stage 答"走到哪了"，status 答"还打算走吗"。缺省即 active，老 state 零影响；拼错的状态词（`abandond` / `closed`）会被 `checkStage()` 判红——否则"封存了"与"还在推进"长得一样，停滞判据会继续报它而人继续忽略 |
 | `abandoned` | **判据** | `checkStage()` — `status=abandoned` 时必须有 `reason`。没有理由的封存等于静默删除：事后没人知道这任务为什么停。形状 `{at, by, reason, at_stage, open_todos, todos_total}`，由 `abandon` 命令写入，不手改 |
 | `risk_tier` | 判据（弱） | `checkStage()` 判枚举 `LOW/MEDIUM/HIGH`。风险等级如何影响流程由人按 `guides/` 决定，机器不据此加减门禁 |

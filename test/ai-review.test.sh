@@ -236,8 +236,8 @@ node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD
 rc=$?
 check "清单微改后重算 → 恰好 1 次模型调用" "1" "$(( $(reqs) - before ))"
 check "按新清单重算（mock 无问题）→ exit 0" "0" "$rc"
-ls "$REPO/.ai/reviews2"/.cache-rs-????????????.json >/dev/null 2>&1
-check "缓存文件名含规则源哈希（.cache-rs-<12位>.json）" "0" "$?"
+ls "$REPO/.ai/reviews2"/.cache-rs-????????????-??????.json >/dev/null 2>&1
+check "缓存文件名含规则哈希+脚本自身哈希（.cache-rs-<12>-<6>.json）" "0" "$?"
 # ③ harness.rules.json 本体微改（尾部加一空格，语义不变）同样要失效：键必须同时覆盖两个规则源
 printf ' ' >> "$REPO/harness.rules.json"
 check "rules 微改（+1 空格）→ 缓存失效（打包文件数 1）" "1" "$(bundle_count)"

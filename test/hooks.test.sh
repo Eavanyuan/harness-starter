@@ -516,6 +516,8 @@ cat > "$TMP/.ai/verify/GATE1.log" <<'EOF'
 # started: 2026-01-01T00:00:00Z
 # finished: 2026-01-01T00:00:01Z
 # exit_code: 0
+# commit: 1234567890abcdef
+# task: sfold
 # ---- output tail (last 200 lines) ----
 ok
 EOF
@@ -546,6 +548,17 @@ node -e '
   fs.writeFileSync(p, JSON.stringify(s,null,2));
 ' "$TMP/sfold-ok.json"
 check "拿掉 gate 日志只剩单套件 → 拦（折叠≠免检）" 2 "$(run_state "$TMP/sfold-ok.json")"
+
+# 借别的任务的 gate 日志（带归属头）→ 拦：折叠的免检牌不能借
+printf '%s\n' '# cmd: npm run gate' '# started: 2026-01-01T00:00:00Z' '# finished: 2026-01-01T00:00:01Z' '# exit_code: 0' '# commit: 1234567890abcdef' '# task: other-task' > "$TMP/.ai/verify/STOLEN.log"
+node -e '
+  const fs=require("fs");const p=process.argv[1];
+  const s=JSON.parse(fs.readFileSync(p,"utf8"));
+  s.meta.flow_tier="S";
+  s.todos[0].verify.log_path=".ai/verify/STOLEN.log";
+  fs.writeFileSync(p, JSON.stringify(s,null,2));
+' "$TMP/sfold-ok.json"
+check "借别人带头的 gate 日志 → 拦（归属不符）" 2 "$(run_state "$TMP/sfold-ok.json")"
 
 # 非 S 档同型跳阶 → 仍拦（折叠是 S 档特权，不是普遍后门）
 node -e '

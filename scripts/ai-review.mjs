@@ -100,7 +100,10 @@ const shaOf = (s) => createHash('sha256').update(s).digest('hex');
 // 旧键只认类型 + 文件 sha：清单/规则更新后，未改动的文件原样沿用上轮结论——上一版清单
 // 放过的 🔴 会混进新 verdict（P2）。规则一变 → 键变 → 缓存整体失效重建；宁可多调一次模型。
 const rulesSha = shaOf(readFileSync(join(root, 'harness.rules.json'), 'utf8') + '\n' + checklist).slice(0, 12);
-const cachePath = join(outDir, `.cache-${opt.type}-${rulesSha}.json`);
+// 脚本自身也进哈希（复审抓回）：判定协议/prompt 改在脚本里，不动规则文件——
+// 不绑自身版本的话，改完判定逻辑旧结论照样被沿用。
+const selfSha = shaOf(readFileSync(new URL(import.meta.url), 'utf8'));
+const cachePath = join(outDir, `.cache-${opt.type}-${rulesSha}-${selfSha.slice(0, 6)}.json`);
 const cache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf8')) : {};
 
 const bundled = [];

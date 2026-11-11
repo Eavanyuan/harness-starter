@@ -43,6 +43,10 @@ export function usage() {
   node scripts/harness-cli.mjs resume <target> [<slug>]
       按三档列出待决事项，并生成/刷新 .ai/tasks/<slug>/DECISIONS.md（可留存的决策单）。
 
+  node scripts/harness-cli.mjs runtime <target> --spawn_agents yes|no --shell yes|no --ask_user yes|no [--reset] [--by <名字>]
+      把宿主会话的能力自检结论写回 harness.config.json（orchestrator 不再逐会话试错）。
+      已知结论不许静默退回 unknown；重置必须 --reset --by 记名。
+
   node scripts/harness-cli.mjs resume <target> <slug> --from DECISIONS.md --by <决策人>
       读回决策单里填好的「回填：」行。--from 的路径先按当前目录、再按 .ai/tasks/<slug>/ 解析。
 

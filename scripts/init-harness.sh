@@ -183,6 +183,7 @@ node -e '
       change_tier: null,
       created_at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
       flow_tier: tier,
+      init_flow_tier: tier, // 建档存底（复审抓回）：checkStage 比对两者，中途改档即拦
       risk_tier: "MEDIUM",
       ui_scope: "NONE",
       trust_level: trust,

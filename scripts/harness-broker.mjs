@@ -306,7 +306,8 @@ async function handleGitDecisions(cfg, body, rules) {
       recordEvent('broker', 'decision_rejected', {
         reason: 'author_not_approver', blocker, by: v.by.name, email: v.by.email, via: 'git', commit: v.sha.slice(0, 8),
       });
-      // 先记账后记键：recordEvent 失败是吞异常的，若先记键，一次账本写失败会让这条账永久消失。
+      // 先记账后记键（复审勘误：recordEvent 吞异常，两种顺序下"账失败"与"键先落"的窗口都存在且等价；
+      // 选这个顺序只为让失败模式偏向"多记一次"（重放再判）而不是"永久丢账"），注释如实写。
       seenGitDecisions.add(key);
       continue;
     }

@@ -22,9 +22,9 @@
  * 只做可判定的检查：文件存在、正则匹配、mtime 比较、字段齐备。
  * 任何需要"理解代码质量"的判断都不放在这里。
  */
-import { existsSync, statSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, statSync, readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve, dirname, join, relative } from 'node:path';
+import { resolve, dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { globToRe } from './glob.mjs';
 import {
@@ -162,6 +162,18 @@ export function parseExitCode(head) {
 export function parseCommit(head) {
   for (const line of head.split('\n').slice(0, LOG_HEADER_LINES)) {
     const m = line.match(/^#\s*commit:\s*([0-9a-f]{7,40})\s*$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/**
+ * 解析 verify 日志头里的任务归属（复审补，防跨任务借证据）。无此行 → null（不追溯）。
+ * 窗口放查 8 行：# task: 排在 commit 之后、tests 之前，5 行窗口罩不住。
+ */
+export function parseLogTask(head) {
+  for (const line of head.split('\n').slice(0, 8)) {
+    const m = line.match(/^#\s*task:\s*(\S+)\s*$/);
     if (m) return m[1];
   }
   return null;
@@ -667,6 +679,16 @@ export function checkStage(state) {
       reason: `meta.flow_tier 非法：${JSON.stringify(meta.flow_tier)}（合法值：${FLOW_TIERS.join(' / ')}）`,
     });
   }
+  // 中途改档（复审抓回）：flow_tier 是建任务时定的档，后续改它 = 重写门禁条件。
+  // 最典型的洗白：M 档任务做到 review 后改成 S，用折叠直达 done。init 落 init_flow_tier
+  // 存底，之后任何时刻两者不一致即拦；存量 state 没有存底字段的不追溯。
+  if (meta.init_flow_tier && meta.flow_tier && meta.init_flow_tier !== meta.flow_tier) {
+    failures.push({
+      id: '(task)',
+      rule: 'stage',
+      reason: `meta.flow_tier=${meta.flow_tier} 与建任务时的 init_flow_tier=${meta.init_flow_tier} 不一致 —— 档位是门禁条件，中途改档等于重写考卷；确需调档：重建任务或在 deviations 记录并让人审`,
+    });
+  }
   if (meta.risk_tier !== undefined && meta.risk_tier !== null && !RISK_TIERS.includes(meta.risk_tier)) {
     failures.push({
       id: '(task)',
@@ -826,6 +848,11 @@ export function checkRetroLanding(state, repo, fromDate = '2026-11-11') {
   const declared = state.artifacts && state.artifacts.retro;
   if (declared) {
     const rel = String(declared).replace(/^\.?\//, '');
+    // 穿越与符号链接（复审抓回）：`retro/../docs/x` 能骗过 startsWith；
+    // symlink 能把 /etc/hosts 变成"retro 文档"。路径里不许有 .. 段，真实路径必须还在 retro/ 里。
+    if (rel.split('/').includes('..')) {
+      return [{ id: '(task)', rule: 'retro', reason: `artifacts.retro 不许含 .. 段：${rel}` }];
+    }
     if (!rel.startsWith('retro/')) {
       return [{
         id: '(task)',
@@ -833,8 +860,33 @@ export function checkRetroLanding(state, repo, fromDate = '2026-11-11') {
         reason: `artifacts.retro 必须指向 retro/ 下的文件，当前：${rel}（retro 是唯一被认可的落盘位）`,
       }];
     }
-    if (!existsSync(resolve(repo, rel))) {
+    const abs = resolve(repo, rel);
+    if (!existsSync(abs)) {
       return [{ id: '(task)', rule: 'retro', reason: `retro 文档不存在：${rel}` }];
+    }
+    try {
+      // 两侧都 realpath：macOS 的 $TMP 是 /var/... → /private/var/... 的符号链接，
+      // 只解析一侧会把合法文件判成"递出 retro/"（复审自测踩到）。
+      const real = realpathSync(abs);
+      const retroReal = realpathSync(resolve(repo, 'retro'));
+      if (!real.startsWith(retroReal + sep)) {
+        return [{ id: '(task)', rule: 'retro', reason: `retro 路径经符号链接递出 retro/（解析到 ${real}）——这不是落盘，是挂羊头` }];
+      }
+    } catch {
+      return []; // realpath 解析不了 → 判不了就不硬判（与账本同口径）
+    }
+    // 归属（复审抓回）：新任务（≥ S_FOLD_FROM）声明的文件名必须以自己的 slug 开头——
+    // 否则可以随手拖一份别人的无主复盘来交差。存量（11-11 日期-主题命名）不追溯。
+    if (createdOnOrAfter(meta, S_FOLD_FROM)) {
+      const base = rel.split('/').pop();
+      const slug2 = String(meta.task || '');
+      if (!slug2 || !base.startsWith(slug2)) {
+        return [{
+          id: '(task)',
+          rule: 'retro',
+          reason: `新任务的 retro 文件名必须以任务 slug 开头（期望 ${slug2 || '<slug>'}*，实际 ${base}）——名字就是归属，防拖用别人的复盘`,
+        }];
+      }
     }
     return [];
   }
@@ -869,11 +921,18 @@ export function checkStageExit(state, repo = null) {
   // "gate 全量在本仓跑过一次且绿"（exit_code=0 由 validateTodos 另行校验）。
   // 只对折叠生效日之后创建的 S 档任务成立；拿不到 repo 的调用方（无盘上下文）跳过。
   if (meta.flow_tier === 'S' && repo && createdOnOrAfter(meta, S_FOLD_FROM)) {
+    const slug = String(meta.task || '');
     const hasGateRun = todos.some((t) => {
       const lp = t && t.verify && t.verify.log_path;
       if (!lp) return false;
       try {
-        return /^#\s*cmd:.*npm run gate/m.test(readHead(resolve(repo, lp)));
+        const headText = readHead(resolve(repo, lp));
+        if (!/^#\s*cmd:.*npm run gate/m.test(headText)) return false;
+        // 归属绑定（复审加固）：折叠加查的 gate 日志**必须**带 # task: 头且是本任务——
+        // 头是 opt-in 的话，借一份无头的旧绿日志（如别的任务的 DFG）就能色免检。
+        // 新任务（≥折叠生效日）的日志都由新 verify-run 产生，--task 是常态。
+        const owner = parseLogTask(headText);
+        return owner === slug;
       } catch {
         return false;
       }

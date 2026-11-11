@@ -188,6 +188,7 @@ if (onlyFile) {
   else console.log('[ci-verify] 没有 .ai/tasks，跳过状态校验');
 } else {
   const declared = new Set();
+  const retroClaims = new Map();
   const statePaths = [];
   for (const d of readdirSync(TASKS_DIR, { withFileTypes: true })) {
     if (!d.isDirectory()) continue;
@@ -198,7 +199,19 @@ if (onlyFile) {
     try {
       const state = migrate(JSON.parse(readFileSync(statePath, 'utf8'))).state;
       for (const t of state.todos || []) for (const f of t.files || []) declared.add(f);
+      // retro 归属唯一性（复审补）：同一 retro 文件被多个任务声明 = 有人借了别人的复盘。
+      // 单看一份 state 看不出借用，把全仓名单摆在一起才看得见——所以只在 CI 侧判。
+      const rp = state.artifacts && state.artifacts.retro;
+      if (rp) {
+        if (!retroClaims.has(rp)) retroClaims.set(rp, []);
+        retroClaims.get(rp).push(d.name);
+      }
     } catch { /* 单文件解析失败已在 report 里报过 */ }
+  }
+  for (const [rp, owners] of retroClaims) {
+    if (owners.length > 1) {
+      problems.push(`retro 文档被 ${owners.length} 个任务同时声明（${owners.join('、')}）：${rp} —— 复盘不是共享资源，各写各的`);
+    }
   }
 
   // #18（实测：surefire 升级影响全员 CI 行为，却不在任何 TODO 的 files 里）：
