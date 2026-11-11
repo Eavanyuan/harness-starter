@@ -96,7 +96,11 @@ const maxFiles = rules.bundle?.max_files ?? 12;
 const maxLines = rules.bundle?.max_lines_per_file ?? 600;
 
 const shaOf = (s) => createHash('sha256').update(s).digest('hex');
-const cachePath = join(outDir, `.cache-${opt.type}.json`);
+// 缓存键 = 审核类型 + 规则源内容哈希（harness.rules.json 原文 + 本类型清单文件，sha256 前 12 位）。
+// 旧键只认类型 + 文件 sha：清单/规则更新后，未改动的文件原样沿用上轮结论——上一版清单
+// 放过的 🔴 会混进新 verdict（P2）。规则一变 → 键变 → 缓存整体失效重建；宁可多调一次模型。
+const rulesSha = shaOf(readFileSync(join(root, 'harness.rules.json'), 'utf8') + '\n' + checklist).slice(0, 12);
+const cachePath = join(outDir, `.cache-${opt.type}-${rulesSha}.json`);
 const cache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf8')) : {};
 
 const bundled = [];

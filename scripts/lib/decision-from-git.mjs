@@ -13,6 +13,8 @@
  * 边界：broker 在这里**不写仓库**——commit 本身就是账。所以重复推送的后果只是日志里
  * 多一条记录，不会造成账实不符；这里的幂等是"少记一条噪音"，不是"防重复写"。
  */
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 /** markdown 表格分隔行（|---|---|），不是数据行。 */
 const SEPARATOR = /^[:\-\s]+$/;
@@ -76,12 +78,37 @@ export function parseDecisionRowsFromText(text) {
 }
 
 /**
- * 幂等键集合：`<sha>:<blocker_id>`。
+ * 幂等键集合：`<action>:<event_id>`。
  * 不用无限增长的 Set——broker 是常驻进程，跑几个月能攒出几十万个 key。
+ *
+ * 持久化（架构审核 P2：重启即忘）：传 indexFile 时，创建即从该文件扫回最近 limit 条键
+ * （与进程内 FIFO 淘汰同口径，内存仍封顶），add 时追加落盘。broker 重启后同一
+ * (event_id, action) 不再重复落账——recordEvent 是纯 append，没有这层索引，
+ * 一次重放就是一条重复账。
+ *
+ * fail-open 铁律：索引读不了/写不了只记 stderr，绝不让幂等层把主流程打挂；
+ * 索引坏了的最坏后果是退回「可能重复落账」——与没有这层时完全相同，不会更糟。
  */
-export function createSeenKeys({ limit = 2000 } = {}) {
+export function createSeenKeys({ limit = 2000, indexFile = null, io = null } = {}) {
+  const fsx = io || { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync };
   const set = new Set();
   const order = [];
+
+  if (indexFile) {
+    try {
+      if (fsx.existsSync(indexFile)) {
+        const lines = String(fsx.readFileSync(indexFile, 'utf8')).split('\n').filter(Boolean);
+        for (const k of lines.slice(-limit)) { set.add(k); order.push(k); }
+        // 文件比有效窗口大一个数量级时顺手压实（尽力而为）：磁盘不该陪内存窗口无限长。
+        if (lines.length > limit * 10) fsx.writeFileSync(indexFile, order.map((k) => `${k}\n`).join(''));
+      }
+    } catch (e) {
+      // 读不出来 = 当没有索引（空集继续）。幂等是「少记噪音」不是「防重复写」，
+      // 坏索引最坏退化成重复落账，不许升级成主流程故障。
+      console.error(`[seen-keys] 幂等索引不可读，按空集继续（fail-open）：${e.message}`);
+    }
+  }
+
   return {
     has: (k) => set.has(k),
     add(k) {
@@ -89,6 +116,13 @@ export function createSeenKeys({ limit = 2000 } = {}) {
       set.add(k);
       order.push(k);
       if (order.length > limit) set.delete(order.shift());
+      if (!indexFile) return;
+      try {
+        fsx.mkdirSync(dirname(indexFile), { recursive: true });
+        fsx.appendFileSync(indexFile, `${k}\n`);
+      } catch (e) {
+        console.error(`[seen-keys] 幂等索引写入失败（不影响本次落账，fail-open）：${e.message}`);
+      }
     },
   };
 }

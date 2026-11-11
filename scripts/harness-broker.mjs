@@ -202,8 +202,18 @@ async function handleFeishuEvent(cfg, body, { transport, token } = {}) {
   }
 }
 
-/** 幂等键：同一个 commit 里的同一个 OP 只落一次账（force push / 分支更新会重放 push）。 */
-const seenGitDecisions = createSeenKeys();
+/**
+ * 幂等键：同一个 (event_id, action) 只落一次账（force push / 分支更新会重放 push）。
+ * 带持久索引（架构审核 P2）：recordEvent 纯 append、进程内 LRU 重启即忘——broker 一重启，
+ * 同一 push 重放就再落一条重复账。索引落在 ledger 目录（与 notify-queue 同口径：
+ * HARNESS_LEDGER_DIR 优先，退回 rulesRoot 下的 .ai/ledger），读/写失败 fail-open 不挡主流程。
+ */
+const seenGitDecisions = createSeenKeys({
+  indexFile: join(
+    process.env.HARNESS_LEDGER_DIR || join(process.env.HARNESS_RULES_ROOT || process.cwd(), '.ai/ledger'),
+    'broker-seen-keys.txt'
+  ),
+});
 
 /**
  * 方案 D：从 push 事件里读「人在 GitLab 上做的批红」。
@@ -286,18 +296,24 @@ async function handleGitDecisions(cfg, body, rules) {
   }
 
   for (const [blocker, v] of picked) {
-    const key = `${v.sha}:${blocker}`;
+    // 幂等键 = (event_id, action)：event_id 沿用 `<sha>:<blocker>`，action 取落账事件名。
+    // 拆成二元组的意义：approvers 名单热改后，同一 push 重放按不同 action 各落一次（改判仍可被记下），
+    // 而「同 action 重放」——重启后 force push 重投的最常见形态——被持久索引挡在账本外。
+    const action = v.allowed ? 'decision_landed' : 'decision_rejected';
+    const key = `${action}:${v.sha}:${blocker}`;
     if (seenGitDecisions.has(key)) continue;
-    seenGitDecisions.add(key);
     if (!v.allowed) {
       recordEvent('broker', 'decision_rejected', {
         reason: 'author_not_approver', blocker, by: v.by.name, email: v.by.email, via: 'git', commit: v.sha.slice(0, 8),
       });
+      // 先记账后记键：recordEvent 失败是吞异常的，若先记键，一次账本写失败会让这条账永久消失。
+      seenGitDecisions.add(key);
       continue;
     }
     recordEvent('broker', 'decision_landed', {
       blocker, choice: v.row.choice, by: v.by.name, email: v.by.email, via: 'git', commit: v.sha.slice(0, 8), file: v.file,
     });
+    seenGitDecisions.add(key);
     landed.push({ blocker_id: blocker, choice: v.row.choice, file: v.file, commit: v.sha.slice(0, 8) });
   }
   return { landed };

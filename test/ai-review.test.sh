@@ -218,6 +218,30 @@ node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD
   | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.files_in_bundle)})' > "$TMP/dry2.txt"
 check "缓存生效：打包文件数归零" "0" "$(cat "$TMP/dry2.txt")"
 
+echo "== 5b. 缓存键绑定规则源内容（P2：规则/清单更新不得沿用旧结论）=="
+bundle_count() {
+  node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" --dry-run 2>/dev/null \
+    | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.files_in_bundle)})'
+}
+# ① 正向：规则与清单都没动 → 同键命中缓存，全沿用（打包 0、0 次调用）
+check "规则未变 → 命中缓存（打包文件数 0）" "0" "$(bundle_count)"
+before=$(reqs)
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" >/dev/null 2>&1
+check "规则未变 → 0 次模型调用" "$before" "$(reqs)"
+# ② 负向：清单加一个字符 → 键变 → 缓存失效，重新打包重算（变异检验：换回旧实现这两条必红）
+printf 'x' >> "$REPO/scripts/reviews/rs.md"
+check "清单微改（+1 字符）→ 缓存失效（打包文件数 1）" "1" "$(bundle_count)"
+before=$(reqs)
+node "$HERE/scripts/ai-review.mjs" --type rs --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews2" >/dev/null 2>&1
+rc=$?
+check "清单微改后重算 → 恰好 1 次模型调用" "1" "$(( $(reqs) - before ))"
+check "按新清单重算（mock 无问题）→ exit 0" "0" "$rc"
+ls "$REPO/.ai/reviews2"/.cache-rs-????????????.json >/dev/null 2>&1
+check "缓存文件名含规则源哈希（.cache-rs-<12位>.json）" "0" "$?"
+# ③ harness.rules.json 本体微改（尾部加一空格，语义不变）同样要失效：键必须同时覆盖两个规则源
+printf ' ' >> "$REPO/harness.rules.json"
+check "rules 微改（+1 空格）→ 缓存失效（打包文件数 1）" "1" "$(bundle_count)"
+
 kill $MOCK_PID 2>/dev/null; wait $MOCK_PID 2>/dev/null
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

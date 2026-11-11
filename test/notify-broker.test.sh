@@ -492,6 +492,89 @@ const r = classify({ type: "mr_review_requested", mustAct: true }, sub);
 process.exit(r.tier === "digest" && r.escalateAfterMs > 0 ? 0 : 1);'
 check "mustAct 事件 ledger 下限提升为 digest（带升级时间）" "0" "$?"
 
+
+echo "== 10. 重启幂等（P2）：同一 (event_id, action) 不重复落账 =="
+# 缺陷形态（架构审核 P2）：seenGitDecisions 是进程内 LRU，重启即忘；recordEvent 纯 append——
+# broker 重启后同一 push 重放，账本里就多一条一模一样的 decision_landed。
+# 治法：幂等键持久化到 ledger 目录的索引文件（broker-seen-keys.txt），启动扫建、追加前查集；
+# 索引读/写失败只记 stderr，绝不挡主流程（fail-open）。注意：§6 已把 approvers 改成
+# ["tech@corp.com"]，本节 push 作者必须用名单内的人，否则测到的是 rejected 不是 landed。
+SEEN_IDX="$HARNESS_LEDGER_DIR/broker-seen-keys.txt"
+count_landed() { grep -c "\"type\":\"decision_landed\".*\"blocker\":\"$1\"" "$HARNESS_LEDGER_DIR/events.jsonl" || true; }
+
+# 与主 broker 同参重启（HARNESS_LEDGER_DIR 已 export：索引与账本都落在 $TMP/ledger）
+start_broker() {
+  AGING_INTERVAL_MS=200 \
+  GITLAB_WEBHOOK_SECRET=s3cret GITLAB_URL="http://127.0.0.1:${GITLAB_PORT}" GITLAB_TOKEN=gt \
+  FEISHU_WEBHOOK_URL="http://127.0.0.1:${FEISHU_PORT}" HARNESS_RULES_ROOT="$TMP/rules" \
+  FEISHU_VERIFY_TOKEN=t0k3n FEISHU_NAME_MAP='{"ou_123":"张三"}' \
+  node "$HERE/scripts/harness-broker.mjs" --port 0 > "$1" 2> "$1.err" &
+  BROKER_PID=$!
+  BPORT=""
+  for _ in $(seq 1 50); do BPORT="$(sed -n 's/^PORT //p' "$1")"; [ -n "$BPORT" ] && break; sleep 0.1; done
+}
+
+cat > "$TMP/gitlab/commit-diff-rstraa01.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-R1 | 重启幂等 | 开放 |
++| OP-R1 | 重启幂等 | 已裁决：A（陈五 @ 2026-11-11 10:00 git 批红） |
+EOF
+curl -s -X POST -H 'content-type: application/json' -H "x-gitlab-token: s3cret" \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main rstraa01)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/r1.json"
+check "重启前新事件正常落账" "OP-R1=A" "$(landed_of "$TMP/r1.json")"
+check "重启前 decision_landed(OP-R1) 恰一条" "1" "$(count_landed OP-R1)"
+[ -s "$SEEN_IDX" ]; check "幂等键持久化到索引文件" "0" "$?"
+
+kill $BROKER_PID 2>/dev/null
+wait $BROKER_PID 2>/dev/null
+start_broker "$TMP/broker2.out"
+grep -q '幂等索引不可读' "$TMP/broker2.out.err" && r=bad || r=ok
+check "索引完好时启动不报 fail-open 警告" ok "$r"
+curl -s -X POST -H 'content-type: application/json' -H "x-gitlab-token: s3cret" \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main rstraa01)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/r1b.json"
+check "重启后同一事件重放不再落账" "" "$(landed_of "$TMP/r1b.json")"
+check "账本仍只有一条 decision_landed(OP-R1)" "1" "$(count_landed OP-R1)"
+
+cat > "$TMP/gitlab/commit-diff-rstraa02.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-R2 | 重启后新事件 | 开放 |
++| OP-R2 | 重启后新事件 | 已裁决：B（陈五 @ 2026-11-11 10:01 git 批红） |
+EOF
+curl -s -X POST -H 'content-type: application/json' -H "x-gitlab-token: s3cret" \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main rstraa02)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/r2.json"
+check "重启后新事件照常落账（正向）" "OP-R2=B" "$(landed_of "$TMP/r2.json")"
+check "decision_landed(OP-R2) 恰一条" "1" "$(count_landed OP-R2)"
+
+# fail-open ①：索引文件缺失（被删/从未建过）→ 去重退化，但事件受理与落账不受阻
+kill $BROKER_PID 2>/dev/null
+wait $BROKER_PID 2>/dev/null
+rm -f "$SEEN_IDX"
+start_broker "$TMP/broker3.out"
+curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -H "x-gitlab-token: s3cret" \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main rstraa01)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/code"
+check "索引缺失时事件照常受理（fail-open，不挡主流程）" "200" "$(cat "$TMP/code")"
+check "索引缺失 → 去重退化为重复落账（最坏=回到无索引现状，而非报错）" "2" "$(count_landed OP-R1)"
+
+# fail-open ②：索引路径被目录占据（读/写都 EISDIR）→ 服务与落账完全不受影响
+kill $BROKER_PID 2>/dev/null
+wait $BROKER_PID 2>/dev/null
+rm -rf "$SEEN_IDX"
+mkdir "$SEEN_IDX"
+start_broker "$TMP/broker4.out"
+grep -q '幂等索引不可读' "$TMP/broker4.out.err"; check "索引损坏时显式报警（不是静默）" "0" "$?"
+curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BPORT}/healthz" > "$TMP/code"
+check "索引损坏时 broker 仍存活（healthz 200）" "200" "$(cat "$TMP/code")"
+cat > "$TMP/gitlab/commit-diff-rstraa03.patch" <<'EOF'
+@@ -1,1 +1,1 @@
+-| OP-R3 | 索引损坏 | 开放 |
++| OP-R3 | 索引损坏 | 已裁决：C（陈五 @ 2026-11-11 10:02 git 批红） |
+EOF
+curl -s -X POST -H 'content-type: application/json' -H "x-gitlab-token: s3cret" \
+  -d "$(push_payload 陈五 tech@corp.com refs/heads/main rstraa03)" "http://127.0.0.1:${BPORT}/webhook/gitlab" > "$TMP/r3.json"
+check "索引损坏时新事件照常落账（fail-open）" "OP-R3=C" "$(landed_of "$TMP/r3.json")"
+check "decision_landed(OP-R3) 恰一条" "1" "$(count_landed OP-R3)"
+rm -rf "$SEEN_IDX" # 收掉目录形态的索引，恢复现场只差一次正常启动
+
 kill $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 wait $BROKER_PID $FEISHU_PID $GITLAB_PID 2>/dev/null
 echo
