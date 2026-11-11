@@ -1,8 +1,8 @@
 # cmd: npm run gate
-# started: 2026-11-11T07:16:47Z
-# finished: 2026-11-11T07:17:47Z
+# started: 2026-11-11T07:41:51Z
+# finished: 2026-11-11T07:43:09Z
 # exit_code: 0
-# commit: 016f658eeb3eda4a51e7e7f63b530b18e0ee7de7
+# commit: c153c18a479b38537dedd6e0077976a37da48e9f
 # task: deferred-fixes
 # ---- output tail (last 200 lines) ----
   [32m✓[0m 给出 abandon 出口（红必须能变绿）
