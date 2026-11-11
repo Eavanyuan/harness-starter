@@ -1,0 +1,20 @@
+# cmd: bash test/retro-check.test.sh
+# started: 2026-11-11T06:33:50Z
+# finished: 2026-11-11T06:33:51Z
+# exit_code: 0
+# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# ---- output tail (last 200 lines) ----
+== 1. 新任务（created ≥ 2026-11-11）必须闭合 ==
+  [32m✓[0m 无声明且无匹配文件 → 拦
+  [32m✓[0m retro/<slug>*.md 存在 → 过（slug 兜底约定）
+  [32m✓[0m 声明 artifacts.retro 且存在 → 过
+  [32m✓[0m 声明到 retro/ 之外 → 拦（落盘位唯一）
+  [32m✓[0m 声明的文件不存在 → 拦
+== 2. 存量与豁免 ==
+  [32m✓[0m 存量任务（created < 2026-11-11）不追溯 → 过
+  [32m✓[0m abandoned 任务豁免 → 过
+  [32m✓[0m 未到 done 不查 → 过
+== 3. 变异：删掉判据本体则本套全红（可证伪）==
+  [32m✓[0m 判据在（fromDate=1970 时任何 done 任务都该被查）
+
+结果：9 通过，0 失败

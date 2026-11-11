@@ -1,0 +1,244 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "deferred-fixes",
+    "task_type": "change",
+    "related_task": "gate-channel-fix",
+    "remote_id": null,
+    "baseline": "8dfb96c",
+    "affected_ids": [
+      "GC0",
+      "GC1",
+      "GC2",
+      "GC3",
+      "GC4",
+      "CGR1",
+      "CGR2",
+      "CGR3",
+      "CGR4"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-11T06:13:03Z",
+    "flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "pass",
+      "note": "需求源=.ai/review/architecture-review.md P1-②③/P2/P3-⑤ + 用户会话指令"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "四个设计决策：retro 判据不追溯存量（retroCheckFromDate）/ 绑 commit 只认祖先 / S 折叠判据随出口走 / 降档必须具名——理由均在代码注释与 retro 文档"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "无对外契约变更：判据与 CLI 内聚，模板/文档仅 state-fields.md 一行登记"
+    },
+    {
+      "stage": "wbs",
+      "gate": "pass",
+      "note": "todos 即拆解（DF-A..DF-G）"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "自审+套件：拆分行为零差异（223/0 前后）、子代理项各带变异验证"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "npm run gate 全量绿（DFG.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/2026-11-11-deferred-fixes-搁置项清账.md"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/2026-11-11-deferred-fixes-搁置项清账.md"
+  },
+  "todos": [
+    {
+      "id": "DF-A",
+      "title": "retro 落盘机器判（P1-②）",
+      "status": "completed",
+      "files": [
+        "hooks/lib/verify.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DF-A.log",
+        "command": "bash test/retro-check.test.sh"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-B",
+      "title": "verify 日志绑 commit（P1-③后半）",
+      "status": "completed",
+      "files": [
+        "scripts/verify-run.sh",
+        "hooks/lib/verify.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DFG.log",
+        "command": "npm run test:evidence（含17b）+ test:verify-run（第10节）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-C",
+      "title": "S 档折叠 + 三次打回降档（P2-①）",
+      "status": "completed",
+      "files": [
+        "hooks/lib/verify.mjs",
+        "scripts/lib/cli/resume.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DF-BC.log",
+        "command": "npm run test:hooks（41节）+ test:harness-cli（50节）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-D",
+      "title": "harness-cli 拆分（P2-②a）",
+      "status": "completed",
+      "files": [
+        "scripts/harness-cli.mjs",
+        "scripts/lib/cli/"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DFG.log",
+        "command": "npm run test:harness-cli 223→234/0 行为零差异"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-E",
+      "title": "broker 幂等（P2-②b）",
+      "status": "completed",
+      "files": [
+        "scripts/harness-broker.mjs",
+        "scripts/lib/decision-from-git.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DF-E.log",
+        "command": "npm run test:broker（§10 16断言+变异）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-F",
+      "title": "ai-review 缓存键（P2-②c）",
+      "status": "completed",
+      "files": [
+        "scripts/ai-review.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DF-F.log",
+        "command": "npm run test:ai-review（§5b 7断言+变异）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DF-G",
+      "title": "runtime 回写（P3-⑤）",
+      "status": "completed",
+      "files": [
+        "scripts/lib/cli/runtime.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DFG.log",
+        "command": "test:harness-cli 49节（值域/退化/重置）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    },
+    {
+      "id": "DFG",
+      "title": "全量 gate",
+      "status": "completed",
+      "files": [
+        "harness.config.json",
+        "package.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DFG.log",
+        "command": "npm run gate"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "见对应套件",
+        "feature_complete": "判据落地且有正负向断言",
+        "quality_clean": "变异验证：判据/接线删除即红（各套件内）"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "stage": "done",
+    "last_check": "2026-11-11",
+    "checks": [
+      {
+        "name": "impl/review/ci/retro",
+        "pass": true
+      }
+    ]
+  }
+}

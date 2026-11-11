@@ -1,0 +1,102 @@
+# cmd: npm run -s test:broker
+# started: 2026-11-11T06:33:57Z
+# finished: 2026-11-11T06:34:00Z
+# exit_code: 0
+# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# ---- output tail (last 200 lines) ----
+== 1. 卡片渲染（纯函数） ==
+  [32m✓[0m 决策卡片 msg_type=interactive
+  [32m✓[0m 每个选项一个按钮（票拟）
+  [32m✓[0m 按钮 value 携带回投上下文
+  [32m✓[0m 缺 options 的决策事件 → 拒渲染（非 0）
+  [32m✓[0m webhook 发送成功且落账
+  [32m✓[0m events.jsonl 记 card_sent
+== 2. broker：健康与认证 ==
+  [32m✓[0m healthz → 200
+  [32m✓[0m healthz 报出实际绑定面（默认回环）
+  [32m✓[0m 回环启动时日志点明后果（容器里的 GitLab 打不进来）
+  [32m✓[0m 对外监听时报出所有 IPv4 网卡
+  [32m✓[0m 对外监听时不再喊「打不进来」
+  [32m✓[0m webhook token 不匹配 → 403
+  [32m✓[0m 飞书 URL 校验回显 challenge
+  [32m✓[0m 回投未带校验 token → 403
+  [32m✓[0m 被拒的回投不产生 GitLab 提交
+  [32m✓[0m 回投 token 不匹配 → 403
+== 3. MR 事件路由 → 卡片找人 ==
+  [32m✓[0m MR 路由返回 rs+evidence
+  [32m✓[0m 飞书收到 1 张卡片
+  [32m✓[0m 卡片含审核类型与批红角色
+  [32m✓[0m diffs 接口 5xx → 通知降级仍送达（fail-open）
+  [32m✓[0m 降级卡片含说明
+  [32m✓[0m config 形状错 → 200（不把 5xx 甩给 GitLab 反复重投）
+  [32m✓[0m 响应里点明配置错误
+  [32m✓[0m 卡片写明是配置坏了（不是「没命中审核」）
+  [32m✓[0m 账本单记一条 mr_route_config_error
+  [32m✓[0m mr_routed 也带 config_error（不漏记）
+== 4. pipeline 失败与 digest ==
+  [32m✓[0m pipeline 失败 → 失败卡片
+  [32m✓[0m 非卡片事件走 digest（不推飞书）
+  [32m✓[0m digest 不产生新卡片
+== 5. 决策回投（批红落账） ==
+  [32m✓[0m 卡片回调 → 200 落账
+  [32m✓[0m GitLab 收到 1 次文件提交
+  [32m✓[0m RS 开放问题行写入结论+批红人
+  [32m✓[0m commit message 带身份与结论
+  [32m✓[0m 账实不符（OP 不存在）→ 422 显式红
+  [32m✓[0m 失败回投不产生新提交
+== 6. 方案 D：决策走 git（零入站口） ==
+  [32m✓[0m push 里的「已裁决」被读成决策
+  [32m✓[0m 账本记 decision_landed via git
+  [32m✓[0m 落账带 commit author 身份
+  [32m✓[0m 读 git 的决策不写仓库（commit 本身就是账）
+  [32m✓[0m 作废的旧结论（-行）不被采纳
+  [32m✓[0m 同一 commit 重推（force push 会重放）不重复落账
+  [32m✓[0m 非默认分支的改动不算结论（还没生效）
+  [32m✓[0m 合并 push 只落一条账
+  [32m✓[0m 落账身份是真正改文档的人（张三），不是合并的人（李四）
+  [32m✓[0m 合并提交不额外落账（李四那条被认作重复投影）
+  [32m✓[0m 同一 push 里改判取最终结论
+  [32m✓[0m approvers 名单外的人改的不落账
+  [32m✓[0m 名单外记 decision_rejected 留痕
+  [32m✓[0m 名单内的人改的照常落账
+  [32m✓[0m diff 接口 5xx 时 push 仍返回 200
+  [32m✓[0m 读不到 diff 显式留痕（不静默当没决策）
+== 7. link 模式卡片：不依赖任何回调 ==
+  [32m✓[0m link 模式只给一个按钮（不是 N 个都跳同一页）
+  [32m✓[0m 按钮自带 url（点了直接开编辑页，不经 broker）
+  [32m✓[0m link 模式不再生成 decision value（没有回调可回）
+  [32m✓[0m 正文点名要改哪一行（OP-1）
+  [32m✓[0m MR 卡「去处理」按钮自带 url
+  [32m✓[0m MR 卡点名无槽覆盖洞（G1）
+== 8. 相对路径启动（P1-10 回归：文档写法必须真的能启动） ==
+  [32m✓[0m notify CLI 相对路径正常渲染（非静默空转）
+  [32m✓[0m broker 相对路径能启动（PORT 行出现）
+  [32m✓[0m 相对路径 broker healthz → 200
+  [32m✓[0m 经软链路径调用也正常渲染（不是静默空转）
+== 9. 订阅三档与 aging 升级（T2） ==
+  [32m✓[0m mr_open 降档 digest → 不立即推卡
+  [32m✓[0m 订阅决策入账（digest）
+  [32m✓[0m aging 队列落盘
+  [32m✓[0m ledger 档 → 不推卡不入队
+  [32m✓[0m 订阅决策入账（ledger）
+  [32m✓[0m aging 到点 → 升回 card 推达
+  [32m✓[0m aging 升级入账
+  [32m✓[0m 规则热改即生效：minimal 后同事件不再入队
+  [32m✓[0m mustAct 事件 ledger 下限提升为 digest（带升级时间）
+== 10. 重启幂等（P2）：同一 (event_id, action) 不重复落账 ==
+  [32m✓[0m 重启前新事件正常落账
+  [32m✓[0m 重启前 decision_landed(OP-R1) 恰一条
+  [32m✓[0m 幂等键持久化到索引文件
+  [32m✓[0m 索引完好时启动不报 fail-open 警告
+  [32m✓[0m 重启后同一事件重放不再落账
+  [32m✓[0m 账本仍只有一条 decision_landed(OP-R1)
+  [32m✓[0m 重启后新事件照常落账（正向）
+  [32m✓[0m decision_landed(OP-R2) 恰一条
+  [32m✓[0m 索引缺失时事件照常受理（fail-open，不挡主流程）
+  [32m✓[0m 索引缺失 → 去重退化为重复落账（最坏=回到无索引现状，而非报错）
+  [32m✓[0m 索引损坏时显式报警（不是静默）
+  [32m✓[0m 索引损坏时 broker 仍存活（healthz 200）
+  [32m✓[0m 索引损坏时新事件照常落账（fail-open）
+  [32m✓[0m decision_landed(OP-R3) 恰一条
+
+结果：84 通过，0 失败
