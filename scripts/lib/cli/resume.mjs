@@ -291,12 +291,14 @@ export function cmdResume(target, slug, opts) {
   const canAdvance =
     blockingNow.length === 0 && problems.length === 0 && closure.length === 0 && gateReady && !!STAGE_NEXT[state.stage];
 
-  // 三次打回降档（P2-①）：同一阶段第 3 次 gate=fail 后，机械拦截不再提供增量信息，
-  // 只提供"怎么绕过它"的动机（ai-review-notify 实测 ci↔retro 三轮往返）。
+  // 三次打回降档（P2-①）：同一阶段被反复进入 ≥3 次后，机械拦截不再提供增量信息，
+  // 只提供"怎么绕过它"的动机。计数口径是**同阶段重复进入次数**——不是 gate=fail 条数：
+  // 实测（ai-review-notify ci↔retro 三轮）真实 state 里 gate 只有 pass/deferred，
+  // 循环靠"同一阶段反复出现"表达，数 fail 永远数不到（第一版就数错了，复审抓回）。
   // 降档不是免检：仍要求具名放行（--ack-strikes <人>），推进时记进 stage_history；
-  // 第 3 次之前的打回不受影响，其他拦截（blocker/校验/收尾）也一律不降档。
+  // 其他拦截（blocker/校验/收尾）也一律不降档。
   const strikes = (Array.isArray(state.stage_history) ? state.stage_history : []).filter(
-    (h) => h && h.stage === state.stage && h.gate === 'fail'
+    (h) => h && h.stage === state.stage
   ).length;
   const strikeLeniency =
     gate.failed.length > 0 && strikes >= 3 && !!opts.ackStrikes && blockingNow.length === 0 && problems.length === 0 && closure.length === 0;
