@@ -28,7 +28,7 @@ import { resolve, dirname, join, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readStdinJson, blockedRules, GENERIC_RULE_HINT } from './lib/verify.mjs';
 import { recordDeny } from './lib/ledger.mjs';
-import { analyzeCommand } from './lib/shell.mjs';
+import { analyzeCommand, ruleView, hardTokenRule } from './lib/shell.mjs';
 import { classifyPath, loadGuards } from './lib/path_guards.mjs';
 import { globToRe } from './lib/glob.mjs';
 
@@ -186,24 +186,41 @@ if (tool === 'Bash') {
   }
 
   const allow = activeAllowlist();
-  // allowlist 不能成为"把脚本送进解释器"的许可证：前缀只描述一条命令，不描述管道。
-  const pipesToInterpreter = /\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b|\|\s*(?:python[0-9.]*|perl|node|ruby)\b/;
+  // allowlist 不能成为"把脚本送进解释器"的许可证：前缀只描述一条命令，不描述管道，
+  // 也不描述 env 中转（`curl … | env bash` 与 `| bash` 同罪）。
+  const pipesToInterpreter =
+    /\|\s*(?:sudo\s+)?(?:env\s+)?(?:ba|z|da|k|a)?sh\b|\|\s*(?:sudo\s+)?(?:env\s+)?(?:python[0-9.]*|perl|node|ruby)\b/;
 
   for (const seg of segments) {
     for (const w of seg.writes) judgeWrite(w);
     for (const r of seg.reads) judgeRead(r);
 
-    const allowed = !pipesToInterpreter.test(seg.text) && allow.find((prefix) => seg.text.startsWith(prefix));
+    // 规则视角：续行归一 + 引号遮蔽 + token 重建。高危关键词/旗标只在上面跑；
+    // 路径读写判定不受遮蔽影响（走 analyzeSegment 的原始 token）。
+    const rv = ruleView(seg.text);
+
+    // 段内含未引号的 $( ) 或反引号时，前缀豁免一律不适用：前缀描述的是一条命令的
+    // 字面形态，而命令替换的内容在豁免时刻还没判过（`echo $(git push --force)`）。
+    const allowed =
+      !pipesToInterpreter.test(seg.text) && !rv.hasUnquotedSub && allow.find((prefix) => seg.text.startsWith(prefix));
     if (allowed) {
       console.error(`[guard_command] allowlist 命中，放行该段：${seg.text.slice(0, 60)}`);
       continue;
     }
 
-    for (const rule of blockedRules(gates)) {
-      const re = new RegExp(rule.pattern);
-      if (re.test(seg.text)) {
-        deny(`命中高危命令规则 /${rule.pattern}/`, rule.hint || GENERIC_RULE_HINT, seg.text, rule.pattern);
+    // 具名豁免出口（与 CI 的 3c0fa49 同款语义）：行尾 scan-ok: <≥8字理由> 只豁免
+    // 关键词/旗标命中，不豁免路径读写判定（那些在前面已判完）。理由短于 8 字不算。
+    const scanOk = /scan-ok:\s*\S.{7,}\s*$/.test(seg.text);
+
+    if (!scanOk) {
+      for (const rule of blockedRules(gates)) {
+        const re = new RegExp(rule.pattern);
+        if (re.test(rv.text)) {
+          deny(`命中高危命令规则 /${rule.pattern}/`, rule.hint || GENERIC_RULE_HINT, seg.text, rule.pattern);
+        }
       }
+      const hard = hardTokenRule(rv.tokens);
+      if (hard) deny(hard.reason, hard.hint, seg.text, hard.rule);
     }
   }
   process.exit(0);

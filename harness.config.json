@@ -187,7 +187,7 @@
         "hint": "同上：递归强删根/home/父目录一律拦。清理工作树用 git clean 并先跑 --dry-run"
       },
       {
-        "pattern": "rm\\s+(-[A-Za-z]+\\s+){2,}(/|~|\\$HOME)(?!\\w)",
+        "pattern": "rm\\s+(-[A-Za-z]+\\s+){2}(/|~|\\$HOME)(?!\\w)",
         "hint": "拆开写的 -r -f 绕过不了规则。目标路径必须落在仓库内且写全"
       },
       {
@@ -219,11 +219,11 @@
         "hint": "零测试通过不算验证。补测试，或明确说明该模块本无测试并留 verify 记录"
       },
       {
-        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:ba|z|da)?sh\\b",
+        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:sudo\\s+|env\\s+)*(?:ba|z|da|k)?sh\\b",
         "hint": "管道执行远程脚本不可审计。先下载、读一遍、确认来源与校验和，再本地执行"
       },
       {
-        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:python|perl|node)\\b",
+        "pattern": "\\b(?:curl|wget)\\b[^|]*\\|\\s*(?:sudo\\s+|env\\s+)*(?:python[0-9.]*|perl|node|ruby)\\b",
         "hint": "同上：管道进解释器。下载到文件、审查后再执行"
       },
       {

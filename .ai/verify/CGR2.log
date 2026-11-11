@@ -1,0 +1,7 @@
+# cmd: bash -c $'node /tmp/cr-p0-probes.mjs >/dev/null 2>&1; node /tmp/cr-p0-probes2.mjs >/dev/null 2>&1; m=$(awk -F"\\t" "\\$4==\\"MISS\\"{print \\$1}" /tmp/cr-p0-results.tsv /tmp/cr-p0-results2.tsv); n=$(printf "%s\\n" "$m" | grep -c .); ok=$(printf "%s\\n" "$m" | grep -cE "^(B26|F06) "); echo "\345\211\251\344\275\231\346\274\217\346\213\246 $n \346\235\241\357\274\214\345\205\266\344\270\255\345\267\262\345\243\260\346\230\216\350\276\271\347\225\214 $ok \346\235\241\357\274\232$m"; [ "$n" = "$ok" ]'
+# started: 2026-11-11T04:01:58Z
+# finished: 2026-11-11T04:02:09Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+剩余漏拦 2 条，其中已声明边界 2 条：B26 python3 -c 写 state.json（解释器 -c）
+F06 前缀 mvn test 不豁免管道进解释器

@@ -1,0 +1,138 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "cr-gate-round2",
+    "task_type": "bugfix",
+    "related_task": "gate-channel-fix",
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "GC0",
+      "GC1",
+      "GC2",
+      "GC3",
+      "GC4"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-11T03:43:18Z",
+    "flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档 bugfix：修复范围与验收全部记录在 CR-2026-11-11-门禁通道修复.md 及其修复后记，不另立文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：bugfix 修复无需求歧义，CR-2026-11-11 即需求源"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "无多方案决策点：修复方案由 CR R1/R2 建议直接确定"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：无对外契约变更"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：单批修复，TODO 即拆解"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {
+    "cr": ".ai/review/CR-2026-11-11-门禁通道修复.md",
+    "regression_test": "test/gate-regressions.test.sh"
+  },
+  "todos": [
+    {
+      "id": "CGR1",
+      "title": "回归测试套件（R1/R2 全部 payload 入库）",
+      "status": "completed",
+      "kind": "regression",
+      "files": [
+        "hooks/lib/shell.mjs",
+        "hooks/guard_command.mjs",
+        "test/gate-regressions.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CGR1.log",
+        "command": "bash test/gate-regressions.test.sh"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS 31/0",
+        "tests": "31 断言全绿（负向 20 + 正向 11，含 allowlist 注入对照）",
+        "feature_complete": "R1 四组漏拦 + R2 三条误拦 + scan-ok 出口全部有对应断言",
+        "quality_clean": "变异验证：删 $( 递归 → B24/F04 探针红；删引号遮蔽 → R20/21/23 探针红（见 CGR2 探针集）"
+      }
+    },
+    {
+      "id": "CGR2",
+      "title": "102 例对抗探针复跑（边界白名单断言）",
+      "status": "completed",
+      "kind": "regression",
+      "files": [
+        "hooks/lib/shell.mjs",
+        "harness.config.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CGR2.log",
+        "command": "node /tmp/cr-p0-probes.mjs + probes2 + 边界白名单断言"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "102 探针：0 误拦；漏拦仅剩 B26(python -c)/F06(管道策略) 两条已声明边界",
+        "feature_complete": "对照 CR 一轮：漏拦 19→2（均为登记边界）、误拦 3→0",
+        "quality_clean": "每条修复可证伪：去掉对应判定探针即红"
+      }
+    },
+    {
+      "id": "CGR3",
+      "title": "hook 接线与生成物无漂移",
+      "status": "completed",
+      "files": [
+        "hooks/guard_command.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CGR3.log",
+        "command": "npm run -s check:hooks"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "check:hooks 通过",
+        "feature_complete": "manifest 未变，双 CLI 配置无漂移",
+        "quality_clean": "无"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI1",
+      "issue": "test:hooks 第 40 节（session_start 封存过滤）红——属并发会话（僵尸判据批）WIP，非本批引入",
+      "resolution": "tracked：待该批提交后复验，见 CR R3"
+    },
+    {
+      "id": "KI2",
+      "issue": "test:harness-cli 第 46 节（npm pack 断言）在 npm run -s 下必红——loglevel=silent 吞掉 notice 清单，存量问题",
+      "resolution": "fixed-plan：改用 --json 输出（Y4，待共享文件解冻后落地）"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

@@ -1,0 +1,8 @@
+# cmd: npm run -s check:hooks
+# started: 2026-11-11T04:01:16Z
+# finished: 2026-11-11T04:01:16Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+  ✓ .claude/settings.json
+  ✓ .zcode/config.json
+[build-hooks] hook 接线与 manifest 一致
