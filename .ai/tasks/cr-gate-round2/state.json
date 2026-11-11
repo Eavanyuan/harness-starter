@@ -21,7 +21,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档 bugfix：修复范围与验收全部记录在 CR-2026-11-11-门禁通道修复.md 及其修复后记，不另立文档"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -46,6 +46,21 @@
     {
       "stage": "impl",
       "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "CR-2026-11-11 二轮后记：R1/R2 已修，探针复跑漏拦 19→2（均声明边界）、误拦 3→0"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "npm run gate 全绿（CGR4.log），含修复后的 test:hooks 87/0 与 test:harness-cli 223/0"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/2026-11-11-门禁通道二轮收口.md"
     }
   ],
   "artifacts": {
@@ -73,7 +88,8 @@
         "tests": "31 断言全绿（负向 20 + 正向 11，含 allowlist 注入对照）",
         "feature_complete": "R1 四组漏拦 + R2 三条误拦 + scan-ok 出口全部有对应断言",
         "quality_clean": "变异验证：删 $( 递归 → B24/F04 探针红；删引号遮蔽 → R20/21/23 探针红（见 CGR2 探针集）"
-      }
+      },
+      "red_log_path": ".ai/verify/CGR1-RED.log"
     },
     {
       "id": "CGR2",
@@ -94,7 +110,8 @@
         "tests": "102 探针：0 误拦；漏拦仅剩 B26(python -c)/F06(管道策略) 两条已声明边界",
         "feature_complete": "对照 CR 一轮：漏拦 19→2（均为登记边界）、误拦 3→0",
         "quality_clean": "每条修复可证伪：去掉对应判定探针即红"
-      }
+      },
+      "red_log_path": ".ai/verify/CGR1-RED.log"
     },
     {
       "id": "CGR3",
@@ -114,25 +131,73 @@
         "feature_complete": "manifest 未变，双 CLI 配置无漂移",
         "quality_clean": "无"
       }
+    },
+    {
+      "id": "CGR4",
+      "title": "全量 gate（24 套件）",
+      "status": "completed",
+      "kind": "regression",
+      "files": [
+        "hooks/guard_command.mjs",
+        "hooks/lib/shell.mjs",
+        "harness.config.json",
+        "test/harness-cli.test.sh",
+        "package.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CGR4.log",
+        "command": "npm run gate"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "gate 24 套件全绿",
+        "feature_complete": "含 Y4 修复后 harness-cli 223/0 与并发批合入",
+        "quality_clean": "worktree 干净提交，证据日志同批入库"
+      },
+      "red_log_path": ".ai/verify/CGR1-RED.log"
     }
   ],
   "blockers": [],
-  "deviations": [],
+  "deviations": [
+    {
+      "what": "考卷区改动未经 write-allowlist 事前放行",
+      "disposition": "acknowledged",
+      "by": "用户会话授权（2026-11-11），登记于 CR 二轮后记；追认条留人工补登"
+    }
+  ],
   "known_issues": [
     {
       "id": "KI1",
-      "issue": "test:hooks 第 40 节（session_start 封存过滤）红——属并发会话（僵尸判据批）WIP，非本批引入",
-      "resolution": "tracked：待该批提交后复验，见 CR R3"
+      "issue": "test:hooks 40 节红——并发批 WIP",
+      "resolution": "fixed：并发批 f0ee03b 合入后 87/0（CGR4）"
     },
     {
       "id": "KI2",
-      "issue": "test:harness-cli 第 46 节（npm pack 断言）在 npm run -s 下必红——loglevel=silent 吞掉 notice 清单，存量问题",
-      "resolution": "fixed-plan：改用 --json 输出（Y4，待共享文件解冻后落地）"
+      "issue": "test:harness-cli 46 节 npm run -s 下必红",
+      "resolution": "fixed：改 --json 输出，223/0（CGR4）"
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-11T05:2x",
+    "checks": [
+      {
+        "name": "impl: verify 日志齐备",
+        "pass": true
+      },
+      {
+        "name": "review: CR 阻断项清零",
+        "pass": true
+      },
+      {
+        "name": "ci: gate 全绿",
+        "pass": true
+      },
+      {
+        "name": "retro: 文档存在",
+        "pass": true
+      }
+    ]
   }
 }
