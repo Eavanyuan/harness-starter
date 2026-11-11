@@ -1,0 +1,6 @@
+# cmd: bash -c npm\ run\ gate\ \>/dev/null\ 2\>\&1\ \&\&\ echo\ GATE_OK
+# started: 2026-11-11T01:59:35Z
+# finished: 2026-11-11T02:01:05Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+GATE_OK

@@ -3,6 +3,16 @@
 一套能让 **3 种 CLI、多个工程师** 共用同一条 AI 编码流水线的脚手架。
 解决两件事：**AI 的产出能不能被机器验收**，以及**换个人、换个模型，标准还是不是同一个**。
 
+## 🚀 从这里开始
+
+**[guides/快速上手.md](guides/快速上手.md) —— 五步从零到 task-loop 跑起来**（小白照做就行）：
+
+1. 把 harness 装进你的项目（新项目 / 存量项目）
+2. 接 GitLab（PAT + Runner + Webhook）
+3. 接飞书项目（MCP + OAuth + 严重级词表）
+4. 起 task-loop（定时器 + 影子周 + 真跑）
+5. 日常使用
+
 ## 整体架构
 
 ```text
@@ -42,21 +52,48 @@
 4. **fail-closed 判定、fail-open 观测**——门禁失败绝不放行（规则坏 → exit 2）；观测失败只记 stderr 不影响判定。
 5. **判不了的明说不判**——本地口径认 mtime、CI 口径只认 git 事实；语义质量归人审，不造形式化断言装样子。
 
-## 上手
+## 设计取舍
 
-前提：**Node ≥ 18 与 bash 硬依赖**（Windows 走 WSL）。`node scripts/harness-cli.mjs check <dir>` 确认。
+1. **单一源 + 生成**：3 CLI × 11 agent = 33 份文件，手写三个月后必然漂移——生成 + CI 漂移检测变成构建期错误。
+2. **约束代码化，知识留 prompt**："不许做什么"要确定（hook + CI）；"怎么做"要人能读能改（markdown）。
+3. **不追求全自动门禁**：`feature_complete` / `quality_clean` 机器判不了；门禁守最低限度的诚实，不守正确性。
+4. **skill 两层、单文件 ≤200 行**：让"是否真的加载过"可被检验。
+5. **按路径判，不按身份判**：PreToolUse 载荷里没有 agent 名；真收紧只有裁 `capabilities`。
+6. **判不了的就不假装**：CI 判 mtime 会把合规 PR 判红；两边共用校验库但口径分开。
+
+## 目录速览
+
+| 目录 | 是什么 | 改不改 |
+|---|---|---|
+| `agents/*.agent.md` | 11 个 agent 唯一事实源 | ✅ 改后跑 `build:agents` |
+| `harness.rules.json` | 审核路由+订阅+运行时配置 | ✅ 改数据不改代码 |
+| `harness.config.json` | CLI 能力映射+高危命令 | ⚠️ 考卷区（需放行条） |
+| `AGENTS.md` | 常驻规则（所有 CLI 都读） | ✅ |
+| `.skills/` | 领域知识（≤200 行两层深） | ✅ |
+| `scripts/` | 全部工具（17 脚本 + 23 共享库） | ✅ 同批配测试 |
+| `hooks/` | 三道门 + 校验核心 | ⚠️ 考卷区（需放行条） |
+| `test/` | 20 组自测 + e2e | ✅ |
+| `templates/` | 9 张文档模板 | ⚠️ 考卷区（需放行条） |
+| `.ai/` | 任务状态 + 证据 + 观测账本 | 状态按任务写；`verify/*.log` 入库 |
+| `.claude/ .zcode/ prompts/` | 生成物 | ❌ 不要手改 |
+| `deploy/task-loop/` | 定时器模板 + CI 参考配置 | ✅ 部署时抄 |
+
+## 常用命令
 
 ```bash
-npm run doctor      # 体检：模板态只提醒不报红；含门禁在场性（runner/批准/MCP 数据档）
-npm run gate        # 门禁 + 20 组自测（必须全绿）
-bash scripts/init-harness.sh my-feature M    # 新功能
-bash scripts/init-harness.sh my-bug M --type bugfix --related <来源>  # 缺陷修复
-bash scripts/init-harness.sh feishu-hotfix M --type bugfix --related feishu:<单号>  # 飞书 bug
+npm run doctor          # 体检（含门禁在场性）
+npm run gate            # 全量自检（20 组，必须全绿）
+npm run verify:state    # 证据链校验（CI 口径）
+npm run ledger:report   # 拦截面统计
+npm run e2e             # L2：真 GitLab 端到端
+
+bash scripts/init-harness.sh <slug> [S|M|L|XL] [--type feature|change|bugfix] [--related <slug或feishu:单号>]
+bash scripts/verify-run.sh [--task <任务名>] <todo-id> -- <命令>
+node scripts/task-loop.mjs --once [--dry-run]
+bash scripts/install-task-loop.sh <仓库> [--print|--status|--uninstall]
 ```
 
-入口：Claude Code / ZCode 用 `/task <需求>`；无 subagent 的 CLI 按 `prompts/INDEX.md` 取角色。
-
-## 三种 CLI 接法
+## CLI 接法
 
 | CLI | 形态 | 注意 |
 |---|---|---|
@@ -65,60 +102,15 @@ bash scripts/init-harness.sh feishu-hotfix M --type bugfix --related feishu:<单
 | DeepSeek 兼容端点 | subagent（复用 `.claude/`） | 设 `ANTHROPIC_BASE_URL` |
 | DeepSeek 独立 CLI | prompt-only（`prompts/`） | **无 hook**，只有 CI 兜底 |
 
-## 任务生命周期
-
-```text
-/task → rs[人审] → adr[人拍板] → fs → sr 🔴清零 → wbs → impl+test（每 TODO 配证据）→ cr[人 approve] → CI → retro
-```
-
-每个箭头处的门禁是文件检查、命令退出码或 mtime 比较，**没有一条是"模型说它做完了"**。
-打回循环与 bug 热修由 task-loop 自动驱动（拉模型、CAS 认领、CI 归因、人审停点）。
-
-## 审核与通知自动化
-
-```bash
-node scripts/review-router.mjs --base origin/main...   # 变更 → 审核类型（零 LLM）
-node scripts/ai-review.mjs --type cr --dry-run ...      # L0 判据零 token + 打包统计
-bash scripts/install-task-loop.sh <仓库>                # 装 task-loop 定时器（launchd/systemd）
-node scripts/task-loop.mjs --once --dry-run             # 影子模式（零写入）
-```
-
-- **路由规则全在 `harness.rules.json`**（rs/fs/adr/cr/evidence + code_hints + 订阅三档），改数据不改代码
-- **退出码即门禁**：0 过 / 1 有 🔴 挡合入 / 2 基础设施失败——**失败绝不产出"通过"**
-- **无模型 key 不悄悄降级**：机器判据干净但无凭据 → exit 2；只跑机器判据须显式 `--machine-only`
-- **凭据安全**：定时器 plist/unit 不含秘密，0600 env 文件 + 0700 wrapper 注入
-
-## 目录速览
-
-- `agents/` · `harness.config.json` · `harness.rules.json` · `AGENTS.md` —— 唯一事实源
-- `.skills/` —— 领域知识（≤200 行两层深；harness 的 37 条门禁失效点清单在 references/）
-- `scripts/` —— 生成器（build-\*）、体检（doctor）、任务（init/verify-run）、审核（router/ai-review）、通知（broker/feishu-\*）、循环（task-loop + lib/ 23 个共享库）
-- `hooks/` —— guard_state/command/write + session_start；校验核心 `lib/verify.mjs` 与 CI 共用
-- `test/` —— 20 组自测 + `e2e/`（真 GitLab）+ `regress-p2.sh`（恒退 1 缺陷复现器）
-- `.ai/` —— 任务状态（`tasks/*/state.json`）· 证据（`verify/*.log` 入库）· 观测（`ledger/`）
-- `templates/`（9 张文档模板）· `guides/` · `retro/` · `deploy/task-loop/`（定时器模板 + CI 参考）
-- `.claude/ .zcode/ prompts/` —— 生成物，不要手改
-
-## 常用命令
-
-```bash
-npm run doctor / verify:state / verify:state:local / ledger:report / gate
-npm run e2e                     # L2：真 GitLab 端到端（环境未起退 78）
-node scripts/harness-cli.mjs check|detect|analyze|init|remove|resume|verify
-bash scripts/verify-run.sh [--task <任务名>] <todo-id> -- <命令>    # 证据包装器
-```
-
-## 设计取舍
-
-1. **单一源 + 生成**：3 CLI × 11 agent = 33 份文件，手写三个月后必然漂移——生成 + CI 漂移检测变成构建期错误。
-2. **约束代码化，知识留 prompt**："不许做什么"要确定（hook + CI）；"怎么做"要人能读能改（markdown）。
-3. **不追求全自动门禁**：`feature_complete` / `quality_clean` 机器判不了；门禁守最低限度的诚实，不守正确性。
-4. **skill 两层、单文件 ≤200 行**：让"是否真的加载过"可被检验——最初 12 文件的 skill，模型读了 3 个就开始编造自检勾。
-5. **按路径判，不按身份判**：PreToolUse 载荷里没有 agent 名；真收紧只有裁 `capabilities`——文字禁令在压力下必然失效，裁剪能力不会。
-6. **判不了的就不假装**：CI 判 mtime 会把合规 PR 判红；两边共用校验库但口径分开，判不了的写进文档让人审兜底。
-
 ---
 
-深入阅读：[`guides/多人协作最佳实践.md`](guides/多人协作最佳实践.md) ·
-[`guides/审核与通知自动化.md`](guides/审核与通知自动化.md) ·
-state 字段契约 `docs/06-reference/state-fields.md`
+## 文档索引
+
+| 文档 | 给谁看 |
+|---|---|
+| **[guides/快速上手.md](guides/快速上手.md)** | 第一次用的人（五步跑通） |
+| [guides/审核与通知自动化.md](guides/审核与通知自动化.md) | 配 broker/飞书/CI 的人 |
+| [guides/多人协作最佳实践.md](guides/多人协作最佳实践.md) | 团队负责人 |
+| [guides/需求变更与Bug修复.md](guides/需求变更与Bug修复.md) | 走 change/bugfix 流程的人 |
+| `docs/06-reference/state-fields.md` | 想了解 state.json 字段的人 |
+| `docs/06-reference/adr/ADR-010-task-loop.md` | 想了解 task-loop 架构裁决的人 |
