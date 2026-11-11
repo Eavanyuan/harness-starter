@@ -1008,6 +1008,59 @@ console.log(out.join(","));
 ' 2>&1)"
 check "未封存拦 1 条 / 已封存 0 条 / 封存无理由判 / status 拼错判" "1,0,1,1" "$verdict"
 
+echo "== 49. runtime：能力自检结论写回（P3-⑤），值域与反向退化双拦 =="
+RT="$TMP/rt"
+mkdir -p "$RT"
+cp "$HERE/harness.config.json" "$RT/"
+node "$HERE/scripts/harness-cli.mjs" runtime "$RT" >/dev/null 2>&1
+check "什么都不传 → usage（64）" 64 "$?"
+node "$HERE/scripts/harness-cli.mjs" runtime "$RT" --spawn_agents maybe >/dev/null 2>&1
+check "值域外（maybe）→ 拒（64）" 64 "$?"
+node "$HERE/scripts/harness-cli.mjs" runtime "$RT" --spawn_agents yes --shell yes --ask_user yes >/dev/null 2>&1
+check "三项 yes 写回 → 成功" 0 "$?"
+node -e 'const c=require(process.argv[1]);process.exit(c.runtime.spawn_agents==="yes"&&c.runtime.shell==="yes"&&c.runtime.ask_user==="yes"?0:1)' "$RT/harness.config.json"
+check "config 里确实写进去了" 0 "$?"
+node "$HERE/scripts/harness-cli.mjs" runtime "$RT" --spawn_agents unknown >/dev/null 2>&1
+check "已知结论不许静默退回 unknown → 拒" 64 "$?"
+node "$HERE/scripts/harness-cli.mjs" runtime "$RT" --spawn_agents unknown --reset --by 张三 >/dev/null 2>&1
+check "显式 --reset 可重置 → 成功" 0 "$?"
+node -e 'const c=require(process.argv[1]);process.exit(c.runtime.spawn_agents==="unknown"?0:1)' "$RT/harness.config.json"
+check "重置后回到 unknown" 0 "$?"
+
+echo "== 50. 三次打回降档（P2-①）：第 3 次 gate=fail 后可具名放行，且记录在案 =="
+ST="$TMP/strike"
+mkdir -p "$ST/.ai/tasks/s1"
+cp "$HERE/hooks/lib/verify.mjs" "$ST/.ai/verify-lib-tmp" 2>/dev/null; rm -f "$ST/.ai/verify-lib-tmp"
+node -e '
+  const fs = require("fs");
+  const [root] = process.argv.slice(1);
+  const hist = [];
+  for (const st of ["rs","adr","fs_review","wbs","impl","review"]) hist.push({ stage: st, gate: "pass", exited_at: "2026-11-12T00:00:00Z" });
+  // ci 已三次 fail（同阶段计数 ≥3），第四次停在 ci
+  for (let i = 0; i < 3; i++) hist.push({ stage: "ci", gate: "fail", exited_at: "2026-11-12T00:00:00Z" });
+  hist.push({ stage: "ci", entered_at: "2026-11-12T00:00:00Z", exited_at: null, gate: "fail" });
+  fs.writeFileSync(root + "/.ai/tasks/s1/state.json", JSON.stringify({
+    meta: { task: "s1", flow_tier: "M", created_at: "2026-11-12T00:00:00Z" },
+    stage: "ci",
+    stage_history: hist.slice(0, -1),
+    todos: [],
+    gate_result: { stage: "ci", checks: [{ name: "流水线", pass: false, detail: "红灯" }], last_check: "2026-11-12T00:00:00Z" },
+  }, null, 2));
+' "$ST"
+out="$(node "$HERE/scripts/harness-cli.mjs" resume "$ST" s1 --advance 2>&1)"; rc=$?
+check "第 3 次打回无具名 flag → 仍拒（exit 3）" 3 "$rc"
+case "$out" in *"--ack-strikes"*) r=0;; *) r=1;; esac
+check "拒的时候给出降档出口的指引" 0 "$r"
+out="$(node "$HERE/scripts/harness-cli.mjs" resume "$ST" s1 --advance --ack-strikes 张三 2>&1)"; rc=$?
+check "具名降档 → 放行推进（exit 0）" 0 "$rc"
+node -e '
+  const fs = require("fs");
+  const s = JSON.parse(fs.readFileSync(process.argv[1] + "/.ai/tasks/s1/state.json", "utf8"));
+  const w = (s.stage_history || []).filter((h) => h.waived_by && String(h.waived_by).includes("三次打回降档"));
+  process.exit(s.stage === "retro" && w.length === 1 ? 0 : 1);
+' "$ST"
+check "推进落盘 + waived_by 记录降档人与理由" 0 "$?"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1
