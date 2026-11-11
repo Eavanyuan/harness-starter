@@ -24,6 +24,7 @@ import {
   validateTodos,
   formatFailures,
   checkStageExit,
+  checkRetroLanding,
   checkTaskTraceability,
   checkStage,
   migrate,
@@ -114,7 +115,8 @@ try {
   // 退出条件只在 resume 推进时判（checkStageTodoClosure）。
   failures = checkStage(state)
     .concat(validateTodos(todos || [], ROOT, { mode: 'local' }))
-    .concat(checkStageExit(state))
+    .concat(checkStageExit(state, ROOT))
+    .concat(checkRetroLanding(state, ROOT))
     .concat(checkTaskTraceability(state, ROOT));
 } catch (err) {
   block(`校验过程异常：${err.message}\n按 fail-closed 处理，请修 hook 或 state 后重试。`);

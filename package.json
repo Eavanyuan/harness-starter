@@ -44,7 +44,7 @@
     "test:init": "bash test/init.test.sh",
     "harness": "node scripts/harness-cli.mjs",
     "test:harness-cli": "bash test/harness-cli.test.sh",
-    "gate": "npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:glob && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring && npm run test:router && npm run test:ai-review && npm run test:broker && npm run test:feishu-ws && npm run test:feishu-oauth && npm run test:feishu-bug-source && npm run test:gate-regressions && npm run test:stale && npm run test:doctor-gates && npm run test:task-loop && npm run test:task-loop-contract",
+    "gate": "npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:glob && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring && npm run test:router && npm run test:ai-review && npm run test:broker && npm run test:feishu-ws && npm run test:feishu-oauth && npm run test:feishu-bug-source && npm run test:gate-regressions && npm run test:stale && npm run test:retro && npm run test:doctor-gates && npm run test:task-loop && npm run test:task-loop-contract",
     "ledger:report": "node scripts/ledger-report.mjs",
     "test:verify-run": "bash test/verify-run.test.sh",
     "test:ledger": "bash test/ledger.test.sh",
@@ -61,7 +61,8 @@
     "e2e": "node test/e2e/gitlab-decision.e2e.mjs",
     "test:glob": "bash test/glob.test.sh",
     "test:gate-regressions": "bash test/gate-regressions.test.sh",
-    "test:stale": "bash test/stale-task.test.sh"
+    "test:stale": "bash test/stale-task.test.sh",
+    "test:retro": "bash test/retro-check.test.sh"
   },
   "engines": {
     "node": ">=18"

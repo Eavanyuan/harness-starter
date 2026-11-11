@@ -66,6 +66,10 @@ CMD=("$@")
 printf -v CMDLINE '%q ' "${CMD[@]}"
 CMDLINE="${CMDLINE% }"
 
+# 产证时的 HEAD（P1-③后半）：证据绑提交，CI 侧只认当前历史线上的运行。
+# 拿不到 hash（空仓 / 非仓库）写 unknown —— 校验侧正则不认它，等价于旧日志的不追溯。
+HEAD_COMMIT="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+
 mkdir -p .ai/verify
 LOG=".ai/verify/${ID}.log"
 
@@ -159,6 +163,7 @@ done < <(
   echo "# started: ${START}"
   echo "# finished: ${END}"
   echo "# exit_code: ${CODE}"
+  echo "# commit: ${HEAD_COMMIT}"
   # 没有报告就不写这一行：写个 total=0 等于伪造一条「跑了 0 个用例」的结论，
   # 而 checkAuditTestsMatch 会拿它去对账，把「没统计到」变成「对不上」。
   if [ "$TESTS_TOTAL" -gt 0 ]; then

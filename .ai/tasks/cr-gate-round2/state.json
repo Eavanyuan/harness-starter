@@ -65,7 +65,8 @@
   ],
   "artifacts": {
     "cr": ".ai/review/CR-2026-11-11-门禁通道修复.md",
-    "regression_test": "test/gate-regressions.test.sh"
+    "regression_test": "test/gate-regressions.test.sh",
+    "retro": "retro/2026-11-11-门禁通道二轮收口.md"
   },
   "todos": [
     {

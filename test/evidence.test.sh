@@ -441,6 +441,27 @@ check "exit_code 埋在窗口外 → 拦" 1 "$(ci)"
 log T1 0
 git add -A && git commit -qm "restore-17"
 
+echo "== 17b. 证据绑提交（P1-③后半）：# commit: 必须在当前 HEAD 历史线上 =="
+# 正向：绑定当前 HEAD —— 通过（restore-17 的提交就是 fixture 的 HEAD）
+sed -i '' "s|^# exit_code: 0|# exit_code: 0\n# commit: $(git rev-parse --short=7 HEAD)|" .ai/verify/T1.log
+git add -A && git commit -qm "bind-current"
+check "绑当前 HEAD → 过" 0 "$(ci)"
+# 负向：绑一条侧分支上的新提交（不是当前 HEAD 的祖先）→ 拦
+git checkout -q -b dropped
+echo x > dropped-marker && git add -A && git -c user.email=t@t -c user.name=t commit -qm "side-commit"
+DROPPED="$(git rev-parse --short=7 HEAD)"
+git checkout -q master 2>/dev/null || git checkout -q main
+git branch -qD dropped
+sed -i '' "s|^# commit: [0-9a-f]*|# commit: $DROPPED|" .ai/verify/T1.log
+git add -A && git commit -qm "bind-dropped"
+check "绑被丢弃分支的提交 → 拦" 1 "$(ci)"
+grep -q "不在当前 HEAD 的历史里" "$TMP/err" && r=0 || r=1
+check "拒绝理由指向跨线证据" 0 "$r"
+# 旧日志（无 commit 行）不追溯
+sed -i '' '/^# commit: /d' .ai/verify/T1.log
+git add -A && git commit -qm "bind-legacy"
+check "旧日志无 commit 行 → 不追溯，放行" 0 "$(ci)"
+
 echo "== 18. audit 数字与日志对账（#17，27/6/16 三版本并存的教训）=="
 node -e '
   const fs=require("fs");

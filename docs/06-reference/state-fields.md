@@ -34,7 +34,7 @@
 | `todos` | 判据 | `validateTodos()` / `checkStageTodoClosure()`（impl 收尾）/ `checkStageExit()`（done 收尾） |
 | `blockers` | 判据 | `resume`（三档分诊、决策齐全性：`decision` + `resolved_by` + `resolved_at`） |
 | `gate_result` | 判据 | `stageGate()` — `resume --advance` 要求**本阶段**且全 pass；CI 只判"记下来的失败项" |
-| `artifacts` | **索引** | `artifactIndex()` — `resume` 打印存在性，**不参与 exit code** |
+| `artifacts` | **索引** | `artifactIndex()` — `resume` 打印存在性，**不参与 exit code**。唯一例外：`artifacts.retro`（2026-11-11 起）——`checkRetroLanding()` 拿它当 retro 落盘证据，必须在 `retro/` 下且存在；未声明时按 `retro/<slug>*.md` 兜底找。生效范围由 `gates.retroCheckFromDate` 控制（存量不追溯） |
 
 ## meta
 

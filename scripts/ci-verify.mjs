@@ -35,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import {
   validateTodos,
   checkStageExit,
+  checkRetroLanding,
   checkTaskTraceability,
   checkStage,
   checkCompleteness,
@@ -117,7 +118,8 @@ function report(statePath, name) {
   // 不会因为"FS 还只写了一半"变红——那时 stage 还停在产出阶段本身。
   for (const f of checkStage(state)
     .concat(validateTodos(state.todos, ROOT, { mode, config }))
-    .concat(checkStageExit(state))
+    .concat(checkStageExit(state, ROOT))
+    .concat(checkRetroLanding(state, ROOT, (config.gates || {}).retroCheckFromDate))
     .concat(checkTaskTraceability(state, ROOT))
     .concat(checkCompleteness(state, ROOT))) {
     problems.push(`${name}: ${f.id} [${f.rule}] ${f.reason}`);

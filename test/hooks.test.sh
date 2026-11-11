@@ -508,6 +508,54 @@ else
 fi
 rm -rf "$TMP/.ai/tasks/live" "$TMP/.ai/tasks/sealed"
 
+echo "== 41. S 档收尾折叠（P2-①）：review→done 直达，但 gate 全量日志免不了 =="
+# 折叠的合法路径：S 档新任务（created ≥ 2026-11-12）无 ci/retro 阶段停留、无 waived_by，
+# 只要 done 出口拿得出 cmd 含 npm run gate 的绿日志。
+cat > "$TMP/.ai/verify/GATE1.log" <<'EOF'
+# cmd: npm run gate
+# started: 2026-01-01T00:00:00Z
+# finished: 2026-01-01T00:00:01Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+ok
+EOF
+cat > "$TMP/sfold-ok.json" <<'EOF'
+{"meta":{"task":"sfold","flow_tier":"S","created_at":"2026-11-12T00:00:00Z"},"stage":"done",
+ "stage_history":[{"stage":"rs"},{"stage":"adr","gate":"deferred","waived_by":"S 档裁剪：无多方案决策点"},{"stage":"fs_review","gate":"deferred","waived_by":"S 档裁剪"},{"stage":"wbs","gate":"deferred","waived_by":"S 档裁剪：单批修复"},{"stage":"impl"},{"stage":"review"},{"stage":"done"}],
+ "todos":[{"id":"G1","status":"completed","ooda_stage":"audit","files":[],
+  "audit":{"compile":true,"tests":"pass","feature_complete":true,"quality_clean":true},
+  "verify":{"log_path":".ai/verify/GATE1.log"}}],
+ "artifacts":{"retro":"retro/sfold-复盘.md"}}
+EOF
+mkdir -p "$TMP/retro" && echo x > "$TMP/retro/sfold-复盘.md"
+check "S 档 review→done 直达 + gate 日志在 → 放行" 0 "$(run_state "$TMP/sfold-ok.json")"
+
+# 同一任务拿掉 gate 日志（只剩普通 verify）→ 拦：折叠不能变成免检
+cat > "$TMP/.ai/verify/ONLY1.log" <<'EOF'
+# cmd: npm run test:hooks
+# started: 2026-01-01T00:00:00Z
+# finished: 2026-01-01T00:00:01Z
+# exit_code: 0
+# ---- output tail (last 200 lines) ----
+ok
+EOF
+node -e '
+  const fs=require("fs");const p=process.argv[1];
+  const s=JSON.parse(fs.readFileSync(p,"utf8"));
+  s.todos[0].verify.log_path=".ai/verify/ONLY1.log";
+  fs.writeFileSync(p, JSON.stringify(s,null,2));
+' "$TMP/sfold-ok.json"
+check "拿掉 gate 日志只剩单套件 → 拦（折叠≠免检）" 2 "$(run_state "$TMP/sfold-ok.json")"
+
+# 非 S 档同型跳阶 → 仍拦（折叠是 S 档特权，不是普遍后门）
+node -e '
+  const fs=require("fs");const p=process.argv[1];
+  const s=JSON.parse(fs.readFileSync(p,"utf8"));
+  s.meta.flow_tier="M"; s.todos[0].verify.log_path=".ai/verify/GATE1.log";
+  fs.writeFileSync(p, JSON.stringify(s,null,2));
+' "$TMP/sfold-ok.json"
+check "M 档 review→done 无具名豁免 → 仍拦跳阶" 2 "$(run_state "$TMP/sfold-ok.json")"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

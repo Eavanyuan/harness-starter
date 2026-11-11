@@ -157,6 +157,17 @@ code=0
 bash scripts/verify-run.sh T7 -- bash -c 'exit 0 | tail -1' >/dev/null 2>&1 || code=$?
 check "真的成功仍然记 0（不是一律判死）" 0 "$code"
 
+echo "== 10. 证据绑提交（P1-③后半）：日志头写产证时的 HEAD =="
+# fixture 不是 git 仓库时 wrapper 写 unknown；这里建一个最小仓，验证真绑定路径。
+git init -q . && git add -A && git -c user.email=t@t -c user.name=t commit -qm init
+code=0
+bash scripts/verify-run.sh T8 -- bash -c 'true' >/dev/null 2>&1 || code=$?
+check "包装器正常跑完" 0 "$code"
+grep -q "^# commit: $(git rev-parse --short=7 HEAD)" .ai/verify/T8.log && r=0 || r=1
+check "日志头含当前 HEAD 的短 hash" 0 "$r"
+grep -q '^# commit: [0-9a-f]\{7,40\}$' .ai/verify/T8.log && r=0 || r=1
+check "commit 行格式合法（窗口内第 5 行）" 0 "$r"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

@@ -93,7 +93,9 @@
       "agent": null
     }
   ],
-  "artifacts": [],
+  "artifacts": {
+    "retro": "retro/2026-11-11-门禁通道收口.md"
+  },
   "todos": [
     {
       "id": "GC0",

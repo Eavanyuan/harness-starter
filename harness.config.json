@@ -295,6 +295,7 @@
       "scripts/**/*.{mjs,sh}",
       "templates/**"
     ],
-    "staleTaskDays": 3
+    "staleTaskDays": 3,
+    "retroCheckFromDate": "2026-11-11"
   }
 }

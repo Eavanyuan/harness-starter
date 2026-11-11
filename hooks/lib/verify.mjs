@@ -22,7 +22,7 @@
  * 只做可判定的检查：文件存在、正则匹配、mtime 比较、字段齐备。
  * 任何需要"理解代码质量"的判断都不放在这里。
  */
-import { existsSync, statSync, readFileSync } from 'node:fs';
+import { existsSync, statSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -116,6 +116,18 @@ export function isAbandoned(state) {
   return !!(state && state.meta && state.meta.status === 'abandoned');
 }
 
+/**
+ * S 档收尾折叠生效日（P2-①，2026-11-11 定案）：这天起创建的 S 档任务允许
+ * review → done 直达，ci/retro 的判据折进 done 出口（gate 全量日志 + retro 落盘）。
+ * 存量 S 档任务（走满 9 阶段的）不重判——判据不追溯，与 retroCheckFromDate 同政策。
+ */
+const S_FOLD_FROM = '2026-11-12';
+
+function createdOnOrAfter(meta, date) {
+  const c = String((meta && meta.created_at) || '').slice(0, 10);
+  return !!c && c >= date;
+}
+
 /** 基线只接受 git commit hash（7-40 位十六进制）。RS 修订号这类形态机器验证不了，不收。 */
 export const COMMIT_HASH_RE = /^[0-9a-f]{7,40}$/;
 
@@ -139,6 +151,18 @@ export function parseExitCode(head) {
   for (const line of head.split('\n').slice(0, LOG_HEADER_LINES)) {
     const m = line.match(/^#\s*exit_code:\s*(-?\d+)\s*$/);
     if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+/**
+ * 解析 verify 日志头里的 commit 绑定（P1-③后半，2026-11-11）。只认窗口内的行；
+ * 旧日志没有这行 → null，不追溯存量（与 # tests 计数同一政策）。
+ */
+export function parseCommit(head) {
+  for (const line of head.split('\n').slice(0, LOG_HEADER_LINES)) {
+    const m = line.match(/^#\s*commit:\s*([0-9a-f]{7,40})\s*$/);
+    if (m) return m[1];
   }
   return null;
 }
@@ -355,6 +379,20 @@ export function checkVerify(todo, repo, opts = {}) {
   }
   if (code !== 0) {
     return { ok: false, reason: `日志 exit_code = ${code}，不是 0` };
+  }
+
+  // 证据绑提交（P1-③后半）：新日志头部带 # commit: <hash>，它必须是当前 HEAD 的祖先——
+  // 被丢弃分支 / rebase 前旧线上的运行不再能冒充本线的证据（防跨任务、跨分支挪用）。
+  // 旧日志无此行不追溯；拿不到 HEAD（非 git 目录的测试夹具）时跳过——判不了就不硬判。
+  const logCommit = parseCommit(head);
+  if (logCommit && git(repo, ['rev-parse', 'HEAD']) !== null) {
+    const ancestor = git(repo, ['merge-base', '--is-ancestor', logCommit, 'HEAD']);
+    if (ancestor === null) {
+      return {
+        ok: false,
+        reason: `证据绑定的提交 ${logCommit} 不在当前 HEAD 的历史里（跨线/被丢弃的运行，请在本线重跑）`,
+      };
+    }
   }
 
   const declared = Array.isArray(todo.files) ? todo.files : [];
@@ -675,6 +713,17 @@ export function checkStage(state) {
     if (isForwardStep(STAGE_CHAIN, from, to)) continue;
     // 旧链上相邻 = 当时不是跳阶，是事实（链序改过一次，见 RETIRED_STAGE_CHAINS）
     if (legacyChains.some((c) => isForwardStep(c.chain, from, to))) continue;
+    // S 档收尾折叠（P2-①）：review → done 是 S 档的合法直达——ci/retro 两站的判据
+    // 折进了 done 出口（gate 全量日志 + retro 落盘），不是"跳过没判"。仅对 S_FOLD_FROM
+    // 之后创建的任务成立，存量走满 9 阶段的不重判。
+    if (
+      (meta.flow_tier === 'S') &&
+      from === 'review' &&
+      to === 'done' &&
+      createdOnOrAfter(meta, S_FOLD_FROM)
+    ) {
+      continue;
+    }
     // 越过的每一站都具名 defer 过 = 不是"悄悄跳过"，只是链序把新阶段插在了中间
     if (everySkippedNamed(hist, from, to)) continue;
     const who = hist[i] && hist[i].waived_by;
@@ -753,10 +802,92 @@ export function checkStageTodoClosure(state) {
  * 这是最便宜的一条全绿捷径。
  * hook 与 CI 共用这条判据，两边口径一致（失效点 7）。
  */
-export function checkStageExit(state) {
+/**
+ * retro 落盘机器判（P1-②，2026-11-11）：stage=done 的任务必须有机器可查的 retro 文档。
+ *
+ * 为什么原来只是“约定”：stage 链里有 retro 阶段、门禁写着“retro 文档存在”，但没有任何
+ * 代码查它——8 个 done 任务 retro/ 只有 3 份能对上号，经验沉淀链断在“没人看的那一格”。
+ *
+ * 判据（按优先级）：
+ *   1. state.artifacts.retro 声明了路径 → 必须在 retro/ 目录下且文件存在；
+ *   2. 未声明 → 按 slug 约定兜底找 retro/<slug>*.md；
+ *   3. 都没有 → 拦，理由里写清命名约定。
+ * 豁免：abandoned 任务（封存≠需要复盘）；created_at 早于 retroCheckFromDate 的存量任务
+ * （不追溯——旧文件是日期-主题命名，无法机器对号，强行判只会把历史全红）。
+ */
+export function checkRetroLanding(state, repo, fromDate = '2026-11-11') {
+  if (!state || state.stage !== 'done') return [];
+  if (isAbandoned(state)) return [];
+  const meta = state.meta || {};
+  const created = String(meta.created_at || '').slice(0, 10);
+  // 缺 created_at 的老格式 state 与存量同政策：不追溯（init-harness 落地后必写此字段）。
+  if (!created || created < String(fromDate || '').slice(0, 10)) return [];
+
+  const declared = state.artifacts && state.artifacts.retro;
+  if (declared) {
+    const rel = String(declared).replace(/^\.?\//, '');
+    if (!rel.startsWith('retro/')) {
+      return [{
+        id: '(task)',
+        rule: 'retro',
+        reason: `artifacts.retro 必须指向 retro/ 下的文件，当前：${rel}（retro 是唯一被认可的落盘位）`,
+      }];
+    }
+    if (!existsSync(resolve(repo, rel))) {
+      return [{ id: '(task)', rule: 'retro', reason: `retro 文档不存在：${rel}` }];
+    }
+    return [];
+  }
+
+  const slug = String(meta.task || '');
+  if (slug) {
+    try {
+      const dir = resolve(repo, 'retro');
+      const hit = existsSync(dir)
+        ? readdirSync(dir).some((f) => f.startsWith(slug))
+        : false;
+      if (hit) return [];
+    } catch {
+      return []; // retro/ 读不了 → 判不了就不硬判（fail-open，与账本同口径）
+    }
+  }
+  return [{
+    id: '(task)',
+    rule: 'retro',
+    reason: `stage=done 但找不到 retro 落盘（artifacts.retro 未声明，retro/ 下也没有 ${slug || '<slug>'}* 命名的文件）。命名约定：retro/<slug>*.md，或把实际路径写进 artifacts.retro`,
+  }];
+}
+
+export function checkStageExit(state, repo = null) {
   if (!state || state.stage !== 'done') return [];
   const failures = [];
   const todos = state.todos || [];
+  const meta = state.meta || {};
+
+  // S 档收尾折叠的另一半（P2-①）：跳过了 ci 阶段停留，"流水线绿"必须有仓内等价物——
+  // 任一 verify 日志的 cmd 含 npm run gate。我们判不了"CI 真绿"，但能判
+  // "gate 全量在本仓跑过一次且绿"（exit_code=0 由 validateTodos 另行校验）。
+  // 只对折叠生效日之后创建的 S 档任务成立；拿不到 repo 的调用方（无盘上下文）跳过。
+  if (meta.flow_tier === 'S' && repo && createdOnOrAfter(meta, S_FOLD_FROM)) {
+    const hasGateRun = todos.some((t) => {
+      const lp = t && t.verify && t.verify.log_path;
+      if (!lp) return false;
+      try {
+        return /^#\s*cmd:.*npm run gate/m.test(readHead(resolve(repo, lp)));
+      } catch {
+        return false;
+      }
+    });
+    if (!hasGateRun) {
+      failures.push({
+        id: '(task)',
+        rule: 'exit',
+        reason:
+          'S 档折叠了 ci 阶段，但找不到任何 cmd 含 npm run gate 的 verify 日志 —— 收尾前必须有一次 gate 全量绿（把它的 todo id 也记进 todos），否则"折叠"就变成了"免检"',
+      });
+    }
+  }
+
   for (const todo of todos) {
     if (todo.status !== 'completed' && todo.status !== 'done') {
       failures.push({
@@ -766,7 +897,6 @@ export function checkStageExit(state) {
       });
     }
   }
-  const meta = state.meta || {};
   const noTodoReason = typeof meta.no_todo_reason === 'string' ? meta.no_todo_reason.trim() : '';
   if (todos.length === 0 && !noTodoReason) {
     failures.push({
