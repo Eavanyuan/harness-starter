@@ -1,8 +1,9 @@
 # cmd: npm run -s test:broker
-# started: 2026-11-11T06:33:57Z
-# finished: 2026-11-11T06:34:00Z
+# started: 2026-11-11T07:13:26Z
+# finished: 2026-11-11T07:13:29Z
 # exit_code: 0
-# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# commit: unknown
+# task: deferred-fixes
 # ---- output tail (last 200 lines) ----
 == 1. 卡片渲染（纯函数） ==
   [32m✓[0m 决策卡片 msg_type=interactive

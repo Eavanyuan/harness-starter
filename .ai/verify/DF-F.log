@@ -1,8 +1,9 @@
 # cmd: npm run -s test:ai-review
-# started: 2026-11-11T06:34:00Z
-# finished: 2026-11-11T06:34:01Z
+# started: 2026-11-11T07:13:29Z
+# finished: 2026-11-11T07:13:30Z
 # exit_code: 0
-# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# commit: unknown
+# task: deferred-fixes
 # ---- output tail (last 200 lines) ----
 == 1. L0 机器判据：零 token 先阻断 ==
   [32m✓[0m 坏 RS（缺开放问题章节）→ exit 1
@@ -44,7 +45,7 @@
   [32m✓[0m 清单微改（+1 字符）→ 缓存失效（打包文件数 1）
   [32m✓[0m 清单微改后重算 → 恰好 1 次模型调用
   [32m✓[0m 按新清单重算（mock 无问题）→ exit 0
-  [32m✓[0m 缓存文件名含规则源哈希（.cache-rs-<12位>.json）
+  [32m✓[0m 缓存文件名含规则哈希+脚本自身哈希（.cache-rs-<12>-<6>.json）
   [32m✓[0m rules 微改（+1 空格）→ 缓存失效（打包文件数 1）
 
 结果：34 通过，0 失败

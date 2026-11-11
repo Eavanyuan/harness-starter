@@ -1,8 +1,9 @@
 # cmd: npm run -s test:hooks
-# started: 2026-11-11T06:33:51Z
-# finished: 2026-11-11T06:33:57Z
+# started: 2026-11-11T07:13:21Z
+# finished: 2026-11-11T07:13:26Z
 # exit_code: 0
-# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# commit: unknown
+# task: deferred-fixes
 # ---- output tail (last 200 lines) ----
 == 1. 合规完成态（日志晚于源码）→ 应放行 ==
   [32m✓[0m 完整证据链放行
@@ -140,6 +141,7 @@
 == 41. S 档收尾折叠（P2-①）：review→done 直达，但 gate 全量日志免不了 ==
   [32m✓[0m S 档 review→done 直达 + gate 日志在 → 放行
   [32m✓[0m 拿掉 gate 日志只剩单套件 → 拦（折叠≠免检）
+  [32m✓[0m 借别人带头的 gate 日志 → 拦（归属不符）
   [32m✓[0m M 档 review→done 无具名豁免 → 仍拦跳阶
 
-结果：90 通过，0 失败
+结果：91 通过，0 失败

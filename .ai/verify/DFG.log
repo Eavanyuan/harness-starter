@@ -1,12 +1,10 @@
 # cmd: npm run gate
-# started: 2026-11-11T06:36:59Z
-# finished: 2026-11-11T06:38:06Z
+# started: 2026-11-11T07:13:30Z
+# finished: 2026-11-11T07:14:33Z
 # exit_code: 0
-# commit: e85bd2e866aa3f01c1fcc02989bf00bc06c72578
+# commit: unknown
+# task: deferred-fixes
 # ---- output tail (last 200 lines) ----
-  [32m✓[0m 停滞任务被点名
-  [32m✓[0m 报出天数和阈值（可核对，不是黑箱）
-  [32m✓[0m 给出 resume 出口
   [32m✓[0m 给出 abandon 出口（红必须能变绿）
 == 2. 完工未收尾 vs 停滞：两种形态必须分开说 ==
   [32m✓[0m 全部完成 → 说成完工未收尾
@@ -42,8 +40,11 @@
   [32m✓[0m 未到 done 不查 → 过
 == 3. 变异：删掉判据本体则本套全红（可证伪）==
   [32m✓[0m 判据在（fromDate=1970 时任何 done 任务都该被查）
+== 4. retro 归属唯一性（复审补）：同一文件两个任务声明 → CI 双红 ==
+  [32m✓[0m 双任务同 retro → ci-verify 红（exit 1）
+  [32m✓[0m 报错点名两个任务与文件
 
-结果：9 通过，0 失败
+结果：11 通过，0 失败
 
 > harness-starter@1.1.0 test:doctor-gates
 > bash test/doctor-gates.test.sh

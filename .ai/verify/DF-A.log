@@ -1,8 +1,9 @@
 # cmd: bash test/retro-check.test.sh
-# started: 2026-11-11T06:33:50Z
-# finished: 2026-11-11T06:33:51Z
+# started: 2026-11-11T07:13:20Z
+# finished: 2026-11-11T07:13:21Z
 # exit_code: 0
-# commit: 7642f87a9decf73034f8828179f76db1ddc3f8d2
+# commit: unknown
+# task: deferred-fixes
 # ---- output tail (last 200 lines) ----
 == 1. 新任务（created ≥ 2026-11-11）必须闭合 ==
   [32m✓[0m 无声明且无匹配文件 → 拦
@@ -16,5 +17,8 @@
   [32m✓[0m 未到 done 不查 → 过
 == 3. 变异：删掉判据本体则本套全红（可证伪）==
   [32m✓[0m 判据在（fromDate=1970 时任何 done 任务都该被查）
+== 4. retro 归属唯一性（复审补）：同一文件两个任务声明 → CI 双红 ==
+  [32m✓[0m 双任务同 retro → ci-verify 红（exit 1）
+  [32m✓[0m 报错点名两个任务与文件
 
-结果：9 通过，0 失败
+结果：11 通过，0 失败
