@@ -18,11 +18,17 @@
 - 过滤位置在**分级门槛之前**：非本线的单不占 P0/P1 自动接单额度，也不进 P2 确认卡；
   筛掉动作落账 `profile_b_iteration_filtered`（kept/skipped + 单号），可观测。
 
-## 待实测（数据档开通后）
+## 实测结论（2026-11-14 数据档开通后，OAuth 用户身份，全程只读）
 
-迭代字段的 key（样例里假设 `sprint`）需按 2026-11-10 的同套办法在 taosdata_td 实测
-一次（search_by_mql 的 SELECT 带字段探 key，或工作项详情接口读字段表），确认后填进
-`runtime.feishu.iteration.field`。此项已登记进落地评估报告的待实测清单。
+- **迭代字段 key = `field_a7de08`**：MQL 的 SELECT 直接认中文名「迭代周期」并返回 key
+  （`{"key":"field_a7de08","name":"迭代周期"}`）——中文名本身就是探针，比猜英文
+  key 可靠。已写入 `runtime.feishu.iteration`。
+- **真实 label 形态**：`IDMP-2.0.4.0` / `Cloud-20260930` / 空（dependabot 告警等无迭代）。
+  空值筛掉的规则与实况吻合：12 张自己的单 → IDMP 保留 2 张（[DirectData] 系列），
+  Cloud 线 2 张、无迭代 8 张全筛掉（IT4.log）。
+- **写工具可见**：add_comment（报参数错=工具在）、update_field、get_workitem_brief
+  均可调；真实写（评论/状态流转）留给第一张真单，transitionStatus 的可流转态返回
+  形态届时一并核对。
 
 ## 验证
 

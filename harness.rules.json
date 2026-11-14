@@ -4,11 +4,26 @@
   "reviews": {
     "rs": {
       "title": "需求规格审核",
-      "paths": [".ai/tasks/*/rs.md", "docs/01-requirements/**"],
+      "paths": [
+        ".ai/tasks/*/rs.md",
+        "docs/01-requirements/**"
+      ],
       "checklist": "scripts/reviews/rs.md",
       "machine_checks": [
-        { "id": "rs_required_sections", "severity": "red", "sections": ["背景与痛点", "用户故事", "核心需求", "开放问题"] },
-        { "id": "rs_acceptance_testable", "severity": "yellow" }
+        {
+          "id": "rs_required_sections",
+          "severity": "red",
+          "sections": [
+            "背景与痛点",
+            "用户故事",
+            "核心需求",
+            "开放问题"
+          ]
+        },
+        {
+          "id": "rs_acceptance_testable",
+          "severity": "yellow"
+        }
       ],
       "model_tier": "narrow",
       "max_findings": 10,
@@ -16,9 +31,17 @@
     },
     "adr": {
       "title": "技术决策审核",
-      "paths": ["docs/adr/**", "docs/plans/**/ADR-*.md"],
+      "paths": [
+        "docs/adr/**",
+        "docs/plans/**/ADR-*.md"
+      ],
       "checklist": "scripts/reviews/adr.md",
-      "machine_checks": [{ "id": "adr_refs_exist", "severity": "yellow" }],
+      "machine_checks": [
+        {
+          "id": "adr_refs_exist",
+          "severity": "yellow"
+        }
+      ],
       "model_tier": "narrow",
       "max_findings": 10,
       "approval_role": "tech_lead"
@@ -26,10 +49,23 @@
     "fs": {
       "$comment": "演练 B3：docs/02-features/** 此前不被任何审核类型接住，规格审全靠人。v1 机器判据为主（模板章节齐），语义交叉一致性（RS↔FS↔代码）见 scripts/reviews/fs.md，留给配了模型 key 的环境。",
       "title": "功能规格审核",
-      "paths": ["docs/02-features/**", ".ai/tasks/*/fs.md"],
+      "paths": [
+        "docs/02-features/**",
+        ".ai/tasks/*/fs.md"
+      ],
       "checklist": "scripts/reviews/fs.md",
       "machine_checks": [
-        { "id": "fs_required_sections", "severity": "red", "sections": ["概述", "需求追溯", "接口契约", "测试要点", "兼容与回滚"] }
+        {
+          "id": "fs_required_sections",
+          "severity": "red",
+          "sections": [
+            "概述",
+            "需求追溯",
+            "接口契约",
+            "测试要点",
+            "兼容与回滚"
+          ]
+        }
       ],
       "model_tier": "deep",
       "max_findings": 15,
@@ -39,7 +75,11 @@
       "title": "代码审核",
       "$comment": "paths_from=projects 表示源码路径取自 harness.config.json 的 projects[].dir（v2 数组或 v1 stacks），fallback_paths 兜底无配置仓库。",
       "paths_from": "projects",
-      "fallback_paths": ["backend/**", "frontend/src/**", "src/**"],
+      "fallback_paths": [
+        "backend/**",
+        "frontend/src/**",
+        "src/**"
+      ],
       "checklist": "scripts/reviews/cr.md",
       "machine_checks": [],
       "model_tier": "deep",
@@ -56,8 +96,12 @@
   },
   "model_tiers": {
     "$comment": "model 留空则用 env AI_REVIEW_MODEL。narrow=窄域小模型，deep=旗舰。",
-    "narrow": { "model": "" },
-    "deep": { "model": "" }
+    "narrow": {
+      "model": ""
+    },
+    "deep": {
+      "model": ""
+    }
   },
   "bundle": {
     "$comment": "预打包上下文的硬顶：防一次大 MR 把 token 打爆。超限文件截断并在结论里注明。",
@@ -65,17 +109,45 @@
     "max_lines_per_file": 600
   },
   "skip": {
-    "noise_paths": ["**/package-lock.json", "**/pnpm-lock.yaml", "**/yarn.lock", ".ai/ledger/**", ".ai/backup/**", ".ai/locks/**", "**/*.log"]
+    "noise_paths": [
+      "**/package-lock.json",
+      "**/pnpm-lock.yaml",
+      "**/yarn.lock",
+      ".ai/ledger/**",
+      ".ai/backup/**",
+      ".ai/locks/**",
+      "**/*.log"
+    ]
   },
   "code_hints": {
     "$comment": "无槽可见化（演练 G1）：命中这些扩展名、又不属于任何审核槽的变更文件进 uncovered 并记账——静默缺席变可见缺席，只提示不阻断。清单是策略，按仓库语言裁剪。",
-    "ext": [".mjs", ".cjs", ".js", ".ts", ".tsx", ".vue", ".java", ".go", ".py", ".rs", ".c", ".cc", ".cpp", ".h", ".kt", ".rb", ".sh"]
+    "ext": [
+      ".mjs",
+      ".cjs",
+      ".js",
+      ".ts",
+      ".tsx",
+      ".vue",
+      ".java",
+      ".go",
+      ".py",
+      ".rs",
+      ".c",
+      ".cc",
+      ".cpp",
+      ".h",
+      ".kt",
+      ".rb",
+      ".sh"
+    ]
   },
   "runtime": {
     "headless": {
       "$comment": "task-loop 无头会话剖面（ADR D6：与宿主能力声明 runtime.spawn_* 分开，那是'我是谁'，这是'怎么起进程'）。hooks=true 时 runner 启动前校验目标仓库 hook 接线存在——不接 hook 的 headless 会话是绕过全部写入门禁的会话。permission_mode 建议 acceptEdits（hook 在场时不需要 bypass）。",
       "cli": "claude",
-      "args": ["-p"],
+      "args": [
+        "-p"
+      ],
       "permission_mode": "acceptEdits",
       "hooks": true
     },
@@ -92,7 +164,9 @@
     "feishu": {
       "$comment": "剖面 B 接的那个飞书项目（Meego）空间。**扩展项，不是硬性条件**：projectKey 为空 = 不接，跳过剖面 B。这些值不是'偏好'而是**该空间的事实**：类型名、字段 key、状态 label 换一个空间全都不一样，写错不会报错——查询照常成功，只是一张单都没有。所以放在仓库配置里，跟着代码一起 review。凭据不在这里：OAuth token 等于长期口令，只落用户级 $HOME/.harness/task-loop/feishu-oauth.json（0600），进 git 就是泄露。环境变量仍可覆盖（临时切空间/CI 指向假端点），优先级 env > 本段 > 内置兜底。",
       "projectKey": "taosdata_td",
-      "taskTypes": ["Defect"],
+      "taskTypes": [
+        "Defect"
+      ],
       "assigneeField": "current_status_operator",
       "newStatus": "New",
       "mqlLimit": 20,
@@ -101,18 +175,45 @@
         "$comment": "该空间的严重级是自定义字段（不是 severity/priority），枚举只有 高/中/低。map 把平台的词表映射到门槛用的 P 档：P0/P1 自动接、P2 待确认、P3 不接。换空间只改这里，不动代码。",
         "field": "field_6bff71",
         "fieldName": "故障严重级别",
-        "map": { "高": "P1", "中": "P2", "低": "P3" }
+        "map": {
+          "高": "P1",
+          "中": "P2",
+          "低": "P3"
+        }
+      },
+      "iteration": {
+        "$comment": "产品线过滤（2026-11-14 实测）：迭代周期 label 以 IDMP 开头才是本产品 bug。field key=field_a7de08 由 MQL 用中文名「迭代周期」实测映射所得（search_by_mql 认中文名并返回 key）；样例 label 形如 IDMP-2.0.4.0 / Cloud-20260930 / 空（dependabot 告警等无迭代）。空值=非本线，筛掉。",
+        "field": "field_a7de08",
+        "fieldName": "迭代周期",
+        "prefix": "IDMP"
       }
     }
   },
   "notify": {
-    "roles": { "tech_lead": "技术负责人", "code_owner": "代码所有者", "pm": "产品", "author": "发起人", "sre": "值班运维", "machine": "机器裁决" },
+    "roles": {
+      "tech_lead": "技术负责人",
+      "code_owner": "代码所有者",
+      "pm": "产品",
+      "author": "发起人",
+      "sre": "值班运维",
+      "machine": "机器裁决"
+    },
     "$comment": "card_events 推飞书卡片（需决策/需批红）；digest_events 只进 broker 日志不推卡片，防通知疲劳。",
-    "card_events": ["mr_open", "pipeline_failed", "review_blocked", "decision_open"],
-    "digest_events": ["mr_merged", "pipeline_success"],
+    "card_events": [
+      "mr_open",
+      "pipeline_failed",
+      "review_blocked",
+      "decision_open"
+    ],
+    "digest_events": [
+      "mr_merged",
+      "pipeline_success"
+    ],
     "subscriptions": {
       "$comment": "订阅三档（T2）：事件×人 → card（即推）/ digest（降档进摘要，到 escalate 时间 aging 升回 card）/ ledger（只入账）。mode: all=全量接（缺省，兼容现状）| focused=规则优先未命中走默认档 | minimal=只推命中规则与必须我批。铁律：降档必带升级时间；mustAct 事件（必须我批）对当事人下限 digest——订阅可延迟不可吞消息。改个人档位走飞书卡片自服务（T2 后期），改策略走 MR。",
-      "defaults": { "delivery": "digest" },
+      "defaults": {
+        "delivery": "digest"
+      },
       "persons": {}
     },
     "git_decision": {

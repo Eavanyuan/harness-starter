@@ -119,6 +119,25 @@
         "feature_complete": "S 档折叠出口证据（bootstrap：先在 impl 态跑绿再升 done）",
         "quality_clean": "带归属头"
       }
+    },
+    {
+      "id": "IT4",
+      "title": "数据档实测：OAuth 全链 + 字段 key + 真实过滤",
+      "status": "completed",
+      "files": [
+        "harness.rules.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/IT4.log",
+        "command": "配置驱动实拉 taosdata_td（只读）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "12 张 → IDMP 保留 2 张（7167752069/7167910546: IDMP-2.0.4.0）",
+        "feature_complete": "K1 数据档读路径 + 迭代 key(field_a7de08) + 过滤规则行为三事一次验完",
+        "quality_clean": "add_comment/update_field/get_workitem_brief 工具在数据档可调（add_comment 报参数错=工具在，写实测留给首张真单）"
+      }
     }
   ],
   "blockers": [],

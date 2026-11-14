@@ -1,0 +1,8 @@
+# cmd: node --input-type=module -e $'\nimport { connect } from \'./scripts/lib/feishu-project-mcp.mjs\';\nimport { ensureToken } from \'./scripts/lib/feishu-oauth.mjs\';\nimport { resolveFeishuConfig, buildMyBugsMql, parseMqlPage, filterByIterationPrefix } from \'./scripts/lib/feishu-bug-source.mjs\';\nimport { loadRules } from \'./scripts/lib/review-rules.mjs\';\nconst cfg = resolveFeishuConfig({ rules: loadRules(process.cwd()) });\nconst c = await connect(cfg.issuer + \'/mcp_server/v1\', { token: await ensureToken({ issuer: cfg.issuer }) });\nconst raw = await c.call(\'search_by_mql\', { project_key: cfg.projectKey, mql: buildMyBugsMql(cfg) });\nconst page = parseMqlPage(raw, cfg);\nconst f = filterByIterationPrefix(page.bugs, cfg.iterationPrefix);\nconsole.log(\'\351\205\215\347\275\256\351\251\261\345\212\250\345\256\236\346\213\211\357\274\232\', page.bugs.length, \'\345\274\240 \342\206\222 IDMP \344\277\235\347\225\231\', f.matched.length, \'\345\274\240\357\274\232\', f.matched.map(b=>b.work_item_id+\':\'+b.iteration).join(\' \'));\n'
+# started: 2026-11-14T01:36:43Z
+# finished: 2026-11-14T01:36:45Z
+# exit_code: 0
+# commit: unknown
+# task: iteration-prefix
+# ---- output tail (last 200 lines) ----
+配置驱动实拉： 12 张 → IDMP 保留 2 张： 7167752069:IDMP-2.0.4.0 7167910546:IDMP-2.0.4.0
