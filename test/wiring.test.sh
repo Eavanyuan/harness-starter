@@ -109,7 +109,12 @@ cp "$TMP/zcode.bak" .zcode/config.json
 check "关闭 hook 被体检拦住" 1 "$code"
 
 echo "== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 =="
-node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync("harness.config.json","utf8"));c.stacks.backend.lint="mvn -q -DskipTests compile";fs.writeFileSync("harness.config.json",JSON.stringify(c,null,2))'
+# 注入点跟随生效源（allStacks：projects 数组存在则 stacks 被 v2 取代——2026-11-14 落地
+# TDasset 旁挂条目后此用例失明过一次：往 stacks 注入被 v2 遮蔽，doctor 全绿、断言假红）。
+node -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync("harness.config.json","utf8"));
+  const bad="mvn -q -DskipTests compile";
+  if (Array.isArray(c.projects)) c.projects[0].lint=bad; else c.stacks.backend.lint=bad;
+  fs.writeFileSync("harness.config.json",JSON.stringify(c,null,2))'
 node scripts/doctor.mjs >"$TMP/doctor-flag.out" 2>&1
 code=$?
 restore_config

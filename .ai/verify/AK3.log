@@ -1,207 +1,207 @@
 # cmd: npm run gate
-# started: 2026-11-14T12:38:14Z
-# finished: 2026-11-14T12:38:59Z
-# exit_code: 1
+# started: 2026-11-14T12:40:59Z
+# finished: 2026-11-14T12:42:11Z
+# exit_code: 0
 # commit: unknown
 # task: ack-wiring
 # ---- output tail (last 200 lines) ----
-  [32m✓[0m 拦截信息要求以日志为准
-== 19. done 前 deviations 必须处置（#19）==
-  [32m✓[0m done 带未处置偏离 → 拦
-  [32m✓[0m 偏离已记名处置 → 放行
-== 20. known_issues 收口闭环（#21）==
-  [32m✓[0m done 带未闭环 known_issue → 拦
-  [32m✓[0m known_issue 已给结论 → 放行
-== 21. gate_result 过期：CI 判红、local 仅提示（#20）==
-  [32m✓[0m CI 口径：过期 gate_result → 拦
-  [32m✓[0m local 口径：仅提示不判死
-== 22. gitChangedFiles 不能吃掉首条目的首字符（实测：pom.xml → om.xml）==
-  [32m✓[0m 首个改动文件是完整路径
-  [32m✓[0m 新增目录内的文件展开成具体路径（不是目录名）
-== 23. 未声明进任何 TODO 的构建基建文件 → CI 拦（#18 此前完全没有用例）==
-  [32m✓[0m 未声明的 pom.xml → 拦
-  [32m✓[0m 报错点名 pom.xml（不是被切坏的 om.xml）
-== 24. 测试夹具里的 pom.xml 不算构建基建（该放的放）==
-  [32m✓[0m 改测试夹具不判红
-== 25. 未跟踪的基建文件只提示，不判红（大仓库里天天有）==
-  [32m✓[0m 未跟踪的 Makefile 不判红
-  [32m✓[0m 但仍然可见（不静默丢弃）
-== 22b. verify 字符串形态 → 拦截并给出正确示例（license-center-sms 实测） ==
-  [32m✓[0m verify 是字符串 → 拦
-  [32m✓[0m 拦截信息含对象形态示例
-== 26. 全新 clone（mtime 被检出重排）→ 本地口径也不能误杀 ==
-  [32m✓[0m clone 后本地口径通过（不再整片误报）
-  [32m✓[0m 只有 mtime 变（内容无差异）不算改动
-  [32m✓[0m 真改了源码没重跑 → 照样拦住
+== 6. 阈值可配：设大就没人算停滞；设错必须报出来 ==
+  [32m✓[0m 阈值 30 天 → 10 天的不算停滞
+  [32m✓[0m staleTaskDays=0 → 判配置错误，不静默失效
+  [32m✓[0m staleTaskDays=-3 → 判配置错误，不静默失效
+  [32m✓[0m staleTaskDays=abc → 判配置错误，不静默失效
 
-结果：70 通过，0 失败
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r/repo/.zwork/attachments/d05a815e-1d5f-4a28-b6c2-ddc685dc494a/pasted_text_20261111T073945175Z_61901727.txt: Permission denied
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r/repo/.zwork/attachments/d05a815e-1d5f-4a28-b6c2-ddc685dc494a: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r/repo/.zwork/attachments: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r/repo/.zwork: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r/repo: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.F3sc8s0x2r: Directory not empty
+结果：16 通过，0 失败
 
-> harness-starter@1.1.0 test:verify-run
-> bash test/verify-run.test.sh
+> harness-starter@1.1.0 test:retro
+> bash test/retro-check.test.sh
 
-== 1. # cmd 必须是真实命令，不能被测试计数覆盖（实测过的 bug）==
-  [32m✓[0m cmd 行保留完整命令（参数边界未被空格抹平）
-  [32m✓[0m cmd 行没有变成测试计数
-== 2. 多模块 surefire 报告要相加，不是取一份 ==
-  [32m✓[0m 两份报告 7+5 聚合为 12
-  [32m✓[0m exit_code 头存在且为 0
-== 3. 没有报告时**不写** # tests 行（不伪造 total=0）==
-  [32m✓[0m 无报告 → 没有 # tests 行
-== 4. 跨次运行不重复计数 ==
-  [32m✓[0m 首次计入本次新报告
-  [32m✓[0m 同一批报告不重复计入（第二次没有新报告 → 无计数行）
-== 4b. 同一路径被**重写**也要计数 ==
-  [32m✓[0m 首次 4
-  [32m✓[0m 同路径重写后按新内容计数 6（不是空）
-== 5. 失败运行的 exit_code 要如实写，脚本退出码同步 ==
-  [32m✓[0m 脚本退出码 = 被跑命令的退出码
-  [32m✓[0m 日志头 exit_code = 7
-== 6. verify.mjs 能从头部读到结论（两边口径一致）==
-  [32m✓[0m 校验器读到的 exit_code 与脚本写的一致
-== 7. 用法错误 → 64（不静默跑空）==
-  [32m✓[0m 缺少 -- 分隔符 → 64
-== 7b. todo-id 不许把日志写出 .ai/verify ==
-  [32m✓[0m 含 ../ 的 id → 64
-  [32m✓[0m 没有在 .ai/verify 之外落文件
-  [32m✓[0m 含空格的 id → 64
-== 8. 日志 id 撞名 → 不静默覆盖别人的证据 ==
-  [32m✓[0m 只被一个任务引用且未声明 --task → 放行（自己重跑）
-  [32m✓[0m 但把占用者点名说出来
-  [32m✓[0m 声明了别的任务名 → 拒绝覆盖（exit 2）
-  [32m✓[0m 拒绝时说明是谁的、怎么改
-  [32m✓[0m 声明占用者自己的名字 → 允许重跑
-== 9. 管道不许把红的洗成绿的（| tail -1 的退出码）==
-  [32m✓[0m 管道末段成功 ≠ 命令成功（pipefail 传到子 bash）
-  [32m✓[0m 日志头如实记 exit_code: 1
-  [32m✓[0m 真的成功仍然记 0（不是一律判死）
-== 10. 证据绑提交（P1-③后半）：日志头写产证时的 HEAD ==
-  [32m✓[0m 包装器正常跑完
-  [32m✓[0m 日志头含当前 HEAD 的短 hash
-  [32m✓[0m commit 行格式合法（窗口内第 5 行）
+== 1. 新任务（created ≥ 2026-11-11）必须闭合 ==
+  [32m✓[0m 无声明且无匹配文件 → 拦
+  [32m✓[0m retro/<slug>*.md 存在 → 过（slug 兜底约定）
+  [32m✓[0m 声明 artifacts.retro 且存在 → 过
+  [32m✓[0m 声明到 retro/ 之外 → 拦（落盘位唯一）
+  [32m✓[0m 声明的文件不存在 → 拦
+== 2. 存量与豁免 ==
+  [32m✓[0m 存量任务（created < 2026-11-11）不追溯 → 过
+  [32m✓[0m abandoned 任务豁免 → 过
+  [32m✓[0m 未到 done 不查 → 过
+== 3. 变异：删掉判据本体则本套全红（可证伪）==
+  [32m✓[0m 判据在（fromDate=1970 时任何 done 任务都该被查）
+== 4. retro 归属唯一性（复审补）：同一文件两个任务声明 → CI 双红 ==
+  [32m✓[0m 双任务同 retro → ci-verify 红（exit 1）
+  [32m✓[0m 报错点名两个任务与文件
 
-结果：27 通过，0 失败
+结果：11 通过，0 失败
 
-> harness-starter@1.1.0 test:ledger
-> bash test/ledger.test.sh
+> harness-starter@1.1.0 test:doctor-gates
+> bash test/doctor-gates.test.sh
 
-== 1. 没有账本时要说清不是没拦过和没接上的区别 ==
-  [32m✓[0m 没有账本 → 不崩，exit 0
-  [32m✓[0m 提示门禁可能没接上（不把空白当干净）
-== 2. 真实拦截与自测流量必须分开 ==
-  [32m✓[0m 真实 2 条、自测 1 条分开计
-  [32m✓[0m 按规则名聚合（不是只记 hook 名）
-  [32m✓[0m 自测流量不进真实基线
-== 3. 同一条规则反复拦 → 要提示回看原话 ==
-  [32m✓[0m ≥5 次时提示核对是否规则写宽
-== 4. 没有 events → 明确说无法证明门禁在线 ==
-  [32m✓[0m 点名没法证明在线
-== 5. 有 events → 报在线条数、覆盖整点、最近一次 ==
-  [32m✓[0m 报出在线条数与整点数
-  [32m✓[0m 说明它的用途是有分母
-  [32m✓[0m 有 events 后不再说'无法证明在线'
-== 6. 坏行不猜内容，也不崩 ==
-  [32m✓[0m 坏行后仍 exit 0
-  [32m✓[0m 坏行计数提示
-== 7. --json 里要有 events（给自动化用）==
-  [32m✓[0m --json 里 events.total / by_type / online_hours 齐备
+== 1. 未配连接 = 提醒未检查，不是通过 ==
+  [32m✓[0m 退出码 0（提醒不阻塞）
+  [32m✓[0m 明示「未检查」而非装作通过
+== 2. 无活跃 runner = 阻塞（演练 B1） ==
+  [32m✓[0m 退出码非 0
+  [32m✓[0m 报「CI 门禁缺位」并指向 B1 形态
+== 3. runner 在场 + approval 不可用 = 提醒（演练 B2，版本差异不算配置错） ==
+  [32m✓[0m 退出码 0（能力差异不判红）
+  [32m✓[0m runner 在场计为 ok
+  [32m✓[0m approval 404 → 说明性提醒
+== 4. 全在场 = ok ==
+  [32m✓[0m 退出码 0
+  [32m✓[0m approval 在场计为 ok
+== 5. 飞书项目 MCP 通道三档探测（task-loop 前提在场性） ==
+  [32m✓[0m 数据档未配 → perm 档（提示后台勾选，不判死）
+  [32m✓[0m 数据档已配 → ok 档
+  [32m✓[0m 协议错 → error 档（不吞）
+  [32m✓[0m 无凭据 → off 档（未配置≠故障）
+== 6. GitLab 接入地址形状（扩展项：空=不接，填错必须红） ==
+  [32m✓[0m 空/空白=不接（null）；正常地址放行；API 地址/缺协议/带 API 段 全部报错
+== 7. GitLab 配置解析：runner 与 doctor 必须读同一处 ==
+  [32m✓[0m 配置 url 去掉尾斜杠 / token 文件兜底 / env 覆盖 / 旧名兼容 / 空串不覆盖 / 只含一半算未接入 / 0600 不算过宽
+  [32m✓[0m 0644 的 token 文件被识别为过宽
+== 8. 凭据文件：doctor 读的就是定时器那份（否则同一个问题两个答案） ==
+  [32m✓[0m 认出 0600 文件并报出生效键数
+  [32m✓[0m 凭据来自文件时不再说「未检查」
+  [32m✓[0m 非法行 → 退出码非 0
+  [32m✓[0m 明说解析失败并指向后果
 
-结果：13 通过，0 失败
+结果：20 通过，0 失败
 
-> harness-starter@1.1.0 test:completeness
-> bash test/completeness.test.sh
+> harness-starter@1.1.0 test:task-loop
+> bash test/task-loop.test.sh
 
-== 1. 完备文档 → 必须通过（不误杀） ==
-  [32m✓[0m 三份文档齐备时门禁放行
-== 2. 模板占位符残留 → 拦截 ==
-  [32m✓[0m 占位符残留判红
-  [32m✓[0m 报错点名占位符
-== 3. 章节只剩表头 → 拦截 ==
-  [32m✓[0m 空表章节判红
-  [32m✓[0m 报错点名 §9
-== 4. 追溯表漏条目 → 拦截 ==
-  [32m✓[0m RS 覆盖率不足判红
-  [32m✓[0m 报错点名 US-2
-== 5. WBS 指向不存在的 FS 小节 → 拦截 ==
-  [32m✓[0m 悬空 spec_ref 判红
-  [32m✓[0m 报错说明悬空
-== 6. FS 小节没有任务对应 → 拦截 ==
-  [32m✓[0m 漏做判定为红
-  [32m✓[0m 报错点名 §4.2
-== 7. WBS 缺 spec_ref 列 → 拦截 ==
-  [32m✓[0m 缺列判红
-  [32m✓[0m 报错点名 spec_ref
-== 8. 声明了不存在的路径 → 拦截 ==
-  [32m✓[0m 声明与事实不符判红
-  [32m✓[0m 报错说明文件不存在
-== 8b. 中文/空格文件名 → 必须真检（不许静默跳过） ==
-  [32m✓[0m 中文+空格路径指向存在的文件 → 放行（不误杀）
-  [32m✓[0m 同一路径指向不存在的文件 → 判红
-  [32m✓[0m 报错点名那份不存在的文件
-== 8c. 登记写成了说明文字 → 判红（不是提示，不再放行） ==
-  [32m✓[0m 读不出路径的登记判红
-  [32m✓[0m 报错说清为什么算没登记
-== 8d. 路径后面跟说明 → 抠出路径照检 ==
-  [32m✓[0m 带后缀说明的登记仍按路径检（存在则放行）
-== 9. 阶段没越过产出阶段 → 不判（写到一半是常态） ==
-  [32m✓[0m fs_review 阶段不判 FS 完备性
-  [32m✓[0m 同一份文档到 impl 就判红
-== 10. 未登记的产物 → 提示但不判死 ==
-  [32m✓[0m 未登记不判红
-  [32m✓[0m 提示点了 WBS
-== 11. review-packet 首版 ==
-  [32m✓[0m 完备时 review-packet 退出 0
-  [32m✓[0m 首版标注
-  [32m✓[0m 给出该谁签
-  [32m✓[0m 有缺口时 review-packet 退出 1
-  [32m✓[0m 评审包列出待补项
-== 12. review-packet 列表模式 ==
-  [32m✓[0m 列表模式退出 0
-  [32m✓[0m 列出任务名
-== 13. review-packet 变更版 ==
-  [32m✓[0m 识别为变更版
-  [32m✓[0m 按小节报改动（不是只报标题）
+== 1. kill switch ==
+  [32m✓[0m OFF 哨兵 → 退出 0 且提示
+  [32m✓[0m 提示哨兵位置（可恢复）
+== 2. headless 接线闸（ADR D6：不接 hook 的无头会话=绕过全部门禁） ==
+  [32m✓[0m 无接线 → 拒启
+  [32m✓[0m 拒绝理由点明风险
+== 3. 剖面 A 显式指定但无凭据 → fail 显式 ==
+  [32m✓[0m 缺 GITLAB 配置 → exit 1
+  [32m✓[0m 点名缺什么
+== 3b. 一个源都没接 → 退出 0（不接不算故障），并逐条说明缺什么 ==
+  [32m✓[0m 未接入 → exit 0
+  [32m✓[0m 明说未接入（不是装作跑过）
+  [32m✓[0m 指出 GitLab 缺什么
+  [32m✓[0m 指出飞书缺什么
+== 3c. 空 username 必须抛错，不许把自己的留言当成他人的打回 ==
+  [32m✓[0m 空 username 两处都抛错，正常值下自己的留言不计
+== 3d. username 从 token 派生（不配 GITLAB_USERNAME 也能判对） ==
+  [32m✓[0m 问了 /user，且只把他人那 1 条算作待修
+== 4. CAS 认领：双竞争仅一胜 + 僵尸不抢 ==
+  [32m✓[0m 双端竞争：先者胜、后者拒
+  [32m✓[0m fixture 是跨机形态（B 本地没有该对象）
+  [32m✓[0m 跨机 25h 前认领 → zombie（对象不在本地也读得出时间）
+  [32m✓[0m 新 id 正常认领
+== 5. 预算（D7）：轮次硬限 + pause/resume 不计等待 ==
+  [32m✓[0m 轮次第 2 轮才耗尽；100s 等待不计墙钟，1100ms 活动才耗尽
+== 5b. 审批三条件（停点判据，ADR D3） ==
+  [32m✓[0m 审批三条件：有效批/无批/自批/陈批
+== 5c. 剖面 A 触发判定：打回 = 他人未解决意见 且 无有效批红 ==
+  [32m✓[0m 五形态：无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算
+== 5d. 真触发端到端：假 GitLab → 认领 → 账本配对 ==
+  [32m✓[0m 真触发跑通（旧版在 budget.start() 处 ReferenceError）
+  [32m✓[0m 认领引用落在远端
+  [32m✓[0m 账本：trigger_found → claimed → claim_held（无孤儿）
+== 5e. 认领之后失败 → 当场释放（不留孤儿引用） ==
+  [32m✓[0m 异常路径 exit 1 且明说已释放（不是静默 0）
+  [32m✓[0m 认领引用已删除（无残留）
+  [32m✓[0m 账本：claimed 有配对的 released
+== 6. T4a 归因：指纹归一化 + merge-base 基线实跑 + 集合差 ==
+  [32m✓[0m 剥参/剥色/全角括号 → 身份稳定
+  [32m✓[0m 成功行/计数行不是失败身份
+  [32m✓[0m 同一断言重试三遍 → 一个身份
+  [32m✓[0m 集合差三分：引入/继承/顺手修好
+  [32m✓[0m 端到端归因：引入=B、继承=A（参数随机化下身份稳定）
+  [32m✓[0m 归因结论可读输出
+== 7. T4b 三分流决策与豁免三道闸 ==
+ALL-OK
+  [32m✓[0m 三分流 + 三道闸全形态（含 7% 不误报 / 分母缺失不猜）
+== 8. T5 会话打包器与产物验收（fail-closed） ==
+  [32m✓[0m A/B/续轮打包 + 产物缺失 fail-closed
+== 9. T5 CI 盯梢（零 LLM 轮询） ==
+  [32m✓[0m 终态返回 / 超时返回 timeout（不判红，交上层升级）
+== 10. T5 定时器安装器（--print 渲染与接线闸） ==
+  [32m✓[0m print 模式渲染 plist
+  [32m✓[0m 占位符全替换（脚本路径/仓库根）
+  [32m✓[0m 无 hook 接线的仓库拒绝安装（同 runner 闸）
+== 10b. 凭据不进 plist/unit（明文配置会被 launchctl print / systemctl cat 打出来） ==
+  [32m✓[0m 模板不含秘密占位符
+  [32m✓[0m print 输出不含 token
+  [32m✓[0m print 仍给出凭据落点（人要知道去哪儿配）
+== 10c. 实装落盘权限与内容（--no-activate：不在跑测试的机器上注册真定时器） ==
+  [32m✓[0m 安装成功
+  [32m✓[0m 凭据文件 0600
+  [32m✓[0m 包装脚本 0700（定时器实际执行的是它）
+  [32m✓[0m 凭据目录 0700
+  [32m✓[0m plist 0600
+  [32m✓[0m 定时器配置不含 token
+  [32m✓[0m token 落在 0600 文件里
+== 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd）下仍能取到 token ==
+  [32m✓[0m wrapper 语法合法
+  [32m✓[0m wrapper 不 source 凭据文件（行中一行式也算）
+  [32m✓[0m wrapper 只交出凭据文件路径（由 runner 解析）
+  [32m✓[0m wrapper 注入凭据并进入 runner
+== 10e. 重装不覆盖已有凭据（换一个变量不该把上次的 token 清掉） ==
+  [32m✓[0m 未提供的 token 保留
+  [32m✓[0m 提供的 url 被更新
+  [32m✓[0m 手加的键不被抹掉
+  [32m✓[0m 重装后仍是 0600
+== 10f. --status 能查出被改宽的权限（cp/rsync 保留不了 0600） ==
+  [32m✓[0m 正常权限 → 报 0600
+  [32m✓[0m 644 → 报过宽并给修法
+== 10g. 旧版安装器写过明文 token 的 plist / unit：重装后必须提示轮换 ==
+  [32m✓[0m 旧定时器配置含 token → 提示撤销重建
+  [32m✓[0m 重装后定时器配置已无 token
+== 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） ==
+  [32m✓[0m 解析/优先级/缺文件/权限告警（14 项）
+  [32m✓[0m 文件里没有命令被执行（pwn1/pwn2/pwn3 都不存在）
+== 10i. 凭据文件里的裸命令：runner 报错退出，不执行 ==
+  [32m✓[0m 非法行 → exit 1（不静默当作没配）
+  [32m✓[0m 报错带行号（定位不用猜）
+  [32m✓[0m 那一行没有被执行（pwn4 不存在）
+== 10j. runner 自己读 HARNESS_ENV_FILE：不靠 shell 注入也能拿到凭据 ==
+  [32m✓[0m 干净环境 + 凭据文件 → 进入 runner 并真的用了凭据
+  [32m✓[0m 载入了几键有交代（排查「配了没生效」要看得到）
+  [32m✓[0m 权限漂移在 runtime 也告警（不只在 --status）
+== 11. T5 影子周：dry-run 积累与 --report 统计 ==
+  [32m✓[0m 去重统计（3×#42+1×#43 → 唯一 2）
+  [32m✓[0m 按天分布输出
+  [32m✓[0m 验收口径印在报告里
+  [32m✓[0m 脏行（裸数字/null）不污染统计
+== 12. T6 剖面 B 触发源：MQL/解析/分级/同步四路 ==
+  [32m✓[0m MQL 构造/双形态解析/P0-P3 分级/垃圾结果 fail-closed
+  [32m✓[0m 同步四路：拒硬转/读回成功/静默丢弃→评论兜底/兜底失败显式红
+  [32m✓[0m 剖面 B 缺凭据 → 两条路都点名（login / FEISHU_MCP_URL）
+  [32m✓[0m 数据档未开 → perm 报错带后台指引（活通道）
+== 11. 轮询节拍可配置（runtime.taskLoop.pollSeconds）：定时器心跳 vs 真实节拍 ==
+  [32m✓[0m 定时器+新鲜戳 → 节流跳过（exit 0）
+  [32m✓[0m 跳过说明节拍来源（pollSeconds）
+  [32m✓[0m 定时器+陈旧戳 → 正常轮次（exit 0）
+  [32m✓[0m 走的是真实轮次路径
+  [32m✓[0m 轮次成功后节流戳已刷新
+  [32m✓[0m 手动 --once + 新鲜戳 → 不节流照跑
+  [32m✓[0m 确实跑了（不是被跳过）
+  [32m✓[0m env TASK_LOOP_INTERVAL 覆盖生效（1s 节拍放行）
+  [32m✓[0m 覆盖后走真实轮次
+  [32m✓[0m launchd 模板注入 HARNESS_TIMER=1
+  [32m✓[0m systemd 模板注入 HARNESS_TIMER=1
 
-通过 34，失败 0
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md/repo/.zwork/attachments/d05a815e-1d5f-4a28-b6c2-ddc685dc494a/pasted_text_20261111T073945175Z_61901727.txt: Permission denied
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md/repo/.zwork/attachments/d05a815e-1d5f-4a28-b6c2-ddc685dc494a: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md/repo/.zwork/attachments: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md/repo/.zwork: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md/repo: Directory not empty
-rm: /var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/tmp.utnn04C7Md: Directory not empty
+结果：86 通过，0 失败
 
-> harness-starter@1.1.0 test:wiring
-> bash test/wiring.test.sh
+> harness-starter@1.1.0 test:task-loop-contract
+> bash test/task-loop-contract.test.sh
 
-== 1. 接线与 manifest 一致 ==
-  [32m✓[0m 无漂移
-== 2. 两个 CLI 都有接线文件 ==
-  [32m✓[0m Claude 接线存在
-  [32m✓[0m ZCode 接线存在
-== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
-  [32m✓[0m hooks.enabled = true
-== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
-  [32m✓[0m 全部 hook 已接线（缺 0 处）
-== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
-  [32m✓[0m Claude 为 command 字符串
-  [32m✓[0m ZCode 为 process + args
-== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
-  [32m✓[0m ZCode 全部 matcher 已锚定
-== 7. 手改接线 → --check 必须发现漂移 ==
-  [32m✓[0m 漂移被检出
-== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
-  [32m✓[0m doctor 对缺失接线报红
-  [32m✓[0m 体检输出点名了 zcode
-== 9. hooks.enabled=false → doctor 必须报阻塞 ==
-  [32m✓[0m 关闭 hook 被体检拦住
-== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
-  [31m✗[0m 配置命令违反纪律被体检拦住  (期望 1，实际 0)
-  [31m✗[0m 体检输出点名了违规 flag
-  [32m✓[0m 还原后 harness.config.json 没被这套用例改成"刚写过"
+== 1. 产物声明：artifacts 里登记的每一份都必须真实存在 ==
+  [32m✓[0m 登记过的产物文件都在
+== 2. 账实进度：todo 全绿时 stage 不能还停在产出阶段 ==
+  [32m✓[0m stage 与 todo 完成度一致（已完成实现项却停在 fs_review 会红）
+== 3. WBS 与账本用同一套 TODO 编号（写了没立项 / 立项了没写 都算不一致）=
+  [32m✓[0m WBS 的 TODO 编号与 state.todos 完全一致
+== 4. 阶段历史：每个阶段都要有门禁结论，waived/deferred 必须记名 ==
+  [32m✓[0m 阶段历史无裸结论 / 无未记名豁免
+== 5. 反向自检：把账本改回代码先行的形态，第 2 条必须变红 ==
+  [32m✓[0m 变异（stage 退回 fs_review）→ 判据变红
 
-结果：13 通过，2 失败
+结果：5 通过，0 失败
