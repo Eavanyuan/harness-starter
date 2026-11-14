@@ -440,6 +440,8 @@ case "$PL" in *task-loop.env*) HAS_CRED=0 ;; *) HAS_CRED=1 ;; esac
 check "print 仍给出凭据落点（人要知道去哪儿配）" "0" "$HAS_CRED"
 
 echo "== 10c. 实装落盘权限与内容（--no-activate：不在跑测试的机器上注册真定时器） =="
+# label 随仓库目录名派生（U8 多仓隔离）：测试按同一规则推期望值，不写死
+EXP_LABEL="com.harness.task-loop.$(basename "$ROOT" | tr -c 'A-Za-z0-9-' '-' | sed 's/^-*//;s/-*$//' | cut -c1-24)"
 HOME="$TMP/h2" GITLAB_URL=http://127.0.0.1:1 GITLAB_TOKEN="$FAKE_TOKEN" FEISHU_MCP_URL=https://m.example.com/x \
   bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/inst.txt" 2>&1
 check "安装成功" "0" "$?"
@@ -454,10 +456,10 @@ check "凭据目录 0700" "700" "$(mode_of "$D")"
 # 两边都要断言的是**不含 token**，那才是这条要守的性质；把"unit 必须 0600"写成判据
 # 等于凭空造一条需求，然后为了让测试过而去改安装器。
 if [ "$(uname)" = "Darwin" ]; then
-  UNIT_FILE="$TMP/h2/Library/LaunchAgents/com.harness.task-loop.plist"
+  UNIT_FILE="$TMP/h2/Library/LaunchAgents/${EXP_LABEL}.plist"
   check "plist 0600" "600" "$(mode_of "$UNIT_FILE")"
 else
-  UNIT_FILE="$TMP/h2/.config/systemd/user/com.harness.task-loop.service"
+  UNIT_FILE="$TMP/h2/.config/systemd/user/${EXP_LABEL}.service"
 fi
 grep -q "$FAKE_TOKEN" "$UNIT_FILE" 2>/dev/null
 check "定时器配置不含 token" "1" "$?"
@@ -511,7 +513,9 @@ else
 fi
 HOME="$TMP/h3" GITLAB_TOKEN=newt bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/legacy.txt" 2>&1
 grep -q "明文凭据" "$TMP/legacy.txt"; check "旧定时器配置含 token → 提示撤销重建" "0" "$?"
-grep -q "GITLAB_TOKEN" "$LEGACY"; check "重装后定时器配置已无 token" "1" "$?"
+# 2026-11-14 起：旧明文文件被改名封存（.leaked.<日期>）——原路径无文件也算"已无 token"
+if [ ! -f "$LEGACY" ] || ! grep -q "GITLAB_TOKEN" "$LEGACY" 2>/dev/null; then r=0; else r=1; fi
+check "重装后原路径已无 token（改名封存或清除）" "0" "$r"
 
 echo "== 10h. 凭据文件按数据解析（能写它 ≠ 能以定时器身份执行命令） =="
 cat > "$TMP/envprobe.mjs" <<'JSEOF'

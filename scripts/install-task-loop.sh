@@ -17,7 +17,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 多仓隔离（2026-11-14 U8）：label 按仓库目录名派生——固定 label 装第二个仓库会互覆。
-SLUG="$(basename "$(cd "$1" 2>/dev/null && pwd)" 2>/dev/null | tr -c 'A-Za-z0-9-' '-' | sed 's/^-\+//;s/-\+$//' | cut -c1-24)"
+SLUG="$(basename "$(cd "$1" 2>/dev/null && pwd)" 2>/dev/null | tr -c 'A-Za-z0-9' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-*//' -e 's/-*$//' | cut -c1-24)"
 [ -n "$SLUG" ] || SLUG="default"
 LABEL="com.harness.task-loop.$SLUG"
 INTERVAL=180
@@ -170,8 +170,12 @@ warn_legacy_secret() {
   local old="$1"
   [ -f "$old" ] || return 0
   if grep -qE "GITLAB_TOKEN|FEISHU_MCP_URL" "$old" 2>/dev/null; then
+    # 改名封存而不是删除：明文凭据落过盘=当泄露处理，文件本身要留证（谁写的、写了什么），
+    # 但不能再以原名留在 launchd/systemd 会读的位置——重装后原路径必须干净。
+    local keep="${old}.leaked.$(date +%Y%m%d)"
+    mv -f "$old" "$keep" 2>/dev/null || true
     {
-      echo "注意：$old 里含有明文凭据（旧版安装器写进去的），本次已重建为不含凭据的版本。"
+      echo "注意：$old 里含有明文凭据（旧版安装器写进去的），已改名封存为 $keep。"
       echo "      token 本身不会因此失效——若该文件曾被备份/同步/贴出，去 GitLab 撤销并重建该 token。"
     } >&2
   fi
@@ -179,7 +183,15 @@ warn_legacy_secret() {
 }
 
 mkdir -p "$LOGDIR"; chmod 700 "$LOGDIR"
-if [ "$(uname)" = "Darwin" ]; then warn_legacy_secret "$PLIST"; else warn_legacy_secret "$UNIT_DIR/$UNIT"; fi
+# 旧装机在固定 label（label 派生是 2026-11-14 才有的）：明文凭据检查同时覆盖本仓 label
+# 与旧固定路径——野外的旧文件不会因为新 label 而消失。
+if [ "$(uname)" = "Darwin" ]; then
+  warn_legacy_secret "$PLIST"
+  warn_legacy_secret "$HOME/Library/LaunchAgents/com.harness.task-loop.plist"
+else
+  warn_legacy_secret "$UNIT_DIR/$UNIT"
+  warn_legacy_secret "$UNIT_DIR/com.harness.task-loop.service"
+fi
 write_creds
 write_wrapper
 if [ "$(uname)" = "Darwin" ]; then
@@ -200,7 +212,7 @@ fi
 echo "换凭据：改 ${CRED_FILE}（0600）即可，不用重装"
 
 # doctor 的门禁在场性还需要 HARNESS_GITLAB_PROJECT（C3：安装器此前不注入，定时器机上永远"缺 project"）
-if ! grep -q '^HARNESS_GITLAB_PROJECT=' "$ENV_FILE" 2>/dev/null; then
-  echo "提示：doctor 门禁在场性需要 HARNESS_GITLAB_PROJECT=<组/项目>（如 rd-app/idmp）——需要时追加到 $ENV_FILE"
+if ! grep -q '^HARNESS_GITLAB_PROJECT=' "$CRED_FILE" 2>/dev/null; then
+  echo "提示：doctor 门禁在场性需要 HARNESS_GITLAB_PROJECT=<组/项目>（如 rd-app/idmp）——需要时追加到 $CRED_FILE"
 fi
 echo "停止：touch $ROOT/.ai/task-loop/OFF（kill switch）；彻底卸载：$0 <仓库> --uninstall"
