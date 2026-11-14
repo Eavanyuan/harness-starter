@@ -22,7 +22,9 @@
     "harness.rules.json",
     "AGENTS.md",
     ".gitignore",
-    "README.md"
+    "README.md",
+    "deploy/",
+    "docs/06-reference/"
   ],
   "scripts": {
     "setup": "bash scripts/init-harness.sh",

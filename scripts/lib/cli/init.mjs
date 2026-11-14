@@ -32,7 +32,7 @@ import { TEMPLATE, MANIFEST, die, assertWritableUnder, sha256, hashFileSync, wri
 const READ_ONLY_AGENTS = ['orchestrator', 'requirement-analyst', 'tech-selector', 'spec-reviewer'];
 
 /** 随模板复制的目录与单文件。生成物（.claude/.zcode/prompts）不复制——目标侧自己 build。 */
-const TEMPLATE_DIRS = ['agents', 'hooks', 'scripts', 'templates', '.skills', 'test', 'guides'];
+const TEMPLATE_DIRS = ['agents', 'hooks', 'scripts', 'templates', '.skills', 'test', 'guides', 'deploy', 'docs/06-reference'];
 const TEMPLATE_FILES = ['harness.config.json', 'harness.rules.json', 'AGENTS.md', '.ai/rules/verification.md', '.ai/state.example.json'];
 /** build 产物（init 后由目标侧 build 生成；安装完成后展开成**文件清单**写入 manifest）。 */
 const GENERATED = [
@@ -145,10 +145,28 @@ function adaptConfig(content, target, stackDir) {
     cfg.projects = [];
     delete cfg.stacks;
   }
+  // 模板栈补齐（2026-11-14 U2 修复）：.skills 全套随包携带（backend/frontend/e2e/harness），
+  // check:skills 要求每个 skill 的 stack 在 projects 里有条目——探测不到的栈补**模板占位条**
+  //（dir 指向约定目录，不存在时 doctor 按模板态提醒，不判红）。不加这条，新装项目
+  // gate 开箱即红（frontend/e2e 技能栈未注册），而"开箱绿"是快速上手的第一道门。
+  for (const id of ['backend', 'frontend']) {
+    if (!cfg.projects.some((p) => p.id === id)) {
+      cfg.projects.push({
+        id,
+        dir: id,
+        srcGlob: id === 'backend' ? 'backend/src/**/*.java' : 'frontend/src/**/*.{ts,vue}',
+        lint: id === 'backend' ? 'mvn -q compile' : 'pnpm run lint',
+        test: id === 'backend' ? 'mvn -q test' : 'pnpm run test:unit',
+        testOne: id === 'backend' ? 'mvn -q test -Dtest=<name>' : 'pnpm vitest run <file>',
+        $comment: '模板占位条（init 补齐）——接到真实目录/命令后改我',
+        template: true,
+      });
+    }
+  }
   if (supported.length) {
     notes.push(`projects 按探测回填 ${projects.length} 条：${projects.map((s) => `${s.id}(${s.dir})`).join('、')}（命令在目标项目里可跑，不是模板占位值）`);
   } else {
-    notes.push('未探测到受支持的构建清单（v1 生成命令的栈：Java/Maven、Java/Gradle、TS/Vue）：projects 留空待手填——doctor 会一直红到填完，这是刻意的');
+    notes.push('未探测到受支持的构建清单（v1 生成命令的栈：Java/Maven、Java/Gradle、TS/Vue）：已补 backend/frontend 模板占位条（template:true，doctor 提醒不判红）——接到真实目录后改值并删 template 标记');
   }
   for (const u of unsupported) notes.push(`${u.lang}（${u.dir}）：v1 不生成命令，projects 里该栈需手填（工具不猜命令）`);
   return { cfg, notes };
@@ -200,6 +218,26 @@ export function cmdInit(target, opts) {
         cfgNotes.push(`--agents read-only：启用清单裁到 ${READ_ONLY_AGENTS.length} 个（第 1 周只读阶段）`);
       }
       content = JSON.stringify(cfg, null, 2) + '\n';
+    }
+    if (rel === 'harness.rules.json') {
+      // 接入净化（2026-11-14 U1 修复）：源仓的真实接入（GitLab 实例、飞书空间与字段
+      // key）绝不能随包进新项目——那会让 doctor 假绿"已接入"、task-loop dry-run 直连
+      // 生产空间。projectKey/url 清空即回到"未接入不算故障"的语义；字段 key 等结构
+      // 保留作参考，projectKey 为空时不会被读。
+      const rules = JSON.parse(content);
+      const sanitized = [];
+      if (rules?.runtime?.feishu?.projectKey) {
+        rules.runtime.feishu.projectKey = '';
+        sanitized.push('runtime.feishu.projectKey（飞书空间）');
+      }
+      if (rules?.runtime?.gitlab?.url) {
+        rules.runtime.gitlab.url = '';
+        sanitized.push('runtime.gitlab.url（GitLab 实例）');
+      }
+      if (sanitized.length) {
+        cfgNotes.push(`源仓接入已净化为未接入：${sanitized.join('、')} —— init 不携带真实实例（要接入按 guides 配置，凭据只进 0600 文件）`);
+      }
+      content = JSON.stringify(rules, null, 2) + '\n';
     }
     const dest = join(target, rel);
     let action;

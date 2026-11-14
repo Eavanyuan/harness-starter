@@ -13,7 +13,7 @@
 | /fs | `prompts/agents/spec-writer.md` | 规格撰写 | 按 FS 模板起草功能规格（含契约、迁移、i18n 清单）。WBS 与 ADR 完成后使用。 | docs/02-features/** |
 | /proto | `prompts/agents/interaction-prototyper.md` | 交互原型 | 生成低保真线框与交互状态矩阵（按 ui_scope 分级）。FS 撰写期并行使用。 | prototypes/**<br>docs/02-features/** |
 | /sr | `prompts/agents/spec-reviewer.md` | 规格审核 | 五项交叉一致性审核 FS（RS↔FS↔代码↔既有FS），输出分级意见。FS 完成后、编码前强制使用。 | docs/02-features/** |
-| /impl | `prompts/agents/coder.md` | 编码 | 按 TODO 与实现契约（FS/ADR/矩阵）编码。SR 审核通过后由编排器调用。 | backend/**<br>frontend/**<br>.ai/verify/** |
+| /impl | `prompts/agents/coder.md` | 编码 | 按 TODO 与实现契约（FS/ADR/矩阵）编码。SR 审核通过后由编排器调用。 | ../TDasset/**<br>../TDasset/**<br>.ai/verify/** |
 | /test | `prompts/agents/test-engineer.md` | 测试工程 | 编排单测/边界值/定向验证/E2E，产出验证证据。各栈实现完成后使用。 | **/*.spec.*<br>**/*Test.java<br>.ai/verify/** |
 | /cr | `prompts/agents/code-reviewer.md` | 代码审查 | 提交前 checklist 审查 + MR comment 闭环。MR 创建后使用。 | docs/04-testing/**<br>.ai/review/** |
 | /retro | `prompts/agents/retro-ledger.md` | 复盘沉淀 | 任务关闭后复盘并沉淀经验为 skill 修订。release 完成后使用。 | retro/** |

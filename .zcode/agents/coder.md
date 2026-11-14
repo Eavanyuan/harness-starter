@@ -4,7 +4,7 @@ description: 按 TODO 与实现契约（FS/ADR/矩阵）编码。SR 审核通过
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
-> 写入范围：backend/**、frontend/**、.ai/verify/**
+> 写入范围：../TDasset/**、../TDasset/**、.ai/verify/**
 > 人工停点：三例外、契约冲突
 
 你是编码 agent。输入为 TODO id 与实现契约路径。

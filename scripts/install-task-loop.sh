@@ -16,7 +16,10 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LABEL="com.harness.task-loop"
+# 多仓隔离（2026-11-14 U8）：label 按仓库目录名派生——固定 label 装第二个仓库会互覆。
+SLUG="$(basename "$(cd "$1" 2>/dev/null && pwd)" 2>/dev/null | tr -c 'A-Za-z0-9-' '-' | sed 's/^-\+//;s/-\+$//' | cut -c1-24)"
+[ -n "$SLUG" ] || SLUG="default"
+LABEL="com.harness.task-loop.$SLUG"
 INTERVAL=180
 
 usage_err() { echo "用法: bash scripts/install-task-loop.sh <目标仓库> [--interval 秒] [--print] [--no-activate] [--uninstall] [--status]" >&2; exit 64; }
@@ -195,4 +198,9 @@ fi
 # （GitLab token、插件身份 URL）——以前靠 env 传 projectKey 时，渲染函数漏一个变量就是
 # 一次"定时任务每轮都静默失败"，而失败原因隔着 cron 日志两层才看得见。
 echo "换凭据：改 ${CRED_FILE}（0600）即可，不用重装"
+
+# doctor 的门禁在场性还需要 HARNESS_GITLAB_PROJECT（C3：安装器此前不注入，定时器机上永远"缺 project"）
+if ! grep -q '^HARNESS_GITLAB_PROJECT=' "$ENV_FILE" 2>/dev/null; then
+  echo "提示：doctor 门禁在场性需要 HARNESS_GITLAB_PROJECT=<组/项目>（如 rd-app/idmp）——需要时追加到 $ENV_FILE"
+fi
 echo "停止：touch $ROOT/.ai/task-loop/OFF（kill switch）；彻底卸载：$0 <仓库> --uninstall"

@@ -190,5 +190,9 @@ if [ "$CODE" -eq 0 ]; then
   echo "[verify] PASS  ${LOG}"
 else
   echo "[verify] FAIL(exit=${CODE})  ${LOG}" >&2
+  # 管道吞码是实测两次的事故（verify-run | tail && git commit 把红 gate 照样提交）：
+  # 本脚本退出码是红的，但接了 | tail 之类管道后 $? 变成管道尾的 0。提醒一句，
+  # 比指望人人记得 set -o pipefail 可靠。
+  echo "[verify] 提示：若本命令接了管道（| tail 等），外层请 set -o pipefail，否则这个红会被管道尾吃掉" >&2
 fi
 exit "$CODE"

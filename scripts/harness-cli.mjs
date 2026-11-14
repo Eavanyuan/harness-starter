@@ -19,12 +19,13 @@ import { cmdResume } from './lib/cli/resume.mjs';
 import { cmdAbandon } from './lib/cli/abandon.mjs';
 import { cmdReviewPacket } from './lib/cli/review-packet.mjs';
 import { cmdRuntime } from './lib/cli/runtime.mjs';
+import { cmdClose } from './lib/cli/close.mjs';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
 // 每个动词显式声明自己接受的 flag：拼错/不支持的 flag 直接 usage，
 // 不能让它被当成 positional 静默吞掉（--stack-dir svc-a 就曾这样把目录当参数丢掉）。
-const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except', '--ack-strikes'], verify: ['--mode', '--file'], abandon: ['--reason', '--by'], runtime: ['--spawn_agents', '--shell', '--ask_user', '--by'] };
+const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except', '--ack-strikes'], verify: ['--mode', '--file'], abandon: ['--reason', '--by'], runtime: ['--spawn_agents', '--shell', '--ask_user', '--by'], close: ['--by'] };
 const BOOL_FLAGS = { detect: ['--json'], analyze: ['--in-project', '--full-edges'], init: ['--dry-run'], remove: ['--dry-run', '--yes', '--force'], resume: ['--advance', '--accept-suggested'], 'review-packet': ['--first'], verify: ['--json'], runtime: ['--reset'] };
 const valueFlags = new Set(VALUE_FLAGS[cmd] || []);
 const boolFlags = new Set(BOOL_FLAGS[cmd] || []);
@@ -110,6 +111,10 @@ switch (cmd) {
       })
     );
     break;
+  }
+  case 'close': {
+    // U4/U5/U7：S 档收尾一键化（bootstrap 自指困境在命令内解决）
+    process.exit(cmdClose(safeTarget(positional[0], true), positional[1] || '', { by: (values['--by'] || '').trim() }));
   }
   case 'runtime': {
     // P3-⑤：宿主能力自检结论写回 config。值域与键白名单在 runtime.mjs 里唯一处校验。

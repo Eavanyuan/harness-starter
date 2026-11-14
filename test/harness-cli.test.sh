@@ -486,12 +486,14 @@ check "配置冲突 → exit 1" 1 "$code"
 expect_out "输出点名冲突" "冲突" "$out"
 node -e 'const m=require(process.argv[1]);process.exit(m.status==="incomplete"?0:1)' "$TMP/badcfg/.harness-manifest.json"
 check "manifest.status=incomplete" 0 "$?"
-# 空目录（无任何构建清单）也是刻意的 incomplete：stacks 留空待手填，doctor 会一直红到填完
+# 空目录（无任何构建清单）：补模板占位条 → 开箱绿（2026-11-14 契约翻转，U2）
 mkdir -p "$TMP/emptyp"
 out="$(CLI init "$TMP/emptyp" 2>&1)"
 code=$?
-check "空目录安装 → exit 1（未填 stacks 前不算装好）" 1 "$code"
-expect_out "提示手填 stacks" "手填" "$out"
+# 2026-11-14 契约翻转（U2 修复）：空目录也开箱绿——init 补 template:true 占位条
+# （doctor 提醒不判红），新用户第一条 npm run gate 是绿的；接到真实目录后改值删标记。
+check "空目录安装 → 开箱绿（template 占位条）" 0 "$code"
+expect_out "提示模板占位待接真实目录" "模板占位" "$out"
 
 echo "== 25. remove 保护安装后被改过的生成文件 =="
 mkdir -p "$TMP/prot"
@@ -543,7 +545,7 @@ code=$?
 expect_out "明说目录已创建" "已创建" "$out"
 check "没有 node 堆栈" 1 "$(printf '%s' "$out" | grep -qE 'at (Object|ModuleJob|async)' && echo 0 || echo 1)"
 check "目录与产物齐全" 0 "$([ -f "$TMP/brand-new/harness.config.json" ] && [ -d "$TMP/brand-new/hooks" ] && echo 0 || echo 1)"
-check "全新项目：未填 stacks 前 exit 1（与空目录口径一致）" 1 "$code"
+check "全新项目：开箱绿（template 占位条，与空目录口径一致）" 0 "$code"
 
 echo "== 30. 构建清单只看直属文件：根 package.json 不因下属 build.gradle 变 Java 栈 =="
 mkdir -p "$TMP/gradle/sub/build"
@@ -1060,6 +1062,60 @@ node -e '
   process.exit(s.stage === "retro" && w.length === 1 ? 0 : 1);
 ' "$ST"
 check "推进落盘 + waived_by 记录降档人与理由" 0 "$?"
+
+echo "== 51. init 净化与开箱绿（U1/U2/U3）：不带源仓接入、集合对齐、deploy/docs 随包 =="
+FRESH="$TMP/fresh"
+mkdir -p "$FRESH"
+out="$(CLI init "$FRESH" 2>&1)"
+check "全新空目录 init exit 0" 0 "$?"
+node -e 'const r=require(process.argv[1]);process.exit(r.runtime.feishu.projectKey===""&&r.runtime.gitlab.url===""?0:1)' "$FRESH/harness.rules.json"
+check "源仓接入已净化（feishu.projectKey/gitlab.url 均空）" 0 "$?"
+node -e 'const c=require(process.argv[1]);const ids=(c.projects||[]).map(p=>p.id);process.exit(ids.includes("backend")&&ids.includes("frontend")?0:1)' "$FRESH/harness.config.json"
+check "projects 含 backend+frontend 模板占位条（check:skills 不再开箱红）" 0 "$?"
+[ -f "$FRESH/deploy/task-loop/launchd.plist.template" ] && r=0 || r=1
+check "deploy/ 随包安装（U3：test:task-loop 不再结构性红）" 0 "$r"
+[ -f "$FRESH/docs/06-reference/state-fields.md" ] && r=0 || r=1
+check "docs/06-reference 随包安装（契约文档随行）" 0 "$r"
+(cd "$FRESH" && node scripts/check-skills.mjs >/dev/null 2>&1)
+check "开箱 check:skills 绿（U2 核心断言）" 0 "$?"
+
+echo "== 52. close 一键收尾（U4/U5/U7）：bootstrap 自指在命令内解决 =="
+CL="$TMP/closeproj"
+mkdir -p "$CL"
+CLI init "$CL" >/dev/null 2>&1
+# 桩化 gate 脚本提速（全套 25 组真跑要几分钟）：命令行仍是 npm run gate（S 折叠判据
+# 只认这个），桩只影响目标仓里的执行内容——close 无命令注入口（防假证据）。
+node -e 'const fs=require("fs");const p=process.argv[1]+"/package.json";const j=JSON.parse(fs.readFileSync(p));j.scripts.gate="echo gate-stub-ok";fs.writeFileSync(p,JSON.stringify(j,null,2))' "$CL"
+(cd "$CL" && bash scripts/init-harness.sh close-demo S >/dev/null 2>&1)
+check "建档 close-demo（S 档）" 0 "$?"
+node "$HERE/scripts/harness-cli.mjs" close "$CL" close-demo >"$TMP/cl1" 2>&1
+check "gate 绿（桩）→ close exit 0" 0 "$?"
+node -e 'const s=require(process.argv[1]);process.exit(s.stage==="done"?0:1)' "$CL/.ai/tasks/close-demo/state.json"
+check "state 翻到 done" 0 "$?"
+grep -q '^# task: close-demo' "$CL/.ai/verify/CLOSE-GATE.log" && r=0 || r=1
+check "gate 日志带归属头（verify-run --task 包装）" 0 "$r"
+[ -f "$CL/retro/close-demo-收尾.md" ] && r=0 || r=1
+check "retro 模板按 <slug>-*.md 新规生成" 0 "$r"
+(cd "$CL" && node scripts/ci-verify.mjs --mode ci >/dev/null 2>&1)
+check "收尾后 ci 口径绿" 0 "$?"
+node "$HERE/scripts/harness-cli.mjs" close "$CL" again-demo >"$TMP/cl2" 2>&1
+check "不存在的任务 → 拒（64）" 64 "$?"
+mkdir -p "$CL/.ai/tasks/red-demo"
+python3 - "$CL" <<'PYEOF'
+import json,sys
+p=sys.argv[1]+"/.ai/tasks/red-demo/state.json"
+json.dump({"meta":{"task":"red-demo","flow_tier":"S","created_at":"2026-11-14T00:00:00Z","task_type":"feature"},"stage":"impl","stage_history":[],"todos":[],"artifacts":{}},open(p,"w"))
+PYEOF
+node -e 'const fs=require("fs");const p=process.argv[1]+"/package.json";const j=JSON.parse(fs.readFileSync(p));j.scripts.gate="echo gate-stub-FAIL && exit 1";fs.writeFileSync(p,JSON.stringify(j,null,2))' "$CL"
+node "$HERE/scripts/harness-cli.mjs" close "$CL" red-demo >"$TMP/cl3" 2>&1
+check "gate 红（桩退出 1）→ close exit 1" 1 "$?"
+node -e 'const s=require(process.argv[1]);process.exit(s.stage==="impl"?0:1)' "$CL/.ai/tasks/red-demo/state.json"
+check "失败后状态还原（不置 done）" 0 "$?"
+grep -q "状态已还原" "$TMP/cl3" && r=0 || r=1
+check "失败指路（日志路径与还原说明）" 0 "$r"
+node -e 'const fs=require("fs");const p=process.argv[1]+"/package.json";const j=JSON.parse(fs.readFileSync(p));j.scripts.gate="echo gate-stub-ok";fs.writeFileSync(p,JSON.stringify(j,null,2))' "$CL"
+node "$HERE/scripts/harness-cli.mjs" close "$CL" close-demo >"$TMP/cl4" 2>&1
+check "幂等：已 done 再 close → exit 0 且无事可做" 0 "$?"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

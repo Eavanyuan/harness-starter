@@ -13,6 +13,7 @@
  *
  * 零依赖，Node 18+。
  */
+import { allStacks } from './lib/analyzer.mjs';
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -117,9 +118,12 @@ function assertReadOnlyTrim(meta) {
  * 源保持技术栈无关，产物才是具体的——这样同一份源可以复制到不同栈的项目。
  */
 function resolveTokens(text, config) {
-  const stacks = config.stacks || {};
-  const backend = stacks.backend || {};
-  const frontend = stacks.frontend || {};
+  // v1/v2 统一（2026-11-14 C1）：此前只读 config.stacks——projects（v2）存在时被遮蔽，
+  // 生成物的 <backend-dir> 与 doctor/verify 看到的栈口径脱节。allStacks 是唯一入口。
+  const all = allStacks(config);
+  const byId = (id) => all.find((s) => (s.id || s.name) === id) || {};
+  const backend = byId('backend');
+  const frontend = byId('frontend');
   const map = {
     '<backend-dir>': backend.dir || 'backend',
     '<frontend-dir>': frontend.dir || 'frontend',

@@ -71,7 +71,10 @@ let stackMissing = 0;
 for (const s of stacksArr) {
   const name = s.id || 'unknown';
   const dir = join(ROOT, s.dir || name);
-  if (!existsSync(dir)) {
+  if (!existsSync(dir) && s.template) {
+      // init 补的模板占位条（2026-11-14 U2）：声明式 template:true ——接到真实目录后删标记/改值
+      warn(`projects[${name}] 是模板占位条（template:true，dir=${s.dir} 不存在）—— 预期如此，接到真实目录后改我`);
+    } else if (!existsSync(dir)) {
     stackMissing++;
     if (templateMode) {
       warn(`projects[${name}].dir="${s.dir}" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失`);
@@ -205,8 +208,12 @@ if (feishuCfg && typeof feishuCfg === 'object') {
     ['assigneeField', feishuCfg.assigneeField],
     ['newStatus', feishuCfg.newStatus],
   ];
-  const empty = need.filter(([, v]) => !v || !String(v).trim()).map(([k]) => k);
-  if (empty.length) err(`runtime.feishu 缺值：${empty.join(', ')} —— 剖面 B 会拼出坏 MQL 或取不到严重级，且不会报错`);
+  // projectKey 空 = **未接入**（2026-11-14 与 init 净化对齐）：init 装出的新项目就是空，
+  // 判红会让"开箱绿"永远不成立。空 → 提示不阻塞；非空才要求其余键齐全（半配置才是故障）。
+  const empty = need.filter(([k, v]) => !(k === 'projectKey' && !String(v || '').trim()) && (!v || !String(v).trim())).map(([k]) => k);
+  if (!String(feishuCfg.projectKey || '').trim()) {
+    warn('runtime.feishu.projectKey 为空 —— 剖面 B 未接入（不接不算故障）；要接见 guides/审核与通知自动化.md');
+  } else if (empty.length) err(`runtime.feishu 缺值：${empty.join(', ')} —— 剖面 B 会拼出坏 MQL 或取不到严重级，且不会报错`);
   if (badTypes.length) err(`runtime.feishu.taskTypes 里有空项（${JSON.stringify(rawTypes)}）——空类型名会拼出 \`空间\`.\`\` 这种表名`);
   if (types.some((t) => typeof t !== 'string')) err('runtime.feishu.taskTypes 必须是字符串数组（工作项类型名）');
 

@@ -44,6 +44,11 @@ export function usage() {
       按三档列出待决事项，并生成/刷新 .ai/tasks/<slug>/DECISIONS.md（可留存的决策单）。
 
   node scripts/harness-cli.mjs runtime <target> --spawn_agents yes|no --shell yes|no --ask_user yes|no [--reset] [--by <名字>]
+
+  node scripts/harness-cli.mjs close <target> <slug> [--by <名字>]
+      任务一键收尾：自动补 gate TODO → bootstrap(impl) 跑全量 gate（verify-run --task 包装，
+      日志带归属头）→ 绿则翻 done 并记 ci/retro；红则状态还原并指路日志。
+      幂等（已 done 直接返回）；retro 缺则按 <slug>-*.md 新规生成模板。
       把宿主会话的能力自检结论写回 harness.config.json（orchestrator 不再逐会话试错）。
       已知结论不许静默退回 unknown；重置必须 --reset --by 记名。
 
