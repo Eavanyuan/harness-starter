@@ -253,8 +253,12 @@ if (wantFeishu) {
   // MQL 的表名就是类型名，一个 MQL 只能查一种工作项，把「缺陷」和「需求」塞进同一句不可能。
   const types = opt.types.length ? opt.types : cfg.taskTypes;
   let confirmTotal = 0;
+  // 连接提为可复用引用（2026-11-14 接线）：轮询段用完不弃——认领后的接单三连
+  // （评论 + New→Processing）复用同一条连接与身份，避免二次握手与身份不一致。
+  let feishuCall = null;
   try {
     const c = await connect(endpoint, { token });
+    feishuCall = c.call;
     for (const itemType of types) {
       const mql = buildMyBugsMql({
         projectKey: cfg.projectKey,
@@ -346,6 +350,37 @@ for (const t of triggers) {
   }
   held.set(`${t.kind}-${t.id}`, { kind: t.kind, id: t.id });
   recordEvent('task-loop', 'claimed', { kind: t.kind, id: t.id, ref: c.ref });
+
+  // ---- 接单三连（2026-11-14 接线）：评论预告 + New→Processing ----
+  // 只对飞书单（kind=task）且真实轮次生效（dry-run 零写入，不调）。失败按契约释放认领
+  // 升级（feishu-sync 头注）：接单是"对外承诺"，承诺不出去就不占锁，下一轮重试；
+  // 事件全部落账，权限类故障在 ledger 里看得见。
+  if (t.kind === 'task' && feishuCall) {
+    try {
+      const { acknowledgeBug } = await import('./lib/feishu-sync.mjs');
+      const ackRes = await acknowledgeBug({
+        call: feishuCall,
+        projectKey: feishuCfg.projectKey,
+        workItemId: t.id,
+        workItemType: t.itemType || 'Defect',
+        note: `【自动接单】开始修复：${(t.bug?.name || '').slice(0, 60)}。\n修复将随 MR 提交，进展同步在本评论区；修复合入后状态流转到 Releasing/Done。（task-loop 认领，引用 ${c.ref}）`,
+      });
+      if (ackRes.ok) {
+        recordEvent('task-loop', 'feishu_ack', { id: t.id, degraded: ackRes.transition?.degraded || [] });
+        console.log(`[task-loop] ${t.id} 已接单：评论已发，状态 New→Processing${ackRes.transition?.via === 'comment-fallback' ? '（回读未确认，评论留凭）' : ''}`);
+      } else {
+        throw new Error(ackRes.transition?.reason || '接单未成功');
+      }
+    } catch (e) {
+      recordEvent('task-loop', 'feishu_ack_failed', { id: t.id, error: String(e.message || e).slice(0, 160) });
+      console.error(`[task-loop] ${t.id} 接单失败：${e.message}——释放认领，下一轮重试`);
+      const okRel = release({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id });
+      if (okRel) held.delete(`${t.kind}-${t.id}`);
+      recordEvent('task-loop', okRel ? 'released' : 'release_failed', { kind: t.kind, id: t.id, why: 'feishu_ack_failed' });
+      blocked += 1;
+      continue;
+    }
+  }
 
   // 预算按**单任务**建：maxRounds 是"同一任务最多几轮修复"，不是"--once 里能处理几个任务"。
   // 上一版 import 了 createBudget 却从未调用，直接 budget.start() —— 真检测到触发就

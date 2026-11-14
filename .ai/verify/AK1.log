@@ -1,0 +1,19 @@
+# cmd: npm run -s test:feishu-sync
+# started: 2026-11-14T12:36:51Z
+# finished: 2026-11-14T12:36:51Z
+# exit_code: 0
+# commit: unknown
+# task: ack-wiring
+# ---- output tail (last 200 lines) ----
+== 1. 接单三连 happy path：调序 / 英文状态名 / 类型名 ==
+  [32m✓[0m ok=true
+  [32m✓[0m 调序：评论 → 可流转态 → 写状态(Processing) → 回读
+== 2. 目标态不在可流转列表 → fail-closed 不硬转 ==
+  [32m✓[0m ok=false 且理由以「目标状态」开头
+  [32m✓[0m update_field 未被调用（不硬转）
+== 3. 写后读读不回 → 评论兜底留凭（degraded），ok 仍真 ==
+  [32m✓[0m 回读失败仍 ok=true（兜底成功不算失败）
+  [32m✓[0m via=comment-fallback
+  [32m✓[0m degraded 点名 status
+
+结果：7 通过，0 失败

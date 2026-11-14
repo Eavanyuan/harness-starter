@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ack-wiring",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-14T12:36:51Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：retro/ack-wiring-接单状态流转.md 即文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：需求=会话指令（接单即改状态）"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "认领成功→接单三连；失败释放认领升级（契约）；连接复用不二次握手；dry-run 零写入"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {},
+  "todos": [
+    {
+      "id": "AK1",
+      "title": "接单三连单测（mock）",
+      "status": "completed",
+      "files": [
+        "scripts/lib/feishu-sync.mjs",
+        "test/feishu-sync.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AK1.log",
+        "command": "npm run -s test:feishu-sync"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "7/0",
+        "feature_complete": "调序/英文状态名/fail-closed/评论兜底四组",
+        "quality_clean": "get_transitable_states 真实返回已只读探针验证（Processing ∈ New 的可流转列表）"
+      }
+    },
+    {
+      "id": "AK2",
+      "title": "task-loop 接线无回归（dry-run 零写入不受影响）",
+      "status": "completed",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AK2.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "86/0",
+        "feature_complete": "认领后 kind=task 触发 ack；失败释放+落账",
+        "quality_clean": "ack 块在 dry-run continue 之后，影子周仍零写入"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
