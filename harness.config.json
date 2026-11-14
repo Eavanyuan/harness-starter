@@ -297,5 +297,18 @@
     ],
     "staleTaskDays": 3,
     "retroCheckFromDate": "2026-11-11"
+  },
+  "projects": [
+    {
+      "dir": "../TDasset",
+      "stack": "backend",
+      "srcGlob": "tda-server/**/src/main/java/**/*.java",
+      "lint": "cd ../TDasset && mvn -q -pl tda-server validate",
+      "test": "cd ../TDasset && mvn -pl tda-server test -DskipTests=false -Dskip.tests=false",
+      "testOne": "cd ../TDasset && mvn -pl tda-server test -DskipTests=false -Dskip.tests=false -Dtest=<name>"
+    }
+  ],
+  "notes": {
+    "tdasset_sidecar": "TDasset 旁挂（2026-11-14）：harness 文件不进 TDasset 仓（用户指令）；代码仓在 ../TDasset，命令经 cd 过去跑；test/testOne 必须双开 skipTests=false（TDasset 根 pom 与 tda-server 是两个独立跳过属性）。"
   }
 }

@@ -1,0 +1,9 @@
+# cmd: bash -c cd\ ../TDasset\ \&\&\ git\ rev-parse\ HEAD\ \&\&\ git\ log\ -1\ --format=%s
+# started: 2026-11-14T11:36:51Z
+# finished: 2026-11-14T11:36:51Z
+# exit_code: 0
+# commit: unknown
+# task: landing
+# ---- output tail (last 200 lines) ----
+3b49669cbfb8346130ea8d962887e1040e359467
+Split 'tdengine-idmp-docs/' into commit 'e446db4404a001ee50e926098c8ee54501d2e1ca'
