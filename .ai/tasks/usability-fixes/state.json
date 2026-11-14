@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "usability-fixes",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": 2,
+    "created_at": "2026-11-14T14:17:24Z",
+    "flow_tier": "M",
+    "init_flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": ""
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "pass",
+      "note": "需求源=.ai/review/harness易用性与配置面评估.md（用户指令：修复这些问题）"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "三裁决：契约翻转（占位条开箱绿）；close 无命令注入口（防假证据）；doctor 未接入=提示不判红"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "M 档裁剪：无对外契约文档，契约变化即测试断言本身"
+    },
+    {
+      "stage": "wbs",
+      "gate": "pass",
+      "note": "评估报告第四节即拆解"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "三路证据 UF1-3 全绿；文档子代理独立核验"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/usability-fixes-收尾.md",
+    "评估": ".ai/review/harness易用性与配置面评估.md"
+  },
+  "todos": [
+    {
+      "id": "UF1",
+      "title": "init 净化 + close 一键收尾（harness-cli 套件）",
+      "status": "completed",
+      "files": [
+        "scripts/lib/cli/init.mjs",
+        "scripts/lib/cli/close.mjs",
+        "scripts/harness-cli.mjs",
+        "scripts/lib/cli/shared.mjs",
+        "scripts/doctor.mjs",
+        "package.json",
+        "test/harness-cli.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/UF1.log",
+        "command": "npm run -s test:harness-cli"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "251/0（§51+§52 新增 15 断言）",
+        "feature_complete": "U1-U5 全覆盖：净化/占位条/deploy+docs/close 四向/契约翻转",
+        "quality_clean": "close 无注入口；幂等；失败还原"
+      }
+    },
+    {
+      "id": "UF2",
+      "title": "v1/v2 统一 + 生成物重生成",
+      "status": "completed",
+      "files": [
+        "scripts/build-agents.mjs",
+        ".claude",
+        ".zcode",
+        "prompts"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/UF2.log",
+        "command": "npm run -s test:agents"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "23/0 + check:agents ok（68 文件一致）",
+        "feature_complete": "tokens 走 allStacks，../TDasset 口径进生成物",
+        "quality_clean": "漂移检测绿"
+      }
+    },
+    {
+      "id": "UF3",
+      "title": "外围无回归（init/doctor-gates/wiring）",
+      "status": "completed",
+      "files": [
+        "scripts/install-task-loop.sh",
+        "scripts/verify-run.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/UF3.log",
+        "command": "test:init + doctor-gates + wiring"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "29/0 + 20/0 + 15/0",
+        "feature_complete": "定时器隔离/pipefail 提醒无回归",
+        "quality_clean": "doctor 契约翻转断言同步"
+      }
+    },
+    {
+      "id": "CLOSE-GATE",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "pending",
+      "files": [],
+      "verify": null,
+      "ooda_stage": "act",
+      "audit": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

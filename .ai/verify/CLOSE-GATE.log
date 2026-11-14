@@ -1,0 +1,96 @@
+# cmd: npm run gate
+# started: 2026-11-14T14:18:56Z
+# finished: 2026-11-14T14:19:00Z
+# exit_code: 1
+# commit: unknown
+# task: usability-fixes
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 gate
+> npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:glob && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring && npm run test:router && npm run test:ai-review && npm run test:broker && npm run test:feishu-ws && npm run test:feishu-oauth && npm run test:feishu-bug-source && npm run test:feishu-sync && npm run test:gate-regressions && npm run test:stale && npm run test:retro && npm run test:doctor-gates && npm run test:task-loop && npm run test:task-loop-contract
+
+
+> harness-starter@1.1.0 doctor
+> node scripts/doctor.mjs
+
+[doctor] 配置体检
+
+  说明：project.name 仍是 "harness-starter"，按模板态体检（占位目录只算提醒）。
+        接到真实项目后先改 harness.config.json 的 project.name 与 stacks，再重跑。
+
+  ✓ projects[backend] → ../TDasset
+  ✓ projects[frontend] → ../TDasset
+  ✓ claude hook 接线完整（4 个）
+  ✓ zcode hook 接线完整（4 个）
+  ✓ 配置键均有消费者（19 个）
+  ✓ 剖面 B 空间：taosdata_td.Defect（指派判据 current_status_operator，严重级 field_6bff71）
+  ✓ GitLab 接入：https://git.tdengine.net
+  ✓ 门禁自测 25 个
+  ✓ 任务停滞判据：16 个任务，阈值 3 天（时钟=git 提交时间）
+  ✓ agent 源 11 个
+  ✓ agents.enabled 11/11 个启用
+  ✓ AGENTS.md 67/70 行
+  ✓ state 字段契约：16 个判据字段均有读者
+  ✓ state 字段契约：代码读取的 23 个字段都在契约里（双向一致）
+  ✓ 凭据文件：/Users/yuanyuan/.harness/task-loop/task-loop.env（生效 2 键）
+  ✓ 外部命令齐备（3 个）
+  ! target "deepseek" 没有 hook 机制 —— 只有 CI 兜底，文档里不要写"hook 硬拦"
+  ! 门禁在场性未检查：GitLab 未完整接入（缺 project）——不接不算故障，接入后在 runtime.gitlab.url 写实例地址并提供 GITLAB_TOKEN 与 HARNESS_GITLAB_PROJECT，此处才会给出结论
+
+结果：通过（2 个提醒）
+
+> harness-starter@1.1.0 check:skills
+> node scripts/check-skills.mjs
+
+.skills 校验
+  ✓ backend     82 行  stack=backend  refs=2  v1.1.0
+  ✓ e2e         66 行  stack=frontend  refs=1  v1.0.0
+  ✓ frontend    70 行  stack=frontend  refs=1  v1.0.0
+  ✓ harness     79 行  stack=harness  refs=2  v1.1.0
+  required_skills 已声明：backend, harness
+  结果：4 个 skill 通过
+
+> harness-starter@1.1.0 check:agents
+> node scripts/build-agents.mjs --check
+
+[build-agents] check ok，68 个文件与源一致
+
+> harness-starter@1.1.0 check:hooks
+> node scripts/build-hooks.mjs --check
+
+  ✓ .claude/settings.json
+  ✓ .zcode/config.json
+[build-hooks] hook 接线与 manifest 一致
+
+> harness-starter@1.1.0 verify:state
+> node scripts/ci-verify.mjs
+
+[ci-verify] 提示（不判失败）：
+  ! ack-wiring: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! ack-wiring: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! ai-review-notify: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! apse-doctrine: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! cr-gate-round2: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! deferred-fixes: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! drill-gaps-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! gate-channel-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! gate-channel-fix: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! harness-builder-hardening: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! harness-gate-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! iteration-prefix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! iteration-prefix: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! poll-config: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! poll-config: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! review-p2-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! stale-task-gate: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! stale-task-gate: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! usability-fixes: 阶段 impl 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! usability-fixes: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! 1 个改动文件未声明进任何 TODO（新鲜度比对不覆盖它们，收口前补进对应 TODO 的 files）：retro/usability-fixes-收尾.md
+[ci-verify] 门禁未通过（口径 ci）：
+  ✗ usability-fixes: UF1 [verify] .ai/verify/UF1.log 未入库（证据必须随代码提交，git 里查不到就等于没跑）
+  ✗ usability-fixes: UF2 [verify] .ai/verify/UF2.log 未入库（证据必须随代码提交，git 里查不到就等于没跑）
+  ✗ usability-fixes: UF3 [verify] .ai/verify/UF3.log 未入库（证据必须随代码提交，git 里查不到就等于没跑）
+
+CI 口径只认 git 事实：日志是否入库、exit_code 是否为 0、声明文件是否存在。
+新鲜度（日志晚于源码、72h 时效）只在本地 hook 里判：npm run verify:state -- --local

@@ -1,0 +1,103 @@
+# cmd: bash -c npm\ run\ -s\ test:init\ \&\&\ npm\ run\ -s\ test:doctor-gates\ \&\&\ npm\ run\ -s\ test:wiring
+# started: 2026-11-14T14:17:41Z
+# finished: 2026-11-14T14:17:46Z
+# exit_code: 0
+# commit: unknown
+# task: usability-fixes
+# ---- output tail (last 200 lines) ----
+== 1. 合法 slug → 建档，state.json 可解析且字段原样 ==
+  [32m✓[0m 合法 slug 建档
+  [32m✓[0m state.json 合法且字段正确（起始阶段在链上=rs）
+== 2. 重复初始化 → 不覆盖 ==
+  [32m✓[0m 已存在时 exit 0 不覆盖
+== 3. 路径逃逸 → 拒绝 ==
+  [32m✓[0m ../ 被拒（exit 64）
+  [32m✓[0m 任务目录外无落盘
+== 4. 非法字符 → 拒绝 ==
+  [32m✓[0m 引号 slug 被拒
+  [32m✓[0m 大写 slug 被拒
+  [32m✓[0m 连字符开头被拒（防选项注入）
+== 5. 非法 flow-tier → 仍拒绝 ==
+  [32m✓[0m tier 越界被拒
+== 6. 任务类型与追溯参数（change/bugfix 门槛）==
+  [32m✓[0m change 缺 --related 被拒
+  [32m✓[0m change 关联不存在的任务被拒
+  [32m✓[0m change 缺 --baseline 被拒
+  [32m✓[0m baseline 非 commit hash 被拒（修订号机器验证不了，不收）
+  [32m✓[0m baseline commit 不在历史里被拒
+  [32m✓[0m bugfix 缺 --related 被拒
+  [32m✓[0m bugfix 关联合法任务建档成功
+  [32m✓[0m bugfix state 追溯字段正确
+  [32m✓[0m change 全参数（真实 hash）建档成功
+  [32m✓[0m change state 基线与档位字段正确
+== 6b. 外部来源 --related（task-loop 剖面 B / 评审 M2） ==
+  [32m✓[0m feishu:<单号> 建档成功（bugfix）
+  [32m✓[0m remote_id 双向锚正确（source+id）
+  [32m✓[0m feature 拒绝外部来源
+  [32m✓[0m 外部单号含非法字符被拒
+== 7. 类型与参数的其他拒绝路径 ==
+  [32m✓[0m 未知 --type 被拒
+  [32m✓[0m feature 带 --related 被拒（开关拼错早暴露）
+  [32m✓[0m --related 含路径逃逸被拒
+  [32m✓[0m 未知开关被拒（不静默吞掉）
+  [32m✓[0m 日期段与今天不符时提示
+  [32m✓[0m 日期段就是今天 → 不打提示
+
+结果：29 通过，0 失败
+== 1. 未配连接 = 提醒未检查，不是通过 ==
+  [32m✓[0m 退出码 0（提醒不阻塞）
+  [32m✓[0m 明示「未检查」而非装作通过
+== 2. 无活跃 runner = 阻塞（演练 B1） ==
+  [32m✓[0m 退出码非 0
+  [32m✓[0m 报「CI 门禁缺位」并指向 B1 形态
+== 3. runner 在场 + approval 不可用 = 提醒（演练 B2，版本差异不算配置错） ==
+  [32m✓[0m 退出码 0（能力差异不判红）
+  [32m✓[0m runner 在场计为 ok
+  [32m✓[0m approval 404 → 说明性提醒
+== 4. 全在场 = ok ==
+  [32m✓[0m 退出码 0
+  [32m✓[0m approval 在场计为 ok
+== 5. 飞书项目 MCP 通道三档探测（task-loop 前提在场性） ==
+  [32m✓[0m 数据档未配 → perm 档（提示后台勾选，不判死）
+  [32m✓[0m 数据档已配 → ok 档
+  [32m✓[0m 协议错 → error 档（不吞）
+  [32m✓[0m 无凭据 → off 档（未配置≠故障）
+== 6. GitLab 接入地址形状（扩展项：空=不接，填错必须红） ==
+  [32m✓[0m 空/空白=不接（null）；正常地址放行；API 地址/缺协议/带 API 段 全部报错
+== 7. GitLab 配置解析：runner 与 doctor 必须读同一处 ==
+  [32m✓[0m 配置 url 去掉尾斜杠 / token 文件兜底 / env 覆盖 / 旧名兼容 / 空串不覆盖 / 只含一半算未接入 / 0600 不算过宽
+  [32m✓[0m 0644 的 token 文件被识别为过宽
+== 8. 凭据文件：doctor 读的就是定时器那份（否则同一个问题两个答案） ==
+  [32m✓[0m 认出 0600 文件并报出生效键数
+  [32m✓[0m 凭据来自文件时不再说「未检查」
+  [32m✓[0m 非法行 → 退出码非 0
+  [32m✓[0m 明说解析失败并指向后果
+
+结果：20 通过，0 失败
+== 1. 接线与 manifest 一致 ==
+  [32m✓[0m 无漂移
+== 2. 两个 CLI 都有接线文件 ==
+  [32m✓[0m Claude 接线存在
+  [32m✓[0m ZCode 接线存在
+== 3. ZCode 必须显式开启 hook（默认关闭，写了不执行）==
+  [32m✓[0m hooks.enabled = true
+== 4. manifest 里每个 hook 都出现在两个 CLI 的接线里 ==
+  [32m✓[0m 全部 hook 已接线（缺 0 处）
+== 5. 形态差异：Claude 用命令串，ZCode 用 argv ==
+  [32m✓[0m Claude 为 command 字符串
+  [32m✓[0m ZCode 为 process + args
+== 6. matcher 锚定：ZCode 侧不能是裸 Bash|Read ==
+  [32m✓[0m ZCode 全部 matcher 已锚定
+== 7. 手改接线 → --check 必须发现漂移 ==
+  [32m✓[0m 漂移被检出
+== 8. 缺接线文件 → doctor 必须报阻塞（不是绿灯）==
+  [32m✓[0m doctor 对缺失接线报红
+  [32m✓[0m 体检输出点名了 zcode
+== 9. hooks.enabled=false → doctor 必须报阻塞 ==
+  [32m✓[0m 关闭 hook 被体检拦住
+== 10. 配置的验证命令命中禁用 flag → doctor 必须报阻塞 ==
+  [32m✓[0m 配置命令违反纪律被体检拦住
+  [32m✓[0m 体检输出点名了违规 flag
+  [32m✓[0m 还原后 harness.config.json 没被这套用例改成"刚写过"
+
+结果：15 通过，0 失败
