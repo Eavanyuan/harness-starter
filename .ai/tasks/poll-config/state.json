@@ -16,7 +16,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档：retro/poll-config-轮询节拍可配置.md 即文档"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -41,9 +41,26 @@
     {
       "stage": "impl",
       "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "86/0 + 模板冒烟"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "PC2 gate 全量绿"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/poll-config-轮询节拍可配置.md"
     }
   ],
-  "artifacts": {},
+  "artifacts": {
+    "retro": "retro/poll-config-轮询节拍可配置.md"
+  },
   "todos": [
     {
       "id": "PC1",
@@ -67,6 +84,23 @@
         "tests": "86/0（新增 11 断言）",
         "feature_complete": "定时器节流/手动豁免/env 覆盖/戳刷新/模板注入五组",
         "quality_clean": "模板渲染冒烟：--print 输出含 StartInterval+HARNESS_TIMER"
+      }
+    },
+    {
+      "id": "PC2",
+      "title": "全量 gate（S 档折叠收尾）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/PC2.log",
+        "command": "npm run gate"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "gate 全量绿",
+        "feature_complete": "S 档折叠出口证据（bootstrap：impl 态跑绿再升 done）",
+        "quality_clean": "带归属头"
       }
     }
   ],
