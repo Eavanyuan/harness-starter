@@ -170,6 +170,9 @@ const gl = resolveGitlabConfig({ rules });
 const GITLAB_URL = gl.url;
 const GITLAB_TOKEN = gl.token;
 let triggers = [];
+// 飞书 MCP 调用引用（2026-11-14 接单三连接线）：声明必须在轮询块**外**——第一版声明在
+// wantFeishu 块里，认领后的 ack 段读不到，uncaughtException 把整轮掀了（实测，fail-safe 释放了认领）。
+let feishuCall = null;
 
 const { resolveFeishuConfig } = await import('./lib/feishu-bug-source.mjs');
 const { resolveEndpoint } = await import('./lib/feishu-project-mcp.mjs');
@@ -253,11 +256,10 @@ if (wantFeishu) {
   // MQL 的表名就是类型名，一个 MQL 只能查一种工作项，把「缺陷」和「需求」塞进同一句不可能。
   const types = opt.types.length ? opt.types : cfg.taskTypes;
   let confirmTotal = 0;
-  // 连接提为可复用引用（2026-11-14 接线）：轮询段用完不弃——认领后的接单三连
-  // （评论 + New→Processing）复用同一条连接与身份，避免二次握手与身份不一致。
-  let feishuCall = null;
   try {
     const c = await connect(endpoint, { token });
+    // 提为模块级引用（声明见 triggers 旁）：轮询段用完不弃——认领后的接单三连
+    // （评论 + New→Processing）复用同一条连接与身份，避免二次握手与身份不一致。
     feishuCall = c.call;
     for (const itemType of types) {
       const mql = buildMyBugsMql({
