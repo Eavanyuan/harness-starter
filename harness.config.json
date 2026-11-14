@@ -301,11 +301,19 @@
   "projects": [
     {
       "dir": "../TDasset",
-      "stack": "backend",
       "srcGlob": "tda-server/**/src/main/java/**/*.java",
       "lint": "cd ../TDasset && mvn -q -pl tda-server validate",
       "test": "cd ../TDasset && mvn -pl tda-server test -DskipTests=false -Dskip.tests=false",
-      "testOne": "cd ../TDasset && mvn -pl tda-server test -DskipTests=false -Dskip.tests=false -Dtest=<name>"
+      "testOne": "cd ../TDasset && mvn -pl tda-server test -DskipTests=false -Dskip.tests=false -Dtest=<name>",
+      "id": "backend"
+    },
+    {
+      "id": "frontend",
+      "dir": "../TDasset",
+      "srcGlob": "frontend/src/**/*.{ts,vue}",
+      "lint": "cd ../TDasset && pnpm --dir frontend run lint",
+      "test": "cd ../TDasset && pnpm --dir frontend run test:unit",
+      "testOne": "cd ../TDasset && pnpm --dir frontend exec vitest run <file>"
     }
   ],
   "notes": {

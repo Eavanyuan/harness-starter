@@ -16,7 +16,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档：retro/ack-wiring-接单状态流转.md 即文档"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -41,9 +41,26 @@
     {
       "stage": "impl",
       "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "sync 7/0 + loop 86/0 + 探针实证"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "AK3 gate 全量绿（含修好的 projects.id 栈推导）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/ack-wiring-接单状态流转.md"
     }
   ],
-  "artifacts": {},
+  "artifacts": {
+    "retro": "retro/ack-wiring-接单状态流转.md"
+  },
   "todos": [
     {
       "id": "AK1",
@@ -82,6 +99,25 @@
         "tests": "86/0",
         "feature_complete": "认领后 kind=task 触发 ack；失败释放+落账",
         "quality_clean": "ack 块在 dry-run continue 之后，影子周仍零写入"
+      }
+    },
+    {
+      "id": "AK3",
+      "title": "全量 gate（S 档折叠收尾）",
+      "status": "completed",
+      "files": [
+        "harness.config.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AK3.log",
+        "command": "npm run gate"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "gate 全量绿",
+        "feature_complete": "S 档折叠出口证据（bootstrap）",
+        "quality_clean": "修落地残留：projects 栈键 stack→id、补 TDasset 前端条目"
       }
     }
   ],
