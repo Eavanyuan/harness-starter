@@ -16,7 +16,7 @@
  * --dry-run 为影子周形态（零写入：不认领、不推、不起会话）。
  * 退出码：0 正常（含无事可做 / 未接入）；1 有触发但被安全闸拦，或接入的源坏了；64 用法错。
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadRules } from './lib/review-rules.mjs';
 import { claim, release } from './lib/claim.mjs';
@@ -94,6 +94,36 @@ if (existsSync(OFF)) {
 // 不接 hook 的无头会话是绕过全部写入门禁的会话（ADR D6，wiring 断言进验收）。
 let rules;
 try { rules = loadRules(root); } catch (e) { die(1, e.message); }
+
+// ---- 轮询节拍（可配置，2026-11-14）：OS 定时器只是心跳，真实节拍在这里 ----
+// 为什么不只有 install --interval：那会把节拍烙进 launchd/systemd 单元，改一次重装一次。
+// 配置跟仓库走（同 runtime.feishu 的理由）：改 harness.rules.json 的
+// runtime.taskLoop.pollSeconds，下一拍即生效，不用碰定时器。
+// 节流只对定时器触发（HARNESS_TIMER=1，由 deploy 模板注入）生效——手动 --once 是
+// "我现在就要跑"，不受节拍限制。节流戳在**轮次成功后**才落：中途崩溃则下一心跳
+// 立即重试，不会被自己的节拍吞掉。
+const taskLoopCfg = (rules.runtime && rules.runtime.taskLoop && typeof rules.runtime.taskLoop === 'object') ? rules.runtime.taskLoop : {};
+const pollSeconds = (() => {
+  const fromEnv = Number(process.env.TASK_LOOP_INTERVAL);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv; // 临时覆盖（演练/排查）
+  const fromCfg = Number(taskLoopCfg.pollSeconds);
+  if (Number.isFinite(fromCfg) && fromCfg > 0) return fromCfg;
+  return 180;
+})();
+const lastRunStamp = join(root, '.ai', 'locks', 'task-loop.last-run');
+if (process.env.HARNESS_TIMER === '1') {
+  if (existsSync(lastRunStamp)) {
+    const ageSec = Math.floor((Date.now() - statSync(lastRunStamp).mtimeMs) / 1000);
+    if (ageSec < pollSeconds) {
+      console.log(`[task-loop] 距上一轮 ${ageSec}s < 节拍 ${pollSeconds}s（runtime.taskLoop.pollSeconds / env TASK_LOOP_INTERVAL）——本轮跳过`);
+      process.exit(0);
+    }
+  }
+}
+function stampLastRun() {
+  mkdirSync(join(root, '.ai', 'locks'), { recursive: true });
+  writeFileSync(lastRunStamp, `${new Date().toISOString()} pollSeconds=${pollSeconds}\n`);
+}
 const headless = rules.runtime?.headless;
 if (!headless?.cli || !Array.isArray(headless.args)) die(1, 'runtime.headless 剖面缺失（cli/args 必填，见 harness.rules.json）');
 if (headless.hooks !== false) {
@@ -177,6 +207,7 @@ if (!wantGitlab && !wantFeishu) {
   recordEvent('task-loop', 'no_source', {});
   console.log('[task-loop] 未接入任何触发源，本轮结束（接入是扩展项，不接不算故障）');
   for (const w of why) console.log(`  · ${w}`);
+  stampLastRun();
   process.exit(0);
 }
 
@@ -278,7 +309,7 @@ if (wantFeishu) {
 }
 
 const ranSources = [wantGitlab ? 'gitlab' : null, wantFeishu ? 'feishu' : null].filter(Boolean).join('+');
-if (triggers.length === 0) { console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`); process.exit(0); }
+if (triggers.length === 0) { console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`); stampLastRun(); process.exit(0); }
 
 let blocked = 0;
 for (const t of triggers) {
@@ -358,4 +389,5 @@ for (const t of triggers) {
 }
 // 正常收尾仍持有的认领不释放（任务没做完，锁要留着），但清空账目避免 exit 钩子二次处理
 held.clear();
+stampLastRun();
 process.exit(blocked > 0 ? 1 : 0);

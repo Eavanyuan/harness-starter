@@ -183,12 +183,12 @@ if [ "$(uname)" = "Darwin" ]; then
   mkdir -p "$HOME/Library/LaunchAgents"
   render_plist > "$PLIST" && chmod 600 "$PLIST"
   if [ "$ACTIVATE" = "1" ]; then launchctl unload "$PLIST" 2>/dev/null; launchctl load "$PLIST"; else echo "（--no-activate：未加载 launchd）"; fi
-  echo "已安装：${PLIST}（每 ${INTERVAL}s 一轮，日志 $LOGDIR/task-loop.{out,err}）"
+  echo "已安装：${PLIST}（心跳每 ${INTERVAL}s 一拍；真实节拍=目标仓 harness.rules.json 的 runtime.taskLoop.pollSeconds，改配置即生效，免重装。日志 $LOGDIR/task-loop.{out,err}）"
 else
   mkdir -p "$UNIT_DIR"
   render_service > "$UNIT_DIR/$UNIT" && chmod 600 "$UNIT_DIR/$UNIT"; render_timer > "$UNIT_DIR/$TIMER" && chmod 600 "$UNIT_DIR/$TIMER"
   if [ "$ACTIVATE" = "1" ]; then systemctl --user daemon-reload && systemctl --user enable --now "$TIMER"; else echo "（--no-activate：未启用 systemd timer）"; fi
-  echo "已安装：$UNIT_DIR/${TIMER}（每 ${INTERVAL}s 一轮）"
+  echo "已安装：$UNIT_DIR/${TIMER}（心跳每 ${INTERVAL}s 一拍；真实节拍=目标仓 runtime.taskLoop.pollSeconds，改配置即生效）"
 fi
 # 剖面 B 的**空间身份**（projectKey / 任务类型 / 字段 key / 词表）不在这里：它们在目标仓库
 # 的 harness.rules.json runtime.feishu 里，跟着代码走。所以本脚本只经手真正的秘密

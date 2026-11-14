@@ -2,6 +2,7 @@
 Description=harness task-loop single round (A/B 共用，由 timer 触发)
 
 [Service]
+Environment=HARNESS_TIMER=1
 Type=oneshot
 WorkingDirectory=__ROOT__
 # 执行体是 0700 的包装脚本，不是 node 本身：凭据在 0600 的 task-loop.env 里，

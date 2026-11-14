@@ -648,6 +648,43 @@ else
   skip=$((skip+1))
 fi
 
+echo "== 11. 轮询节拍可配置（runtime.taskLoop.pollSeconds）：定时器心跳 vs 真实节拍 =="
+# 夹具：无源仓库（同 3b），轮次走「未接入任何触发源」exit 0 路径，不碰任何凭据
+TL="$TMP/throttle"; mkdir -p "$TL/.zcode"
+cp "$HERE/harness.rules.json" "$TL/"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.feishu.projectKey="";j.runtime.gitlab.url="";j.runtime.taskLoop={pollSeconds:180};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$TL/harness.rules.json"
+printf '{"hooks":{"enabled":true}}' > "$TL/.zcode/config.json"
+mkdir -p "$TL/.ai/locks"
+touch "$TL/.ai/locks/task-loop.last-run"
+# 1) 定时器触发 + 新鲜戳 → 节流跳过
+env -u GITLAB_URL -u GITLAB_TOKEN -u FEISHU_PROJECT_KEY HARNESS_TIMER=1 HOME="$TMP/nohome" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$TL" > "$TMP/tl1.txt" 2>&1
+check "定时器+新鲜戳 → 节流跳过（exit 0）" "0" "$?"
+grep -q "本轮跳过" "$TMP/tl1.txt"; check "跳过说明节拍来源（pollSeconds）" "0" "$?"
+# 2) 定时器触发 + 陈旧戳 → 正常跑并刷新戳
+touch -t 202001010000 "$TL/.ai/locks/task-loop.last-run"
+env -u GITLAB_URL -u GITLAB_TOKEN -u FEISHU_PROJECT_KEY HARNESS_TIMER=1 HOME="$TMP/nohome" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$TL" > "$TMP/tl2.txt" 2>&1
+check "定时器+陈旧戳 → 正常轮次（exit 0）" "0" "$?"
+grep -q "未接入任何触发源" "$TMP/tl2.txt"; check "走的是真实轮次路径" "0" "$?"
+node -e 'const {statSync}=require("fs");process.exit(Date.now()-statSync(process.argv[1]).mtimeMs<5000?0:1)' "$TL/.ai/locks/task-loop.last-run"
+check "轮次成功后节流戳已刷新" "0" "$?"
+# 3) 手动运行不受节拍限制（新鲜戳也照跑）
+touch "$TL/.ai/locks/task-loop.last-run"
+env -u GITLAB_URL -u GITLAB_TOKEN -u FEISHU_PROJECT_KEY -u HARNESS_TIMER HOME="$TMP/nohome" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$TL" > "$TMP/tl3.txt" 2>&1
+check "手动 --once + 新鲜戳 → 不节流照跑" "0" "$?"
+grep -q "未接入任何触发源" "$TMP/tl3.txt"; check "确实跑了（不是被跳过）" "0" "$?"
+# 4) env 覆盖：TASK_LOOP_INTERVAL=1 + 睡 1.2s → 新鲜戳也放行
+touch "$TL/.ai/locks/task-loop.last-run"; sleep 1.2
+env -u GITLAB_URL -u GITLAB_TOKEN -u FEISHU_PROJECT_KEY HARNESS_TIMER=1 TASK_LOOP_INTERVAL=1 HOME="$TMP/nohome" \
+  node "$HERE/scripts/task-loop.mjs" --once --root "$TL" > "$TMP/tl4.txt" 2>&1
+check "env TASK_LOOP_INTERVAL 覆盖生效（1s 节拍放行）" "0" "$?"
+grep -q "未接入任何触发源" "$TMP/tl4.txt"; check "覆盖后走真实轮次" "0" "$?"
+# 5) 模板注入了 HARNESS_TIMER（心跳与节拍的接合部）
+grep -q "HARNESS_TIMER" "$HERE/deploy/task-loop/launchd.plist.template"; check "launchd 模板注入 HARNESS_TIMER=1" "0" "$?"
+grep -q "Environment=HARNESS_TIMER=1" "$HERE/deploy/task-loop/systemd.service.template"; check "systemd 模板注入 HARNESS_TIMER=1" "0" "$?"
+
 echo
 [ "$skip" -eq 0 ] || printf "跳过：%d 项（原因见上，不计入通过/失败）\n" "$skip"
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
