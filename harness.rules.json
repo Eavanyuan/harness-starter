@@ -189,8 +189,8 @@
       }
     },
     "taskLoop": {
-      "$comment": "轮询节拍（秒）。OS 定时器（launchd/systemd，install --interval）只是心跳上限，真实节拍读这里——改配置即生效，不用重装定时器；env TASK_LOOP_INTERVAL 可临时覆盖（演练/排查）。定时器触发时进程带 HARNESS_TIMER=1，节流只对它生效，手动 --once 不受限。节流戳 .ai/locks/task-loop.last-run 在轮次成功后落盘，崩溃则下一心跳立即重试。",
-      "pollSeconds": 180
+      "$comment": "轮询节拍（秒，2026-11-14 定为 7200=2 小时）。OS 定时器（launchd/systemd，install --interval）只是心跳上限，真实节拍读这里——改配置即生效，不用重装定时器；env TASK_LOOP_INTERVAL 可临时覆盖（演练/排查）。定时器触发时进程带 HARNESS_TIMER=1，节流只对它生效，手动 --once 不受限。节流戳 .ai/locks/task-loop.last-run 在轮次成功后落盘，崩溃则下一心跳立即重试。",
+      "pollSeconds": 7200
     }
   },
   "notify": {
