@@ -22,7 +22,10 @@
  */
 
 /**
- * 该空间实测的严重级字段 key（内置兜底；正式来源是 harness.rules.json runtime.feishu.severity.field）。
+ * 门槛字段的内置兜底（正式来源是 harness.rules.json runtime.feishu.severity.field）。
+ * 2026-11-14 更正：taosdata_td 的接单门槛用**优先级**（priority，label 即 P0-P3）；
+ * 此前的 field_6bff71「故障严重级别」实测 12 张全为「中」、零区分度——保留它仅作
+ * "自定义枚举字段"的参考示例（map 高/中/低 → P 档的用法对别的空间仍成立）。
  * 换空间改配置，不改这里——常量存在的唯一理由是"配置整个缺失时还能跑"。
  */
 export const DEFAULT_SEVERITY_FIELD = 'field_6bff71';

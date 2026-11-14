@@ -188,7 +188,7 @@ if [ ! -s "$TMP/cfg.json" ]; then cat "$TMP/cfg.json"; fi
 val9(){ node -e "const j=require('$TMP/cfg.json'); process.stdout.write(String(j['$1']))"; }
 check "配置读到 projectKey" "$(val9 projectKey)" "taosdata_td"
 check "配置读到工作项类型" "$(val9 workItemType)" "Defect"
-check "配置读到严重级字段 key" "$(val9 severityField)" "field_6bff71"
+check "配置读到门槛字段 key（2026-11-14 更正：优先级）" "$(val9 severityField)" "priority"
 check "配置读到严重级词表（高→P1）" "$(val9 mapHigh)" "P1"
 check "环境变量覆盖配置（临时切空间）" "$(val9 ovProject)" "other_space"
 check "环境变量覆盖数值配置" "$(val9 ovLimit)" "7"

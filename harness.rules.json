@@ -172,14 +172,9 @@
       "mqlLimit": 20,
       "issuer": "https://project.feishu.cn",
       "severity": {
-        "$comment": "该空间的严重级是自定义字段（不是 severity/priority），枚举只有 高/中/低。map 把平台的词表映射到门槛用的 P 档：P0/P1 自动接、P2 待确认、P3 不接。换空间只改这里，不动代码。",
-        "field": "field_6bff71",
-        "fieldName": "故障严重级别",
-        "map": {
-          "高": "P1",
-          "中": "P2",
-          "低": "P3"
-        }
+        "$comment": "接单门槛字段（2026-11-14 用户更正）：用**优先级**（内置 priority 字段，label 即 P0-P3），不是「故障严重级别」（field_6bff71）。实测 12 张指派单严重级别全部为「中」——零区分度；优先级 P1×6/P2×6 才是做不做的判据。label 已是 P 档形态，map 留空走内置归一。",
+        "field": "priority",
+        "fieldName": "优先级"
       },
       "iteration": {
         "$comment": "产品线过滤（2026-11-14 实测）：迭代周期 label 以 IDMP 开头才是本产品 bug。field key=field_a7de08 由 MQL 用中文名「迭代周期」实测映射所得（search_by_mql 认中文名并返回 key）；样例 label 形如 IDMP-2.0.4.0 / Cloud-20260930 / 空（dependabot 告警等无迭代）。空值=非本线，筛掉。",
