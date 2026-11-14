@@ -196,7 +196,7 @@ if (wantGitlab) {
 if (wantFeishu) {
   // 剖面 B：MQL 轮询指派给我的待处理工作项 → P0/P1 自动、P2 confirm_first（确认卡片走订阅 T2）
   const { connect, McpPermError, McpAuthError } = await import('./lib/feishu-project-mcp.mjs');
-  const { buildMyBugsMql, parseMqlPage, gateBySeverity } = await import('./lib/feishu-bug-source.mjs');
+  const { buildMyBugsMql, parseMqlPage, gateBySeverity, filterByIterationPrefix } = await import('./lib/feishu-bug-source.mjs');
   const { ensureToken } = await import('./lib/feishu-oauth.mjs');
 
   // 空间身份来自配置（harness.rules.json runtime.feishu），env 只做临时覆盖。
@@ -231,6 +231,7 @@ if (wantFeishu) {
         assigneeField: cfg.assigneeField,
         statuses: [cfg.newStatus],
         severityField: cfg.severityField,
+        iterationField: cfg.iterationField,
         limit: cfg.mqlLimit,
       });
       let raw;
@@ -245,14 +246,25 @@ if (wantFeishu) {
         }
         throw e;
       }
-      const page = parseMqlPage(raw, { severityField: cfg.severityField, severityMap: cfg.severityMap });
+      const page = parseMqlPage(raw, { severityField: cfg.severityField, severityMap: cfg.severityMap, iterationField: cfg.iterationField || null });
       // 单次上限 50、LIMIT 只是截断不是分页：待办多于 LIMIT 时必须说出来，
       // 否则"少了 10 张单"和"本来就只有 10 张"在日志里一模一样。
       if (page.count != null && page.count > page.bugs.length) {
         console.warn(`[task-loop] 剖面 B ${itemType} 命中 ${page.count} 张，本轮只取回 ${page.bugs.length} 张（LIMIT 截断）——剩余需翻页或提高 runtime.feishu.mqlLimit，别当"没有更多"`);
         recordEvent('task-loop', 'profile_b_truncated', { itemType, count: page.count, taken: page.bugs.length });
       }
-      const { auto, confirm, skip } = gateBySeverity(page.bugs, undefined, cfg.severityMap);
+      // 产品线过滤（TDasset 落地规则 2026-11-14）：迭代周期 label 以 IDMP 开头才算本产品 bug。
+      // 必须在分级门槛**之前**——非本线的单不占 P0/P1 自动接单额度，也不该出现在确认卡里。
+      let lineBugs = page.bugs;
+      if (cfg.iterationPrefix && cfg.iterationField) {
+        const { matched, skipped } = filterByIterationPrefix(page.bugs, cfg.iterationPrefix);
+        if (skipped.length) {
+          console.log(`[task-loop] 迭代过滤：${itemType} 命中 ${page.bugs.length} 张，非 ${cfg.iterationPrefix} 迭代筛掉 ${skipped.length} 张（${skipped.map((b) => b.work_item_id).slice(0, 5).join('、')}${skipped.length > 5 ? ' 等' : ''}）`);
+          recordEvent('task-loop', 'profile_b_iteration_filtered', { itemType, prefix: cfg.iterationPrefix, kept: matched.length, skipped: skipped.length });
+        }
+        lineBugs = matched;
+      }
+      const { auto, confirm, skip } = gateBySeverity(lineBugs, undefined, cfg.severityMap);
       recordEvent('task-loop', 'profile_b_polled', { itemType, auto: auto.length, confirm: confirm.length, skip: skip.length, status: cfg.newStatus, space: cfg.projectKey });
       triggers.push(...auto.map((b) => ({ kind: 'task', id: b.work_item_id, itemType, bug: b, unresolved: [] })));
       confirmTotal += confirm.length;

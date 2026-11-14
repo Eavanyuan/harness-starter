@@ -38,6 +38,10 @@ export const DEFAULTS = {
   severityField: DEFAULT_SEVERITY_FIELD,
   severityMap: { 高: 'P1', 中: 'P2', 低: 'P3' },
   issuer: 'https://project.feishu.cn',
+  // 迭代周期过滤（2026-11-14 TDasset 落地规则：迭代周期 label 以 IDMP 开头才算 TDasset 的 bug）。
+  // 默认关（空串）：field+prefix 都配了才生效。field key 随空间变（同 severity），需数据档实测确认。
+  iterationField: '',
+  iterationPrefix: '',
 };
 
 /**
@@ -53,6 +57,7 @@ export const DEFAULTS = {
 export function resolveFeishuConfig({ rules = null, env = process.env } = {}) {
   const c = (rules?.runtime?.feishu && typeof rules.runtime.feishu === 'object') ? rules.runtime.feishu : {};
   const sev = (c.severity && typeof c.severity === 'object') ? c.severity : {};
+  const iter = (c.iteration && typeof c.iteration === 'object') ? c.iteration : {};
   // 全部候选都是空值时返回 ''，不能返回 undefined——外层要 String() 它，
   // String(undefined) 是字符串 "undefined"，会被拼成 `undefined`.`Defect` 这种表名。
   // 这种错不会报 semantic error，它只是"查询成功、零行"，与"今天没活"无法区分。
@@ -80,6 +85,10 @@ export function resolveFeishuConfig({ rules = null, env = process.env } = {}) {
     severityField: String(pick(env.FEISHU_SEVERITY_FIELD, sev.field, DEFAULTS.severityField)),
     severityMap: map ? { ...map } : { ...DEFAULTS.severityMap },
     issuer: String(pick(env.FEISHU_ISSUER, c.issuer, DEFAULTS.issuer)),
+    // 迭代过滤：field 与 prefix 任一为空即整体关闭（宁可不过滤，不半开半关）。
+    // field 必须显式配：迭代字段的 key 随空间变（与 severity 同理，不猜内置默认）。
+    iterationField: String(pick(env.FEISHU_ITERATION_FIELD, iter.field, '')),
+    iterationPrefix: String(pick(env.FEISHU_ITERATION_PREFIX, iter.prefix, '')),
   };
 }
 
@@ -95,6 +104,7 @@ export function buildMyBugsMql({
   assigneeField = DEFAULTS.assigneeField,
   statuses = [DEFAULTS.newStatus],
   severityField = DEFAULTS.severityField,
+  iterationField = '',         // 配了才带出（供解析后按前缀过滤；MQL 算子支持不实测不猜）
   limit = DEFAULTS.mqlLimit,
 } = {}) {
   const itemType = workItemType || type;
@@ -104,12 +114,34 @@ export function buildMyBugsMql({
   if (!itemType) throw new Error('buildMyBugsMql 缺工作项类型名：配 runtime.feishu.workItemType（如 Defect）');
   const inList = statuses.map((x) => `'${x}'`).join(', ');
   const statusClause = statuses.length === 1 ? `\`work_item_status\` = ${inList}` : `\`work_item_status\` IN (${inList})`;
+  // 迭代字段只进 SELECT，不进 WHERE：该字段支持哪些算子未实测，客户端前缀过滤是唯一
+  // 敢保证的形态（宁多拉几行再節，不把整条查询押在没验过的算子上）。
+  const iterCol = iterationField ? `, \`${iterationField}\`` : '';
   return [
-    `SELECT \`work_item_id\`, \`name\`, \`${severityField}\`, \`work_item_status\``,
+    `SELECT \`work_item_id\`, \`name\`, \`${severityField}\`${iterCol}, \`work_item_status\``,
     `FROM \`${projectKey}\`.\`${itemType}\``,
     `WHERE array_contains(\`${assigneeField}\`, current_login_user()) AND ${statusClause}`,
     `LIMIT ${Math.min(Number(limit) || DEFAULTS.mqlLimit, 50)}`,
   ].join(' ');
+}
+
+/**
+ * 迭代周期前缀过滤（TDasset 落地规则 2026-11-14）：迭代 label 以指定前缀开头才算本产品线的 bug。
+ * prefix 为空 → 不过滤（全部 matched），供未配置空间零行为变化。
+ * 迭代为空/缺失 → skipped（不是本产品线的单；与用户规则一致：迭代是 IDMP 开头**才是**）。
+ * 大小写不敏感（IDMP/idmp 同认）：label 里大小写拼写不稳定是常态，严判大小写只会漏单。
+ */
+export function filterByIterationPrefix(bugs, prefix = '') {
+  const p = String(prefix || '').trim();
+  if (!p) return { matched: [...bugs], skipped: [] };
+  const matched = [];
+  const skipped = [];
+  for (const b of bugs) {
+    const iter = String(b?.iteration ?? '').trim();
+    if (iter && iter.toLowerCase().startsWith(p.toLowerCase())) matched.push(b);
+    else skipped.push(b);
+  }
+  return { matched, skipped };
 }
 
 /**
@@ -130,7 +162,7 @@ export function parseMqlResult(text, opts = {}) {
  * severityMap 必须在这里传：归一发生在**解析时**，一解析完 platform 的词（高/中/低）就变成 P 档了，
  * 等到 gate 阶段再传词表已经晚了——那时手上只有 P1，词表里没有 P1 这个键，配置等于空转。
  */
-export function parseMqlPage(text, { severityField = null, severityKey = null, severityMap = null } = {}) {
+export function parseMqlPage(text, { severityField = null, severityKey = null, severityMap = null, iterationField = null } = {}) {
   const sevField = severityField || severityKey || DEFAULT_SEVERITY_FIELD;
   const t = String(text || '').trim();
   if (!t) throw new Error('MQL 结果为空字符串——fail-closed，不当作"没有单子"');
@@ -143,7 +175,7 @@ export function parseMqlPage(text, { severityField = null, severityKey = null, s
       if (rows) {
         const count = Number(j?.list?.[0]?.count);
         return {
-          bugs: rows.map((r) => fromMoqlRow(r, { severityField: sevField, severityMap })),
+          bugs: rows.map((r) => fromMoqlRow(r, { severityField: sevField, severityMap, iterationField })),
           count: Number.isFinite(count) ? count : null,
           sessionId: j?.session_id ?? null,
         };
@@ -189,7 +221,7 @@ function extractMoqlRows(j) {
 }
 
 /** 一行 moql_field_list → 扁平 {key: 标量}，再映射到规范字段。 */
-function fromMoqlRow(row, { severityField, severityMap = null }) {
+function fromMoqlRow(row, { severityField, severityMap = null, iterationField = null }) {
   const flat = {};
   for (const f of row.moql_field_list) {
     if (!f || !f.key) continue;
@@ -201,6 +233,7 @@ function fromMoqlRow(row, { severityField, severityMap = null }) {
     severity: flat[severityField],
     status: flat.work_item_status ?? flat.status,
     priority: flat.priority,
+    iteration: iterationField ? flat[iterationField] : flat.iteration,
   }, severityMap);
 }
 
@@ -235,6 +268,7 @@ function normBug(b, severityMap = null) {
     severity: normSeverity(b.severity, severityMap),
     priority: b.priority == null ? '' : String(b.priority),
     status: b.status || '',
+    iteration: b.iteration == null ? '' : String(b.iteration),
   };
 }
 

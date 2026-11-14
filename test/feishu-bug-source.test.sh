@@ -265,6 +265,69 @@ process.stdout.write(buildMyBugsMql({ projectKey: "taosdata_td" }));
 if contains "$(cat "$TMP/mut3.txt")" "= 'New'"; then r3=still-new; else r3=new-red; fi
 check "改成中文待处理 → 断言识别为红" "$r3" "new-red"
 
+echo "== 8. 迭代周期前缀过滤（TDasset 落地规则 2026-11-14：迭代 IDMP 开头才是本产品 bug）=="
+# 1) MQL：配了 field 才带出迭代列，不配时零变化
+node --input-type=module -e '
+import { buildMyBugsMql } from "./scripts/lib/feishu-bug-source.mjs";
+process.stdout.write(buildMyBugsMql({ projectKey: "taosdata_td", iterationField: "sprint" }));
+' > "$TMP/iter-mql.txt" 2>&1
+contains "$(cat "$TMP/iter-mql.txt")" 'sprint' && r=0 || r=1
+check "配 iterationField 后 SELECT 带出迭代列" 0 "$r"
+node --input-type=module -e '
+import { buildMyBugsMql } from "./scripts/lib/feishu-bug-source.mjs";
+const m = buildMyBugsMql({ projectKey: "taosdata_td" });
+process.stdout.write(m.includes("sprint") ? "leak" : "clean");
+' > "$TMP/iter-mql2.txt" 2>&1
+check "不配时 MQL 零变化（不残留迭代列）" "clean" "$(cat "$TMP/iter-mql2.txt")"
+# 2) 前缀过滤：命中/非本线/无迭代/大小写；未配置为 no-op
+node --input-type=module -e '
+import { filterByIterationPrefix } from "./scripts/lib/feishu-bug-source.mjs";
+const bugs = [
+  { work_item_id: "1", iteration: "IDMP-2026-11 迭代" },
+  { work_item_id: "2", iteration: "TDC-2026-11 迭代" },
+  { work_item_id: "3", iteration: "" },
+  { work_item_id: "4", iteration: "idmp-下月迭代" },
+];
+const r1 = filterByIterationPrefix(bugs, "IDMP");
+console.log(r1.matched.map((b) => b.work_item_id).join(",") + "|" + r1.skipped.map((b) => b.work_item_id).join(","));
+const r2 = filterByIterationPrefix(bugs, "");
+console.log(r2.matched.length + "|" + r2.skipped.length);
+' > "$TMP/iter-filter.txt" 2>&1
+check "命中 IDMP（大小写不敏感）；非本线与无迭代筛掉" "1,4|2,3" "$(sed -n 1p "$TMP/iter-filter.txt")"
+check "prefix 为空不过滤（未配置空间零行为变化）" "4|0" "$(sed -n 2p "$TMP/iter-filter.txt")"
+# 3) 解析透传：真实 moql 形态里迭代字段取 key_label_value 的 label
+node --input-type=module -e '
+import { parseMqlPage, filterByIterationPrefix } from "./scripts/lib/feishu-bug-source.mjs";
+const page = JSON.stringify({
+  list: [{ count: 2 }],
+  data: { "1": [
+    { moql_field_list: [
+      { key: "work_item_id", value: { long_value: 101 } },
+      { key: "name", value: { string_value: "曲线导不出" } },
+      { key: "sprint", value: { key_label_value: { key: "spr_42", label: "IDMP-2026-11 迭代" } } },
+    ] },
+    { moql_field_list: [
+      { key: "work_item_id", value: { long_value: 102 } },
+      { key: "name", value: { string_value: "别的产品线" } },
+      { key: "sprint", value: { key_label_value: { key: "spr_43", label: "TDC-2026-11 迭代" } } },
+    ] },
+  ] },
+});
+const r = parseMqlPage(page, { iterationField: "sprint" });
+const f = filterByIterationPrefix(r.bugs, "IDMP");
+console.log(f.matched.length + "|" + f.skipped.length + "|" + (f.matched[0]?.iteration || ""));
+' > "$TMP/iter-parse.txt" 2>&1
+check "解析取迭代 label，过滤后只留 IDMP 单" "1|1|IDMP-2026-11 迭代" "$(cat "$TMP/iter-parse.txt")"
+# 4) 可证伪：把过滤条件改成恒真 → 斷言必红
+cp "$HERE/scripts/lib/feishu-bug-source.mjs" "$TMP/mut4.mjs"
+sed -i.bak 's/if (iter \&\& iter.toLowerCase().startsWith(p.toLowerCase())) matched.push(b);/if (true) matched.push(b);/' "$TMP/mut4.mjs"
+node --input-type=module -e '
+import { filterByIterationPrefix } from "'"$TMP"'/mut4.mjs";
+const r = filterByIterationPrefix([{ work_item_id: "9", iteration: "OTHER" }], "IDMP");
+process.stdout.write(String(r.matched.length));
+' > "$TMP/mut4.txt" 2>&1
+check "变异：过滤恒真（非 IDMP 也放行）被断言抓到" "1" "$(cat "$TMP/mut4.txt")"
+
 echo
 if [ "$fail" -eq 0 ]; then
   printf "\033[32m全部通过：%d 条\033[0m\n" "$pass"
