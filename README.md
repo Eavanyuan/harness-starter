@@ -73,7 +73,7 @@
 | `.skills/` | 领域知识（≤200 行两层深） | ✅ |
 | `scripts/` | 全部工具（17 脚本 + 23 共享库） | ✅ 同批配测试 |
 | `hooks/` | 三道门 + 校验核心 | ⚠️ 考卷区（需放行条） |
-| `test/` | 20 组自测 + e2e | ✅ |
+| `test/` | 25 组自测 + e2e | ✅ |
 | `templates/` | 9 张文档模板 | ⚠️ 考卷区（需放行条） |
 | `.ai/` | 任务状态 + 证据 + 观测账本 | 状态按任务写；`verify/*.log` 入库 |
 | `.claude/ .zcode/ prompts/` | 生成物 | ❌ 不要手改 |
@@ -83,7 +83,7 @@
 
 ```bash
 npm run doctor          # 体检（含门禁在场性）
-npm run gate            # 全量自检（20 组，必须全绿）
+npm run gate            # 全量自检（25 组，必须全绿）
 npm run verify:state    # 证据链校验（CI 口径）
 npm run ledger:report   # 拦截面统计
 npm run e2e             # L2：真 GitLab 端到端
@@ -114,4 +114,5 @@ bash scripts/install-task-loop.sh <仓库> [--print|--status|--uninstall]
 | [guides/多人协作最佳实践.md](guides/多人协作最佳实践.md) | 团队负责人 |
 | [guides/需求变更与Bug修复.md](guides/需求变更与Bug修复.md) | 走 change/bugfix 流程的人 |
 | `docs/06-reference/state-fields.md` | 想了解 state.json 字段的人 |
+| `docs/06-reference/config-keys.md` | 想查配置键 / 默认值 / 消费方的人 |
 | `docs/06-reference/adr/ADR-010-task-loop.md` | 想了解 task-loop 架构裁决的人 |
