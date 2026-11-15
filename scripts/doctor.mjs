@@ -71,9 +71,10 @@ let stackMissing = 0;
 for (const s of stacksArr) {
   const name = s.id || 'unknown';
   const dir = join(ROOT, s.dir || name);
-  if (!existsSync(dir) && s.template) {
-      // init 补的模板占位条（2026-11-14 U2）：声明式 template:true ——接到真实目录后删标记/改值
-      warn(`projects[${name}] 是模板占位条（template:true，dir=${s.dir} 不存在）—— 预期如此，接到真实目录后改我`);
+  if (s.template) {
+      // init 补的模板占位条（2026-11-14 U2）：dir 不存在**或存在但值仍是模板**都要提醒——
+      // 复审 A#8：目录恰好存在时（目标仓真有 backend/）占位条静默混过，lint/test 跑的是模板值。
+      warn(`projects[${name}] 是模板占位条（template:true，dir=${s.dir}）—— 接到真实目录与命令后改值并删标记`);
     } else if (!existsSync(dir)) {
     stackMissing++;
     if (templateMode) {

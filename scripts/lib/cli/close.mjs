@@ -43,7 +43,7 @@ export function cmdClose(target, slug, opts = {}) {
   let todos = Array.isArray(state.todos) ? state.todos : [];
   // 日志/TODO id 按 slug 派生：固定 id 会在第二个任务上撞归属保护
   // （verify-run 拒绝覆盖被他人引用的证据——实测 usability-fixes 后 ack-hotfix 即撞）。
-  const gateId = `CLOSE-GATE-${String(slug).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 40)}`;
+  const gateId = `CLOSE-GATE-${String(slug).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 60)}`;
   let gateTodo = todos.find((t) => t.id === gateId);
   if (!gateTodo) {
     gateTodo = {

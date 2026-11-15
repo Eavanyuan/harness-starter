@@ -441,7 +441,7 @@ check "print 仍给出凭据落点（人要知道去哪儿配）" "0" "$HAS_CRED
 
 echo "== 10c. 实装落盘权限与内容（--no-activate：不在跑测试的机器上注册真定时器） =="
 # label 随仓库目录名派生（U8 多仓隔离）：测试按同一规则推期望值，不写死
-EXP_LABEL="com.harness.task-loop.$(basename "$ROOT" | tr -c 'A-Za-z0-9-' '-' | sed 's/^-*//;s/-*$//' | cut -c1-24)"
+EXP_LABEL="com.harness.task-loop.$(basename "$ROOT" | tr -c 'A-Za-z0-9' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-*//' -e 's/-*$//' | cut -c1-24)"
 HOME="$TMP/h2" GITLAB_URL=http://127.0.0.1:1 GITLAB_TOKEN="$FAKE_TOKEN" FEISHU_MCP_URL=https://m.example.com/x \
   bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --no-activate > "$TMP/inst.txt" 2>&1
 check "安装成功" "0" "$?"

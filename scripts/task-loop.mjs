@@ -120,6 +120,8 @@ if (process.env.HARNESS_TIMER === '1') {
     }
   }
 }
+// 节流戳语义（复审B澄清）：任何成功轮次（定时器或手动）都刷新——手动跑完定时器
+// 不必立刻重跑同一轮；「手动不受节拍限制」指进入不受限，不是跑完不留痕。
 function stampLastRun() {
   mkdirSync(join(root, '.ai', 'locks'), { recursive: true });
   writeFileSync(lastRunStamp, `${new Date().toISOString()} pollSeconds=${pollSeconds}\n`);
