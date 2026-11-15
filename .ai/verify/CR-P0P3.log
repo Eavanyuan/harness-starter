@@ -1,0 +1,38 @@
+# cmd: npm run gate
+# started: 2026-11-11T03:17:37Z
+# finished: 2026-11-11T03:17:38Z
+# exit_code: 1
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 gate
+> npm run doctor && npm run check:skills && npm run check:agents && npm run check:hooks && npm run verify:state && npm run test:glob && npm run test:hooks && npm run test:writes && npm run test:agents && npm run test:skills && npm run test:init && npm run test:harness-cli && npm run test:evidence && npm run test:verify-run && npm run test:ledger && npm run test:completeness && npm run test:wiring && npm run test:router && npm run test:ai-review && npm run test:broker && npm run test:feishu-ws && npm run test:feishu-oauth && npm run test:feishu-bug-source && npm run test:doctor-gates && npm run test:task-loop && npm run test:task-loop-contract
+
+
+> harness-starter@1.1.0 doctor
+> node scripts/doctor.mjs
+
+[doctor] 配置体检
+
+  说明：project.name 仍是 "harness-starter"，按模板态体检（占位目录只算提醒）。
+        接到真实项目后先改 harness.config.json 的 project.name 与 stacks，再重跑。
+
+  ✓ claude hook 接线完整（4 个）
+  ✓ zcode hook 接线完整（4 个）
+  ✓ 配置键均有消费者（19 个）
+  ✓ 剖面 B 空间：taosdata_td.Defect（指派判据 current_status_operator，严重级 field_6bff71）
+  ✓ GitLab 未接入（扩展项，不接不算故障）——接入后填 runtime.gitlab.url 或 GITLAB_URL
+  ✓ 门禁自测 21 个
+  ✓ agent 源 11 个
+  ✓ agents.enabled 11/11 个启用
+  ✓ AGENTS.md 67/70 行
+  ✓ state 字段契约：15 个判据字段均有读者
+  ✓ 外部命令齐备（3 个）
+  ! projects[backend].dir="backend" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失
+  ! projects[frontend].dir="frontend" 还不存在（模板态，预期如此）—— 改成项目真实目录后此提醒消失
+  ! target "deepseek" 没有 hook 机制 —— 只有 CI 兜底，文档里不要写"hook 硬拦"
+  ! harness-builder-hardening 停在 stage=impl，已 10 天未动 —— 视为僵尸，重建而非续跑
+  ! harness-doc-gate 停在 stage=impl，已 9 天未动 —— 视为僵尸，重建而非续跑
+  ! 门禁在场性未检查：GitLab 未完整接入（缺 url / token / project）——不接不算故障，接入后在 runtime.gitlab.url 写实例地址并提供 GITLAB_TOKEN 与 HARNESS_GITLAB_PROJECT，此处才会给出结论
+  ✗ 代码读了但契约文档没写的 state 字段：status, abandoned —— 没人知道要写的字段等于空转的判据，补进 docs/06-reference/state-fields.md 并定档
+
+结果：1 个阻塞问题，6 个提醒。这些问题会让门禁静默失效，先修再开工。

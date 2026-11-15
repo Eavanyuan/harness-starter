@@ -1111,7 +1111,7 @@ node "$HERE/scripts/harness-cli.mjs" close "$CL" red-demo >"$TMP/cl3" 2>&1
 check "gate 红（桩退出 1）→ close exit 1" 1 "$?"
 node -e 'const s=require(process.argv[1]);process.exit(s.stage==="impl"?0:1)' "$CL/.ai/tasks/red-demo/state.json"
 check "失败后状态还原（不置 done）" 0 "$?"
-grep -q "状态已还原" "$TMP/cl3" && r=0 || r=1
+grep -qE "状态已按进入前快照回写" "$TMP/cl3" && r=0 || r=1
 check "失败指路（日志路径与还原说明）" 0 "$r"
 node -e 'const fs=require("fs");const p=process.argv[1]+"/package.json";const j=JSON.parse(fs.readFileSync(p));j.scripts.gate="echo gate-stub-ok";fs.writeFileSync(p,JSON.stringify(j,null,2))' "$CL"
 node "$HERE/scripts/harness-cli.mjs" close "$CL" close-demo >"$TMP/cl4" 2>&1

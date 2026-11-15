@@ -12,22 +12,6 @@
     "ask_user": "unknown",
     "note": "宿主会话的能力声明。unknown 表示没验证过——orchestrator 必须在第一段先自检（真能派子 agent 吗？真能跑命令吗？），验证后改成本会话的真实值。声明与运行时脱节的代价是整条流水线跑空：TDC 第一个任务就是没有 agent.spawn 却按 spawn 流程起手。"
   },
-  "stacks": {
-    "backend": {
-      "dir": "backend",
-      "srcGlob": "**/*.java",
-      "lint": "mvn -q compile",
-      "test": "mvn -q test",
-      "testOne": "mvn -q test -Dtest=<name>"
-    },
-    "frontend": {
-      "dir": "frontend",
-      "srcGlob": "**/*.{ts,vue}",
-      "lint": "pnpm run lint",
-      "test": "pnpm run test:unit",
-      "testOne": "pnpm vitest run <file>"
-    }
-  },
   "skills": {
     "dir": ".skills",
     "maxLines": 200,

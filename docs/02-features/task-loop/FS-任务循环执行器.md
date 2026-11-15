@@ -165,7 +165,7 @@
 | GET | `/api/v4/projects/:pid/merge_requests/:iid/discussions` | 同上 | 讨论数组（`notes[]` 含 `resolvable`/`resolved`/`system`/`created_at`） | 同上 |
 | GET | `/api/v4/projects/:pid/repository/commits/:sha` | 同上 | `committed_date` → `lastPushAt` | 404 → `lastPushAt=null`（按无法判定） |
 | GET | `/api/v4/projects/:pid/merge_requests/:iid/approvals` | 同上 | `approved_by[]` | 404 → 降级（名单有、时间无） |
-| MCP | `search_by_mql` / `get_transitable_states` / `update_field` / `add_comment` / `get_workitem_brief` | 见 `scripts/lib/feishu-project-mcp.mjs` | 工作项 | `McpPermError` → `exit 1` + 后台指引 |
+| MCP | `search_by_mql` / `get_transitable_states` / `transition_state` / `add_comment` / `get_workitem_brief` | 见 `scripts/lib/feishu-project-mcp.mjs` | 工作项 | `McpPermError` → `exit 1` + 后台指引 |
 
 CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry-run] [--root <仓库>] [--mr <iid>] [--type <工作项类型>] [--username <逃生口>]`，`--report` 出影子周统计。退出码：0 正常（含无事可做 / 未接入）/ 1 有触发但被安全闸拦、处理失败或**已接入的源坏了** / 64 用法错（含非法 `--profile`）。
 

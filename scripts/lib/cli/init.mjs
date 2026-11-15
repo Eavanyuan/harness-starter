@@ -234,6 +234,10 @@ export function cmdInit(target, opts) {
         rules.runtime.gitlab.url = '';
         sanitized.push('runtime.gitlab.url（GitLab 实例）');
       }
+      if (rules?.runtime?.feishu?.iteration?.field) {
+        rules.runtime.feishu.iteration.field = '';
+        sanitized.push('runtime.feishu.iteration.field（迭代周期字段 key，随空间不同）');
+      }
       if (sanitized.length) {
         cfgNotes.push(`源仓接入已净化为未接入：${sanitized.join('、')} —— init 不携带真实实例（要接入按 guides 配置，凭据只进 0600 文件）`);
       }

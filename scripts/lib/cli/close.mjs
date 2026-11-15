@@ -89,8 +89,9 @@ export function cmdClose(target, slug, opts = {}) {
   if (!had.has('impl')) hist.push({ stage: 'impl', gate: 'pass' });
   if (!had.has('review')) hist.push({ stage: 'review', gate: 'pass', note: 'close 收尾（套件见 CLOSE-GATE 日志）' });
 
-  const prevStage = state.stage;
-  const prevTodos = JSON.parse(JSON.stringify(state.todos || []));
+  // 进入前完整快照（复审 A#1：旧版只快照 stage/todos，失败回滚不落盘还谎报"已还原"，
+  // 磁盘残留 bootstrap 态——0374794 即实证）。失败时按快照 writeAtomic 回写。
+  const prevState = JSON.parse(JSON.stringify(state));
   const finish = () => {
     gateTodo.status = 'completed';
     gateTodo.verify = { log_path: logRel, command: 'npm run gate（harness close）' };
@@ -114,13 +115,13 @@ export function cmdClose(target, slug, opts = {}) {
     state.gate_result = { stage: 'done', last_check: nowIso(), checks: [{ name: 'close: gate+retro+证据', pass: true }] };
     const exit = checkStageExit(state, target);
     if (exit.length) {
-      die(`收尾判据未过：\n${exit.map((f) => `  ✗ ${f.reason}`).join('\n')}`, 1);
+      rollback();
+      die(`收尾判据未过（状态已按进入前快照回写）：\n${exit.map((f) => `  ✗ ${f.reason}`).join('\n')}`, 1);
     }
     writeAtomic(assertWritableUnder(target, `.ai/tasks/${slug}/state.json`), JSON.stringify(state, null, 2) + '\n');
   };
   const rollback = () => {
-    state.stage = prevStage;
-    state.todos = prevTodos;
+    writeAtomic(assertWritableUnder(target, `.ai/tasks/${slug}/state.json`), JSON.stringify(prevState, null, 2) + '\n');
   };
 
   // bootstrap 写盘：stage=impl + gate TODO pending —— 让 gate 的 verify:state 不校验
@@ -146,7 +147,7 @@ export function cmdClose(target, slug, opts = {}) {
   const logAbs = resolve(target, logRel);
   if (code !== 0 || !existsSync(logAbs)) {
     rollback();
-    die(`gate 未过（exit=${code}）。日志：${logRel}\n状态已还原到 ${prevStage}——修完重跑 close；不要手工改 state 绕`, 1);
+    die(`gate 未过（exit=${code}）。日志：${logRel}\n状态已按进入前快照回写（${prevState.stage}）——修完重跑 close；不要手工改 state 绕`, 1);
   }
   finish();
   console.log(`[close] ${slug} 收尾完成：stage=done，gate 证据 ${logRel}，retro ${artifacts.retro}。`);

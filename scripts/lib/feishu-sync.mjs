@@ -12,10 +12,12 @@
  */
 
 /** MQL 回读工作项状态（label，如 New/Processing）。 */
-export async function readStatusViaMql({ call, projectKey, workItemId }) {
+export async function readStatusViaMql({ call, projectKey, workItemId, workItemType = 'Defect' }) {
+  const id = String(workItemId);
+  if (!/^\d+$/.test(id.trim())) throw new Error(`work_item_id 必须是纯数字，收到：${id.slice(0, 20)}`);
   const raw = await call('search_by_mql', {
     project_key: projectKey,
-    mql: `SELECT \`work_item_status\` FROM \`${projectKey}\`.\`Defect\` WHERE \`work_item_id\` = ${String(workItemId).replace(/[^0-9]/g, '')}`,
+    mql: `SELECT \`work_item_status\` FROM \`${projectKey}\`.\`${workItemType}\` WHERE \`work_item_id\` = ${id.trim()}`,
   });
   let rows = null;
   try {
@@ -37,7 +39,7 @@ export async function readStatusViaMql({ call, projectKey, workItemId }) {
  * 失败如实返回 {ok:false, reason}——**不做任何评论兜底**。
  */
 export async function transitionStatus({ call, projectKey, workItemId, workItemType = 'Defect', toStatus = 'Processing' }) {
-  const current = await readStatusViaMql({ call, projectKey, workItemId });
+  const current = await readStatusViaMql({ call, projectKey, workItemId, workItemType });
   if (current === toStatus) return { ok: true, via: 'already', current };
 
   const raw = await call('get_transitable_states', { project_key: projectKey, work_item_id: String(workItemId), work_item_type: workItemType });
@@ -52,8 +54,9 @@ export async function transitionStatus({ call, projectKey, workItemId, workItemT
     transitionId = hit?.id != null ? String(hit.id) : null;
   } else {
     // 文本兜底：{"id":21912443,"state_key":"In Progress","state_name":"Processing"...}
-    const re = new RegExp(`"id"\\s*:\\s*(\\d+)[^}]*?"state_name"\\s*:\\s*"${toStatus}"`);
-    const m = String(raw).match(re) || String(raw).match(new RegExp(`"state_name"\\s*:\\s*"${toStatus}"[^}]*?"id"\\s*:\\s*(\\d+)`));
+    const esc = String(toStatus).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // 复审 B#1：状态名含正则元字符时静默失配
+    const re = new RegExp(`"id"\\s*:\\s*(\\d+)[^}]*?"state_name"\\s*:\\s*"${esc}"`);
+    const m = String(raw).match(re) || String(raw).match(new RegExp(`"state_name"\\s*:\\s*"${esc}"[^}]*?"id"\\s*:\\s*(\\d+)`));
     transitionId = m ? m[1] : null;
   }
   if (!transitionId) {
@@ -62,7 +65,7 @@ export async function transitionStatus({ call, projectKey, workItemId, workItemT
 
   await call('transition_state', { project_key: projectKey, work_item_id: String(workItemId), transition_id: transitionId });
 
-  const after = await readStatusViaMql({ call, projectKey, workItemId });
+  const after = await readStatusViaMql({ call, projectKey, workItemId, workItemType });
   if (after !== toStatus) {
     return { ok: false, current: after, reason: `已调 transition_state(${transitionId}) 但回读仍为「${after}」——流转未生效，如实报失败不兜底` };
   }

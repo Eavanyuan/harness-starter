@@ -18,7 +18,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # 多仓隔离（2026-11-14 U8）：label 按仓库目录名派生——固定 label 装第二个仓库会互覆。
 SLUG="$(basename "$(cd "$1" 2>/dev/null && pwd)" 2>/dev/null | tr -c 'A-Za-z0-9' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-*//' -e 's/-*$//' | cut -c1-24)"
-[ -n "$SLUG" ] || SLUG="default"
+# 非 ASCII 目录名清洗后为空 → 用路径 hash 兜底（复审 A#6：两个中文目录名仓仍互覆）
+[ -n "$SLUG" ] || SLUG="$(cd "$1" 2>/dev/null && pwd | shasum | cut -c1-8)"
 LABEL="com.harness.task-loop.$SLUG"
 INTERVAL=180
 
@@ -172,12 +173,16 @@ warn_legacy_secret() {
   if grep -qE "GITLAB_TOKEN|FEISHU_MCP_URL" "$old" 2>/dev/null; then
     # 改名封存而不是删除：明文凭据落过盘=当泄露处理，文件本身要留证（谁写的、写了什么），
     # 但不能再以原名留在 launchd/systemd 会读的位置——重装后原路径必须干净。
+    # mv -n 防同日二次覆盖首份封存件；失败如实说（复审 A#5：||true 吞错后仍宣称已封存）
     local keep="${old}.leaked.$(date +%Y%m%d)"
-    mv -f "$old" "$keep" 2>/dev/null || true
-    {
-      echo "注意：$old 里含有明文凭据（旧版安装器写进去的），已改名封存为 $keep。"
-      echo "      token 本身不会因此失效——若该文件曾被备份/同步/贴出，去 GitLab 撤销并重建该 token。"
-    } >&2
+    if mv -n "$old" "$keep" 2>/dev/null; then
+      {
+        echo "注意：$old 里含有明文凭据（旧版安装器写进去的），已改名封存为 $keep。"
+        echo "      token 本身不会因此失效——若该文件曾被备份/同步/贴出，去 GitLab 撤销并重建该 token。"
+      } >&2
+    else
+      echo "注意：$old 里含有明文凭据，但改名封存失败（权限/目标存在）——请人工处理该文件并轮换 token。" >&2
+    fi
   fi
   return 0
 }

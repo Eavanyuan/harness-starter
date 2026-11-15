@@ -226,7 +226,8 @@ if (feishuCfg && typeof feishuCfg === 'object') {
   } else if (feishuCfg.severity && !map) {
     warn('runtime.feishu.severity.map 未配置，将退回内置词表（高/中/低 + P 档 + 英文）——换过空间的话词表大概率对不上');
   }
-  if (empty.length === 0) ok.push(`剖面 B 空间：${feishuCfg.projectKey}.${types.join('/')}（指派判据 ${feishuCfg.assigneeField}，严重级 ${feishuCfg.severity?.field}）`);
+  // 复审 A#2：projectKey 为空 = 未接入，✓ 行不得宣称"已配置空间"（与上方 ! 未接入同屏矛盾）
+  if (empty.length === 0 && String(feishuCfg.projectKey || '').trim()) ok.push(`剖面 B 空间：${feishuCfg.projectKey}.${types.join('/')}（指派判据 ${feishuCfg.assigneeField}，严重级 ${feishuCfg.severity?.field}）`);
 }
 
 // 4c. GitLab 接入配置。**扩展项**：url 为空 = 不接，不算错误；接了却填错才是错误。

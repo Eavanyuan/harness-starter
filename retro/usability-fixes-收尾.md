@@ -28,3 +28,8 @@
 
 test:harness-cli 234→251（§51 净化五断言 + §52 close 十断言）；test:agents 23/0（重生成后）；
 test:init 29/0、doctor-gates 20/0、wiring 15/0；收尾 = `harness close` 真跑全量 gate（CLOSE-GATE 日志）。
+
+## 勘误（2026-11-15 复审补）
+
+0374794 的提交信息称"gate 全量绿"，但其携带的 CLOSE-GATE.log 实为 exit_code=1
+（close 失败路径谎报还原所致，已修）。真正绿的是 6205ce5。按信息检索历史时以此为准。

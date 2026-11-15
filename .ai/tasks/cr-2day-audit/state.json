@@ -1,0 +1,96 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "cr-2day-audit",
+    "task_type": "change",
+    "related_task": "usability-fixes",
+    "remote_id": null,
+    "baseline": "6205ce5",
+    "affected_ids": [
+      "close",
+      "doctor",
+      "init",
+      "feishu-sync",
+      "install-task-loop",
+      "build-agents",
+      "harness.config"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-15T01:13:50Z",
+    "flow_tier": "M",
+    "init_flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_todo_reason": "close 收尾：无业务 TODO（证据型/演练型任务），验证见 CLOSE-GATE 日志",
+    "no_doc_reason": "M 档：复审记录本身即文档（.ai/review/CR-2026-11-15-两日改动复审.md）"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-cr-2day-audit.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/cr-2day-audit-收尾.md"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/cr-2day-audit-收尾.md"
+  },
+  "todos": [
+    {
+      "id": "AUD1",
+      "title": "复审修复全套件回归",
+      "status": "completed",
+      "kind": "regression",
+      "files": [
+        "scripts/lib/cli/close.mjs",
+        "scripts/doctor.mjs",
+        "scripts/lib/cli/init.mjs",
+        "scripts/lib/feishu-sync.mjs",
+        "scripts/install-task-loop.sh",
+        "harness.config.json",
+        ".gitignore",
+        "test/harness-cli.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AUD1.log",
+        "command": "五套件联跑"
+      },
+      "red_log_path": ".ai/verify/CLOSE-GATE-cr-2day-audit.log",
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "cli 252/0 + loop 86/0 + sync 8/0 + bugsrc 49/0 + wiring 15/0",
+        "feature_complete": "两路独立审阅者 10 项发现全部处置（3 修+5 快修+2 表态）",
+        "quality_clean": "close 失败路径用例从谎报改真还原（§52 断言同步）"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "stage": "done",
+    "last_check": "2026-11-15T01:15:18Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
+  }
+}
