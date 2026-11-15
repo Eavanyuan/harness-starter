@@ -337,6 +337,30 @@ for (const t of triggers) {
     continue;
   }
 
+  // ---- 信息完备性守门（2026-11-15 用户指令）：描述无法复现且无截图/日志 → 不接单，评论 @提交者追问 ----
+  // 只对飞书单且真实轮次生效（dry-run 零写入）。只追问一次（feishu-ask 内部防重）。
+  if (t.kind === 'task' && feishuCall && !opt.dryRun) {
+    try {
+      const { checkInfoOrAsk } = await import('./lib/feishu-ask.mjs');
+      const check = await checkInfoOrAsk({ call: feishuCall, projectKey: feishuCfg.projectKey, workItemId: t.id, workItemType: t.itemType || 'Defect' });
+      if (!check.ok) {
+        recordEvent('task-loop', 'info_incomplete', { id: t.id, asked: !!check.asked, already_asked: !!check.already_asked, reason: String(check.reason || '').slice(0, 120) });
+        if (check.asked) {
+          console.log(`[task-loop] ${t.id} 信息不全 → 已评论 @提交者追问（不接单）：${check.reason}`);
+        } else if (check.already_asked) {
+          console.log(`[task-loop] ${t.id} 信息不全且已追问过 → 跳过（等提交者补充）`);
+        } else {
+          console.log(`[task-loop] ${t.id} 信息不全但追问失败 → 跳过本轮：${check.reason}`);
+        }
+        continue; // 不认领不流转，下一轮重新评估
+      }
+    } catch (e) {
+      // 完备性检查自身故障 → 不拦（不因工具故障误判），照常走认领
+      recordEvent('task-loop', 'info_check_error', { id: t.id, error: String(e.message).slice(0, 120) });
+      console.error(`[task-loop] ${t.id} 完备性检查异常（不拦截）：${e.message}`);
+    }
+  }
+
   const c = claim({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id, ttlMs: rules.runtime?.budget?.claimTtlMs });
   if (!c.claimed) {
     if (c.reason === 'zombie') {
