@@ -1,0 +1,129 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ack-hotfix",
+    "task_type": "bugfix",
+    "related_task": "ack-wiring",
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "ack-wiring",
+      "feishu-sync",
+      "task-loop"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-15T00:44:16Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档 bugfix：retro/ack-hotfix-接单流转修复.md 即文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档 bugfix：缺陷即需求（真实首跑三教训）"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "接单语义定稿：只 transition_state+MQL 回读，零评论，幂等"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "AH0 红灯（旧代码 5 红）→ AH1 绿；§12 语义同步"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/ack-hotfix-接单流转修复.md"
+  },
+  "todos": [
+    {
+      "id": "AH0",
+      "title": "红灯：新断言打旧代码",
+      "status": "completed",
+      "kind": "regression",
+      "files": [
+        "scripts/lib/feishu-sync.mjs"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AH0.log",
+        "command": "bash test/feishu-sync.test.sh（对旧实现）"
+      },
+      "red_log_path": ".ai/verify/AH0.log",
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "5 红（旧代码用错工具/评论兜底全被抓）",
+        "feature_complete": "回归锁就位",
+        "quality_clean": "红→绿可证伪"
+      }
+    },
+    {
+      "id": "AH1",
+      "title": "接单三路全套件",
+      "status": "completed",
+      "files": [
+        "scripts/lib/feishu-sync.mjs",
+        "test/feishu-sync.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AH1.log",
+        "command": "bash test/feishu-sync.test.sh"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "8/0",
+        "feature_complete": "transition_state/幂等/拒硬转/零评论",
+        "quality_clean": "add_comment 被调用即断言红"
+      }
+    },
+    {
+      "id": "AH2",
+      "title": "task-loop §12 语义同步",
+      "status": "completed",
+      "files": [
+        "scripts/task-loop.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/AH2.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "86/0（终版，中途红已修）",
+        "feature_complete": "ack 块改零评论语义",
+        "quality_clean": "§12 三路断言"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

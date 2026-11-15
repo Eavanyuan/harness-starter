@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# feishu-sync（接单三连）自测 —— mock call，不打真通道。
+# feishu-sync（接单=只流转状态）自测 —— mock call，不打真通道。
 #
-# 覆盖（2026-11-14 接线时的定案）：
-#   · 调序与英文状态名：add_comment → get_transitable_states → update_field(Processing)
-#   · fail-closed：目标态不在可流转列表 → 不硬转（update_field 不被调用）
-#   · 写后读读不回 → 评论兜底留凭（degraded），ok 仍真
-#   · 类型名 Defect 透传（中文「缺陷」会被空间拒绝）
+# 2026-11-15 重写后的语义（真实首跑三教训的回归锁）：
+#   · 状态流转用 transition_state{transition_id}（id 来自 get_transitable_states），
+#     绝不用 update_field（静默失败的错工具）
+#   · 回读用 search_by_mql（brief 的 status 读不出，曾致每次误判"未确认"）
+#   · 全程零 add_comment（用户指令：不要添加评论）；失败如实失败，无兜底评论
+#   · 幂等：当前已是目标态 → ok(via=already)，不再调 transition_state
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -13,62 +14,68 @@ trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
 check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s  (期望 %s，实际 %s)\n" "$1" "$3" "$2"; fail=$((fail+1)); fi; }
 
-run_case() { # run_case <js 文件> → stdout
-  node --input-type=module < "$1" 2>&1
+mkcall() { # mkcall <初始状态> <流转后状态 or FAIL>  → 输出 "ok|via|tools"
+  cat > "$TMP/case.mjs" <<EOF
+import { acknowledgeBug } from '$HERE/scripts/lib/feishu-sync.mjs';
+const calls = [];
+let flipped = false;
+const call = async (tool, args) => {
+  calls.push(tool + (tool === 'transition_state' ? ':' + args.transition_id : ''));
+  if (tool === 'search_by_mql') {
+    const label = flipped ? '$2' : '$1';
+    return JSON.stringify({ data: { "1": [{ moql_field_list: [{ key: 'work_item_status', value: { key_label_value_list: [{ label }] } }] }] } });
+  }
+  if (tool === 'get_transitable_states') return JSON.stringify({ transition: [{ id: 21912443, state_key: 'In Progress', state_name: 'Processing' }] });
+  if (tool === 'transition_state') { flipped = true; return 'success'; }
+  if (tool === 'add_comment') { globalThis.__commented = true; return '{}'; }
+  return '{}';
+};
+const r = await acknowledgeBug({ call, projectKey: 'taosdata_td', workItemId: '7167910546' });
+console.log(r.ok + '|' + (r.transition?.via ?? '') + '|' + calls.join('>') + '|' + (globalThis.__commented ? 'COMMENTED' : 'no-comment'));
+EOF
+  node "$TMP/case.mjs" 2>&1
 }
 
-echo "== 1. 接单三连 happy path：调序 / 英文状态名 / 类型名 =="
-cat > "$TMP/case1.mjs" <<'EOF'
-import { acknowledgeBug } from './scripts/lib/feishu-sync.mjs';
-const calls = [];
-const call = async (tool, args) => {
-  calls.push(`${tool}:${JSON.stringify(args.value ?? args.content ?? args.work_item_type ?? 'x').slice(0, 40)}`);
-  if (tool === 'get_transitable_states') return JSON.stringify({ transition: [{ state_name: 'Processing' }, { state_name: 'Releasing' }] });
-  if (tool === 'get_workitem_brief') return JSON.stringify({ work_item_attribute: { work_item_status: { state_name: 'Processing' } } });
-  return '{}';
-};
-const r = await acknowledgeBug({ call, projectKey: 'taosdata_td', workItemId: '7167694064', note: 'hi' });
-console.log(r.ok + '|' + calls.join(' > '));
-EOF
-out="$(cd "$HERE" && run_case "$TMP/case1.mjs")"
+echo "== 1. 正常接单：New→Processing，用 transition_state，零评论 =="
+out="$(mkcall New Processing)"
 check "ok=true" "$(printf '%s' "$out" | cut -d'|' -f1)" "true"
-check "调序：评论 → 可流转态 → 写状态(Processing) → 回读" \
-  "$(printf '%s' "$out" | cut -d'|' -f2 | cut -d'>' -f1-4 | tr -d ' ')" \
-  "add_comment:\"hi\">get_transitable_states:\"Defect\">update_field:\"Processing\">get_workitem_brief:\"x\""
+check "via=transition_state" "$(printf '%s' "$out" | cut -d'|' -f2)" "transition_state"
+check "调序：MQL回读→可流转态→transition_state(id)→MQL回读，无 update_field/add_comment" \
+  "$(printf '%s' "$out" | cut -d'|' -f3)" "search_by_mql>get_transitable_states>transition_state:21912443>search_by_mql"
+check "全程无评论" "$(printf '%s' "$out" | cut -d'|' -f4)" "no-comment"
 
-echo "== 2. 目标态不在可流转列表 → fail-closed 不硬转 =="
+echo "== 2. 幂等：已是 Processing → ok(already)，不再流转 =="
 cat > "$TMP/case2.mjs" <<'EOF'
-import { transitionStatus } from './scripts/lib/feishu-sync.mjs';
+import { acknowledgeBug } from '/Users/yuanyuan/Documents/workspace/harness-starter/scripts/lib/feishu-sync.mjs';
 const calls = [];
 const call = async (tool, args) => {
   calls.push(tool);
-  if (tool === 'get_transitable_states') return JSON.stringify({ transition: [{ state_name: 'Releasing' }] });
+  if (tool === 'search_by_mql') return JSON.stringify({ data: { "1": [{ moql_field_list: [{ key: 'work_item_status', value: { key_label_value_list: [{ label: 'Processing' }] } }] }] } });
   return '{}';
 };
-const r = await transitionStatus({ call, projectKey: 'p', workItemId: '1', toStatus: 'Processing' });
-console.log(r.ok + '|' + (r.reason || '').startsWith('目标状态') + '|' + calls.includes('update_field'));
+const r = await acknowledgeBug({ call, projectKey: 'p', workItemId: '1' });
+console.log(r.ok + '|' + r.transition.via + '|' + calls.length);
 EOF
-out="$(cd "$HERE" && run_case "$TMP/case2.mjs")"
-check "ok=false 且理由以「目标状态」开头" "$(printf '%s' "$out" | cut -d'|' -f1-2)" "false|true"
-check "update_field 未被调用（不硬转）" "$(printf '%s' "$out" | cut -d'|' -f3)" "false"
+out="$(node "$TMP/case2.mjs" 2>&1)"
+check "ok=true via=already" "$(printf '%s' "$out" | cut -d'|' -f1-2)" "true|already"
+check "只调了一次 MQL 回读（未动流转）" "$(printf '%s' "$out" | cut -d'|' -f3)" "1"
 
-echo "== 3. 写后读读不回 → 评论兜底留凭（degraded），ok 仍真 =="
+echo "== 3. 目标态不在可流转列表 → fail-closed 如实报错，不硬转 =="
 cat > "$TMP/case3.mjs" <<'EOF'
-import { transitionStatus } from './scripts/lib/feishu-sync.mjs';
+import { transitionStatus } from '/Users/yuanyuan/Documents/workspace/harness-starter/scripts/lib/feishu-sync.mjs';
 const calls = [];
-const call = async (tool, args) => {
+const call = async (tool) => {
   calls.push(tool);
-  if (tool === 'get_transitable_states') return JSON.stringify({ transition: [{ state_name: 'Processing' }] });
-  if (tool === 'get_workitem_brief') return JSON.stringify({ work_item_attribute: { work_item_status: { state_name: 'New' } } }); // 回读仍是 New
+  if (tool === 'search_by_mql') return JSON.stringify({ data: { "1": [{ moql_field_list: [{ key: 'work_item_status', value: { key_label_value_list: [{ label: 'New' }] } }] }] } });
+  if (tool === 'get_transitable_states') return JSON.stringify({ transition: [{ id: 9, state_name: 'Releasing' }] });
   return '{}';
 };
 const r = await transitionStatus({ call, projectKey: 'p', workItemId: '1', toStatus: 'Processing' });
-console.log(r.ok + '|' + r.via + '|' + (r.degraded || []).join(','));
+console.log(r.ok + '|' + (r.reason || '').startsWith('目标状态') + '|' + calls.includes('transition_state'));
 EOF
-out="$(cd "$HERE" && run_case "$TMP/case3.mjs")"
-check "回读失败仍 ok=true（兜底成功不算失败）" "$(printf '%s' "$out" | cut -d'|' -f1)" "true"
-check "via=comment-fallback" "$(printf '%s' "$out" | cut -d'|' -f2)" "comment-fallback"
-check "degraded 点名 status" "$(printf '%s' "$out" | cut -d'|' -f3)" "status"
+out="$(node "$TMP/case3.mjs" 2>&1)"
+check "ok=false 且理由以「目标状态」开头" "$(printf '%s' "$out" | cut -d'|' -f1-2)" "false|true"
+check "transition_state 未被调用" "$(printf '%s' "$out" | cut -d'|' -f3)" "false"
 
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"

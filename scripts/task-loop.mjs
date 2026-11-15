@@ -353,10 +353,10 @@ for (const t of triggers) {
   held.set(`${t.kind}-${t.id}`, { kind: t.kind, id: t.id });
   recordEvent('task-loop', 'claimed', { kind: t.kind, id: t.id, ref: c.ref });
 
-  // ---- 接单三连（2026-11-14 接线）：评论预告 + New→Processing ----
-  // 只对飞书单（kind=task）且真实轮次生效（dry-run 零写入，不调）。失败按契约释放认领
-  // 升级（feishu-sync 头注）：接单是"对外承诺"，承诺不出去就不占锁，下一轮重试；
-  // 事件全部落账，权限类故障在 ledger 里看得见。
+  // ---- 接单（2026-11-15 定稿）：只流转 New→Processing，零评论 ----
+  // 语义演变：v1"评论+流转+评论兜底"经真实首跑作废——update_field 是错工具静默失败、
+  // 兜底评论谎报"已流转"并刷屏（用户指令：不要添加评论）。现接单=transition_state+MQL
+  // 回读确认，仅此而已；幂等（已是 Processing 直接 ok）。失败释放认领下一轮重试。
   if (t.kind === 'task' && feishuCall) {
     try {
       const { acknowledgeBug } = await import('./lib/feishu-sync.mjs');
@@ -365,11 +365,10 @@ for (const t of triggers) {
         projectKey: feishuCfg.projectKey,
         workItemId: t.id,
         workItemType: t.itemType || 'Defect',
-        note: `【自动接单】开始修复：${(t.bug?.name || '').slice(0, 60)}。\n修复将随 MR 提交，进展同步在本评论区；修复合入后状态流转到 Releasing/Done。（task-loop 认领，引用 ${c.ref}）`,
       });
       if (ackRes.ok) {
-        recordEvent('task-loop', 'feishu_ack', { id: t.id, degraded: ackRes.transition?.degraded || [] });
-        console.log(`[task-loop] ${t.id} 已接单：评论已发，状态 New→Processing${ackRes.transition?.via === 'comment-fallback' ? '（回读未确认，评论留凭）' : ''}`);
+        recordEvent('task-loop', 'feishu_ack', { id: t.id, via: ackRes.transition?.via, from: ackRes.transition?.from, to: ackRes.transition?.to });
+        console.log(`[task-loop] ${t.id} 已接单：状态 ${ackRes.transition?.from ?? '?'}→Processing（${ackRes.transition?.via === 'already' ? '此前已流转' : 'transition_state 已确认'}，无评论）`);
       } else {
         throw new Error(ackRes.transition?.reason || '接单未成功');
       }

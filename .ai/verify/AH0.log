@@ -1,0 +1,20 @@
+# cmd: bash test/feishu-sync.test.sh
+# started: 2026-11-15T00:44:16Z
+# finished: 2026-11-15T00:44:16Z
+# exit_code: 1
+# commit: unknown
+# task: ack-hotfix
+# ---- output tail (last 200 lines) ----
+== 1. 正常接单：New→Processing，用 transition_state，零评论 ==
+  [32m✓[0m ok=true
+  [31m✗[0m via=transition_state  (期望 transition_state，实际 comment-fallback)
+  [31m✗[0m 调序：MQL回读→可流转态→transition_state(id)→MQL回读，无 update_field/add_comment  (期望 search_by_mql>get_transitable_states>transition_state:21912443>search_by_mql，实际 add_comment>get_transitable_states>update_field>get_workitem_brief>add_comment)
+  [31m✗[0m 全程无评论  (期望 no-comment，实际 COMMENTED)
+== 2. 幂等：已是 Processing → ok(already)，不再流转 ==
+  [31m✗[0m ok=true via=already  (期望 true|already，实际 false|undefined)
+  [31m✗[0m 只调了一次 MQL 回读（未动流转）  (期望 1，实际 2)
+== 3. 目标态不在可流转列表 → fail-closed 如实报错，不硬转 ==
+  [32m✓[0m ok=false 且理由以「目标状态」开头
+  [32m✓[0m transition_state 未被调用
+
+结果：3 通过，5 失败

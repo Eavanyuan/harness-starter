@@ -626,15 +626,30 @@ let noKey = false; try { buildMyBugsMql({}); } catch { noKey = true; }
 process.exit(mql.includes("current_login_user()") && mql.includes("`taosdata_td`.`Defect`") && a.length===2 && b.length===1
   && g.auto.length===2 && g.confirm.length===1 && threw && noKey ? 0 : 1);'
 check "MQL 构造/双形态解析/P0-P3 分级/垃圾结果 fail-closed" "0" "$?"
+# 2026-11-15 语义重写（真实首跑三教训）：transition_state 专用工具 + MQL 回读 + 零评论。
+# 旧四路（update_field/评论兜底/readbackOrComment）全部作废——该版本曾静默不流转+刷屏评论。
 node --input-type=module -e '
-import { transitionStatus, readbackOrComment } from "'"$HERE"'/scripts/lib/feishu-sync.mjs";
-const mk = (b) => async (n) => { const f = b[n]; if (!f) throw new Error("no "+n); return typeof f==="function"?f():f; };
-const r1 = await transitionStatus({ call: mk({ get_transitable_states: "可流转:[开发中]", update_field: "ok" }), projectKey: "t", workItemId: "1", toStatus: "处理中" });
-const r2 = await readbackOrComment({ call: mk({ get_workitem_brief: "status: 处理中", add_comment: "ok" }), projectKey: "t", workItemId: "1", expect: { status: "处理中" }, fallbackNote: "n" });
-const r3 = await readbackOrComment({ call: mk({ get_workitem_brief: "空", add_comment: "ok" }), projectKey: "t", workItemId: "1", expect: { status: "x" }, fallbackNote: "n" });
-const r4 = await readbackOrComment({ call: mk({ get_workitem_brief: "空", add_comment: () => { throw new Error("403"); } }), projectKey: "t", workItemId: "1", expect: { status: "x" }, fallbackNote: "n" });
-process.exit(!r1.ok && r2.ok && r3.ok && r3.via==="comment-fallback" && !r4.ok ? 0 : 1);'
-check "同步四路：拒硬转/读回成功/静默丢弃→评论兜底/兜底失败显式红" "0" "$?"
+import { transitionStatus } from "'"$HERE"'/scripts/lib/feishu-sync.mjs";
+const mql = (label) => JSON.stringify({ data: { "1": [{ moql_field_list: [{ key: "work_item_status", value: { key_label_value_list: [{ label }] } }] }] } });
+let flipped = false; const tools = [];
+const mk = (states) => async (n, a) => {
+  tools.push(n);
+  if (n === "search_by_mql") return mql(flipped ? "Processing" : "New");
+  if (n === "get_transitable_states") return typeof states === "string" ? states : JSON.stringify(states);
+  if (n === "transition_state") { flipped = true; return "success"; }
+  if (n === "add_comment") throw new Error("不得调用 add_comment（零评论语义）");
+  return "{}";
+};
+// 1) 正常：New→Processing，transition_state(id) + 回读确认，全程无评论
+const r1 = await transitionStatus({ call: mk({ transition: [{ id: 42, state_name: "Processing" }] }), projectKey: "t", workItemId: "1" });
+// 2) 幂等：已是目标态 → already，不再调流转（把回读预设为 Processing）
+flipped = true;
+const r2 = await transitionStatus({ call: mk({ transition: [{ id: 42, state_name: "Processing" }] }), projectKey: "t", workItemId: "2" });
+// 3) 目标不在可流转列表 → fail-closed 不硬转（回读重置为 New）
+flipped = false;
+const r3 = await transitionStatus({ call: mk({ transition: [{ id: 7, state_name: "Releasing" }] }), projectKey: "t", workItemId: "3", toStatus: "Processing" });
+process.exit(r1.ok && r1.via === "transition_state" && r2.ok && r2.via === "already" && !r3.ok && !tools.includes("add_comment") && !tools.includes("update_field") ? 0 : 1);'
+check "同步三路：transition_state 流转/幂等 already/拒硬转，全程零评论零 update_field" "0" "$?"
 # runner 集成：无凭据 fail 显式；有凭据但数据档未开 → perm 指引（活通道）
 # 凭据必须隔离：不隔离的话，本机已登录时 ensureToken() 会成功、CI 上则失败——
 # 同一份代码两种结论，等于没有判据（本地红、CI 绿就是从这里来的）。
