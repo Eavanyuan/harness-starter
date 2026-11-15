@@ -13,6 +13,21 @@
 4. 起 task-loop（定时器 + 影子周 + 真跑）
 5. 日常使用
 
+
+## 旁挂模式（跨仓使用）
+
+harness 不必装进业务代码仓——装在独立目录、`--root` 指向代码仓即可（TDasset 即此形态）：
+
+```bash
+node harness-starter/scripts/harness-cli.mjs init .          # harness 装自己仓
+# harness.config.json 的 projects.dir 用相对路径指向代码仓（如 ../TDasset），
+# lint/test 命令用 `cd ../TDasset && ...` 过去跑；证据链落 harness 仓（CI 口径"日志入库"不变）
+node scripts/task-loop.mjs --once --root .                    # 定时器也装在 harness 仓
+```
+
+适用：业务仓不想收 harness 文件（评审噪音/交付边界）、或多仓共用一套 harness。
+代价：本地 hooks 不挂业务仓（门禁后撤到 harness 仓会话与 CR）、跨仓引用要求两仓同机同层级。
+
 ## 整体架构
 
 ```text
