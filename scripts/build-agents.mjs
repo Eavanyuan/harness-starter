@@ -156,7 +156,9 @@ function renderSubagent(meta, body, config, target) {
 
 /** `writes` 是 agent 之间的交接契约，必须出现在模型真正读得到的位置。 */
 function writesOf(meta, config) {
-  return [].concat(meta.writes || []).map((w) => resolveTokens(w, config));
+  // 去重（2026-11-15 复审勘误）：旁挂模式下 <backend-dir>/<frontend-dir> 可解析到同一目录
+  // （本仓 projects 两条都指 ../TDasset），不去重则 writes.json 出现重复条目。
+  return [...new Set([].concat(meta.writes || []).map((w) => resolveTokens(w, config)))];
 }
 
 function writesLine(meta, config) {
