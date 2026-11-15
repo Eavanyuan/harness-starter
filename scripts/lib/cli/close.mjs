@@ -41,10 +41,13 @@ export function cmdClose(target, slug, opts = {}) {
 
   // ---- 1. gate TODO：缺则补 pending；其余 TODO 必须已完成 ----
   let todos = Array.isArray(state.todos) ? state.todos : [];
-  let gateTodo = todos.find((t) => t.id === 'CLOSE-GATE');
+  // 日志/TODO id 按 slug 派生：固定 id 会在第二个任务上撞归属保护
+  // （verify-run 拒绝覆盖被他人引用的证据——实测 usability-fixes 后 ack-hotfix 即撞）。
+  const gateId = `CLOSE-GATE-${String(slug).replace(/[^A-Za-z0-9._-]/g, '').slice(0, 40)}`;
+  let gateTodo = todos.find((t) => t.id === gateId);
   if (!gateTodo) {
     gateTodo = {
-      id: 'CLOSE-GATE',
+      id: gateId,
       title: '收尾 gate 全量（close 自动）',
       status: 'pending',
       files: [],
@@ -54,11 +57,11 @@ export function cmdClose(target, slug, opts = {}) {
     };
     todos.push(gateTodo);
   }
-  const open = todos.filter((t) => t.id !== 'CLOSE-GATE' && t.status !== 'completed' && t.status !== 'done');
+  const open = todos.filter((t) => t.id !== gateId && t.status !== 'completed' && t.status !== 'done');
   if (open.length) {
     die(`还有 ${open.length} 个 TODO 未完成（${open.map((t) => t.id).join('、')}）——先做完或移出本任务，close 只管收尾`, 1);
   }
-  const logRel = (gateTodo.verify && gateTodo.verify.log_path) || `.ai/verify/CLOSE-GATE.log`;
+  const logRel = (gateTodo.verify && gateTodo.verify.log_path) || `.ai/verify/${gateId}.log`;
 
   // ---- 2. retro：新规要求文件名以 slug 开头（checkRetroLanding）----
   let artifacts = state.artifacts && typeof state.artifacts === 'object' ? state.artifacts : {};
@@ -102,7 +105,7 @@ export function cmdClose(target, slug, opts = {}) {
     hist.push({ stage: 'retro', gate: 'pass', note: artifacts.retro });
     state.stage = 'done';
     // 零业务 TODO 的收尾（只有 CLOSE-GATE）：done-exit 判据要求说明为什么没有 todos
-    if (!todos.some((t) => t.id !== 'CLOSE-GATE')) {
+    if (!todos.some((t) => t.id !== gateId)) {
       state.meta = { ...meta, no_todo_reason: 'close 收尾：无业务 TODO（证据型/演练型任务），验证见 CLOSE-GATE 日志' };
     }
     state.stage_history = hist;
@@ -134,7 +137,7 @@ export function cmdClose(target, slug, opts = {}) {
   // 教人造过不了判据的假证据（测试要提速就在目标仓把 gate 脚本桩化，命令行不变）。
   const gateCmd = 'npm run gate';
   console.log(`[close] ${slug}：bootstrap(impl) → 跑 gate：${gateCmd}`);
-  const r = spawnSync('bash', [join(target, 'scripts/verify-run.sh'), '--task', slug, 'CLOSE-GATE', '--', ...gateCmd.split(' ')], {
+  const r = spawnSync('bash', [join(target, 'scripts/verify-run.sh'), '--task', slug, gateId, '--', ...gateCmd.split(' ')], {
     cwd: target,
     stdio: 'inherit',
     env: process.env,

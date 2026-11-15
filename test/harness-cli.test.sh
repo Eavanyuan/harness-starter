@@ -1092,7 +1092,7 @@ node "$HERE/scripts/harness-cli.mjs" close "$CL" close-demo >"$TMP/cl1" 2>&1
 check "gate 绿（桩）→ close exit 0" 0 "$?"
 node -e 'const s=require(process.argv[1]);process.exit(s.stage==="done"?0:1)' "$CL/.ai/tasks/close-demo/state.json"
 check "state 翻到 done" 0 "$?"
-grep -q '^# task: close-demo' "$CL/.ai/verify/CLOSE-GATE.log" && r=0 || r=1
+grep -q '^# task: close-demo' "$CL/.ai/verify/CLOSE-GATE-close-demo.log" && r=0 || r=1
 check "gate 日志带归属头（verify-run --task 包装）" 0 "$r"
 [ -f "$CL/retro/close-demo-收尾.md" ] && r=0 || r=1
 check "retro 模板按 <slug>-*.md 新规生成" 0 "$r"

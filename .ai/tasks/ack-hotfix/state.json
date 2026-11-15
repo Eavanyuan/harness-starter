@@ -20,7 +20,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档 bugfix：retro/ack-hotfix-接单流转修复.md 即文档"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -50,33 +50,22 @@
       "stage": "review",
       "gate": "pass",
       "note": "AH0 红灯（旧代码 5 红）→ AH1 绿；§12 语义同步"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-ack-hotfix.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/ack-hotfix-接单流转修复.md"
     }
   ],
   "artifacts": {
     "retro": "retro/ack-hotfix-接单流转修复.md"
   },
   "todos": [
-    {
-      "id": "AH0",
-      "title": "红灯：新断言打旧代码",
-      "status": "completed",
-      "kind": "regression",
-      "files": [
-        "scripts/lib/feishu-sync.mjs"
-      ],
-      "verify": {
-        "log_path": ".ai/verify/AH0.log",
-        "command": "bash test/feishu-sync.test.sh（对旧实现）"
-      },
-      "red_log_path": ".ai/verify/AH0.log",
-      "ooda_stage": "audit",
-      "audit": {
-        "compile": "PASS",
-        "tests": "5 红（旧代码用错工具/评论兜底全被抓）",
-        "feature_complete": "回归锁就位",
-        "quality_clean": "红→绿可证伪"
-      }
-    },
     {
       "id": "AH1",
       "title": "接单三路全套件",
@@ -94,8 +83,10 @@
         "compile": "PASS",
         "tests": "8/0",
         "feature_complete": "transition_state/幂等/拒硬转/零评论",
-        "quality_clean": "add_comment 被调用即断言红"
-      }
+        "quality_clean": "AH0 红灯（旧代码 5 红）→ AH1 绿，红绿可证伪"
+      },
+      "red_log_path": ".ai/verify/AH0.log",
+      "kind": "regression"
     },
     {
       "id": "AH2",
@@ -116,14 +107,36 @@
         "feature_complete": "ack 块改零评论语义",
         "quality_clean": "§12 三路断言"
       }
+    },
+    {
+      "id": "CLOSE-GATE-ack-hotfix",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-ack-hotfix.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-15T00:51:24Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }
