@@ -124,7 +124,10 @@ write_wrapper() {
 export HARNESS_ENV_FILE="${CRED_FILE}"
 export HARNESS_LEDGER_DIR="${LOGDIR}"
 cd "${ROOT}" || exit 69
-exec "${NODE_BIN}" "${SCRIPT}" --once --root "${ROOT}"
+# 2>&1（2026-11-16）：plist 把 stderr 分流到 task-loop.err，只走 stderr 的报错在 .out 里不可见
+# （实测：源超时 die(1) 连转 9 小时，.out 只有"凭据已载入"）。合并后 bash 自身的 shell-init 噪声
+# 仍留在 .err（它发生在 exec 之前），node 的一切输出进 .out。
+exec "${NODE_BIN}" "${SCRIPT}" --once --root "${ROOT}" 2>&1
 EOF
 )"
   if [ "${1:-}" = "--preview" ]; then printf '%s\n' "$body"; return 0; fi

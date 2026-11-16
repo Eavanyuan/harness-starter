@@ -92,6 +92,8 @@ export function resolveFeishuConfig({ rules = null, env = process.env } = {}) {
     // field 必须显式配：迭代字段的 key 随空间变（与 severity 同理，不猜内置默认）。
     iterationField: String(pick(env.FEISHU_ITERATION_FIELD, iter.field, '')),
     iterationPrefix: String(pick(env.FEISHU_ITERATION_PREFIX, iter.prefix, '')),
+    // 工单里的目标仓库指引（CR 🟡#5 配置化）：产品路由是部署事实不是脚手架常识，随空间配置走。
+    repoHint: String(pick(env.FEISHU_REPO_HINT, c.repoHint, '')),
   };
 }
 

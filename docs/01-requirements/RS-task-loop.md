@@ -21,6 +21,8 @@
 - Given 两台 runner 同时认领同一 MR Then 仅一台 push 成功，另一台非快进拒绝并跳过本轮（认领竞争落账）
 - Given 修复推送后 CI 红 When 归因为本 MR 引入 Then 进入修复子循环，同一失败同根因连续 2 次强制换法，3 轮未绿转 blocked 升级
 - Given 达到停点 Then 判定条件为"本 MR 引入的失败 = 0 且 approved_by 非空且 approver ≠ author 且审批晚于最后一次 push"，缺一不算完成
+- Given 接入的某个源临时不可达（超时/断网/5xx/429，2026-11-16 变更 task-loop-close）When 轮询失败 Then 跳过该源继续跑其余源（不 die 不致盲），不落节流戳下一 tick 立即重试；硬故障（401/403）仍整轮 die 且报错同步 stdout；成轮必印一行围栏摘要（硬故障 die=未成轮不印，由 die 双通道保证不无声）
+- Given 已认领的 MR 被合并/批红/关闭 When 触发集里不再有它（且本轮 GitLab 轮询成功未收窄）Then 自动关账：释放认领 + 删 ack 与工单 + `trigger_gone` 落账；待修内容变化（fingerprint）→ 重置重认领（软失败/`--mr` 过滤轮不动账——本轮看不见 ≠ 消失）；纯动词零待修 → `awaiting_rereview`（claim_noop）且认领即落会话工单 `pack-<id>.md`
 
 ### US-2 剖面 B：飞书 bug 自动接单（hotfix 状态机）
 

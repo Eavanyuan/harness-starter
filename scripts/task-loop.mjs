@@ -14,14 +14,15 @@
  * 定时器的凭据来自 0600 的 task-loop.env（HARNESS_ENV_FILE 可改路径）：**由本进程解析 KEY=VALUE**，
  * 不经 shell——文件是数据不是可执行代码（见 lib/env-file.mjs）。进程 env 优先于文件。
  * --dry-run 为影子周形态（零写入：不认领、不推、不起会话）。
- * 退出码：0 正常（含无事可做 / 未接入）；1 有触发但被安全闸拦，或接入的源坏了；64 用法错。
+ * 退出码：0 正常（含无事可做 / 未接入）；1 有触发但被安全闸拦、接入的源坏了、或某源临时不可达
+ *   （临时不可达 = 跳过该源继续跑其余源，但不落节流戳——下一 tick 立即重试，不吃两小时节拍）；64 用法错。
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadRules } from './lib/review-rules.mjs';
 import { claim, release } from './lib/claim.mjs';
 import { createBudget } from './lib/task-loop-core.mjs';
-import { fetchTriggers, fetchCurrentUser } from './lib/gitlab-triggers.mjs';
+import { fetchTriggers, fetchCurrentUser, triggerFingerprint } from './lib/gitlab-triggers.mjs';
 import { recordEvent } from '../hooks/lib/ledger.mjs';
 
 const args = process.argv.slice(2);
@@ -41,7 +42,10 @@ for (let i = 0; i < args.length; i++) {
 }
 const root = resolve(opt.root || process.cwd());
 
-function die(code, msg) { console.error(`[task-loop] ${msg}`); process.exit(code); }
+// die 双通道（2026-11-16）：plist 把 stderr 分流到 task-loop.err，只写 stderr 时 .out 里只剩
+// "凭据已载入"然后无声退出（实测：剖面 A 超时连转 9 小时，.out 一片安静）。stdout 同步一行，
+// 让 .out 永远能回答"这轮死在哪"。终端里会看到同文两行，代价可接受。
+function die(code, msg) { const line = `[task-loop] ${msg}`; console.error(line); console.log(line); process.exit(code); }
 if (!opt.once && !opt.report) die(64, 'v1 只支持 --once / --report（常驻轮询经 deploy/task-loop 定时器触发）');
 const PROFILES = ['auto', 'a', 'b', 'both'];
 if (!PROFILES.includes(opt.profile)) die(64, `--profile 只认 ${PROFILES.join(' / ')}（当前 "${opt.profile}"）`);
@@ -125,6 +129,21 @@ if (process.env.HARNESS_TIMER === '1') {
 function stampLastRun() {
   mkdirSync(join(root, '.ai', 'locks'), { recursive: true });
   writeFileSync(lastRunStamp, `${new Date().toISOString()} pollSeconds=${pollSeconds}\n`);
+}
+
+// ---- 轮次围栏（2026-11-16）：每轮恰好一行结束摘要——"载入凭据后无声退出"必须不可能 ----
+// 背景：plist 的 stdout/stderr 分流 + 源失败 die(1) 只写 stderr，.out 里 9 小时只见"已载入"。
+// 围栏行永远走 stdout，无论本轮成败都能对账（触发/认领/关账计数 + 耗时 + exit 码）。
+const ROUND_START = Date.now();
+const stats = { claimed: 0, noop: 0, skip: 0, gone: 0, stale: 0, pack: 0 };
+const softFail = []; // {source}：临时不可达（超时/断网/5xx）——跳过该源、不落戳、exit 1 下 tick 重试
+function finish({ code, stamp }) {
+  const parts = [`触发 ${triggers.length}`, `认领 ${stats.claimed}`, `待复核 ${stats.noop}`, `跳过 ${stats.skip}`, `关账 ${stats.gone}`, `内容更新 ${stats.stale}`];
+  if (stats.pack) parts.push(`会话包 ${stats.pack}`);
+  if (softFail.length) parts.push(`源故障 ${softFail.map((f) => f.source).join('+')}（跳过该源，下 tick 重试）`);
+  console.log(`[task-loop] 轮次结束：${parts.join(' / ')}｜耗时 ${((Date.now() - ROUND_START) / 1000).toFixed(1)}s｜exit ${code}${stamp ? '' : '（不落节流戳，下一 tick 立即重试）'}`);
+  if (stamp) stampLastRun();
+  process.exit(code);
 }
 const headless = rules.runtime?.headless;
 if (!headless?.cli || !Array.isArray(headless.args)) die(1, 'runtime.headless 剖面缺失（cli/args 必填，见 harness.rules.json）');
@@ -212,8 +231,7 @@ if (!wantGitlab && !wantFeishu) {
   recordEvent('task-loop', 'no_source', {});
   console.log('[task-loop] 未接入任何触发源，本轮结束（接入是扩展项，不接不算故障）');
   for (const w of why) console.log(`  · ${w}`);
-  stampLastRun();
-  process.exit(0);
+  finish({ code: 0, stamp: true });
 }
 
 if (wantGitlab) {
@@ -225,7 +243,15 @@ if (wantGitlab) {
     triggers.push(...await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr }));
     recordEvent('task-loop', 'gitlab_polled', { username, identity: fromConfig ? 'token' : 'override', triggers: triggers.length });
   } catch (e) {
-    die(1, `剖面 A 触发轮询失败：${e.message}`);
+    // 2026-11-16 实测：内网 GitLab 不可达时这里超时 die(1)，把还没轮询的剖面 B 一起拖死——
+    // 单源故障不该致盲所有源。临时故障（超时/断网/5xx）= 跳过该源继续，不落戳下 tick 重试；
+    // 凭据/配置类硬故障（401/403/404…）才整轮 die（接入坏了必须有人看见）。
+    const txt = `${e?.message || e} ${e?.cause?.code || ''} ${e?.cause?.message || ''}`;
+    const temporary = /timeout|aborted|fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNABORTED|HTTP 429|HTTP 5\d\d/i.test(txt);
+    if (!temporary) die(1, `剖面 A 触发轮询失败：${e?.message || e}`);
+    recordEvent('task-loop', 'source_soft_fail', { source: 'gitlab', error: String(e?.message || e).slice(0, 160) });
+    console.log(`[task-loop] 剖面 A 临时不可达（${e?.message || e}）——本轮跳过该源，其余源继续`);
+    softFail.push({ source: 'gitlab' });
   }
 }
 
@@ -312,12 +338,64 @@ if (wantFeishu) {
   } catch (e) {
     if (e instanceof McpAuthError) die(1, `剖面 B 身份被拒：${e.message}`);
     if (e instanceof McpPermError) die(1, `剖面 B 数据档未授权：${e.message}（飞书后台给 MCP 应用勾选工作项读取范围；探测见 doctor-gates 套件）`);
-    die(1, `剖面 B 触发轮询失败：${e.message}`);
+    // 与剖面 A 同口径：网络类临时故障跳过该源，不拖死剖面 A（2026-11-16）；429/5xx 同为临时（CR 🟡#1）。
+    const txt = `${e?.message || e} ${e?.cause?.code || ''} ${e?.cause?.message || ''}`;
+    const temporary = /timeout|aborted|fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNABORTED|HTTP 429|HTTP 5\d\d/i.test(txt);
+    if (!temporary) die(1, `剖面 B 触发轮询失败：${e?.message || e}`);
+    recordEvent('task-loop', 'source_soft_fail', { source: 'feishu', error: String(e?.message || e).slice(0, 160) });
+    console.log(`[task-loop] 剖面 B 临时不可达（${e?.message || e}）——本轮跳过该源，其余源继续`);
+    softFail.push({ source: 'feishu' });
   }
 }
 
 const ranSources = [wantGitlab ? 'gitlab' : null, wantFeishu ? 'feishu' : null].filter(Boolean).join('+');
-if (triggers.length === 0) { console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`); stampLastRun(); process.exit(0); }
+
+// ---- ack 生命周期 sweep（2026-11-16 关账半环）：触发源消失/内容已变 → 清账或重认 ----
+// 背景：认领落 ack 后若 MR 被合并/批红，触发集里不再有它——ack 与远端认领会一直挂到 TTL
+// 僵尸升级，"修完了"在账面上看不出来。飞书单的关账需按单号反查状态（MQL 单查），本批不做（KI）。
+// 🔴 CR 复审 #1："不在本轮触发集" ≠ "触发已消失"。GitLab 软失败（本轮没查到）、--mr 过滤
+// （视角收窄）、--profile b（根本没查）三种路径下 MR 都不在 triggers 里，但它们活得好好的一一
+// 误关账会释放认领（让别的机器抢走）、清零 budget/TTL（断连→恢复循环可反复绕过 maxRounds 升级）。
+// 所以 sweep 只在本轮**真实轮询成功且未收窄**时才判"消失"；否则本轮不动账。
+if (!opt.dryRun) {
+  const gitlabViewComplete = wantGitlab && !softFail.some((f) => f.source === 'gitlab') && !opt.mr;
+  const ackDir = join(root, '.ai', 'task-loop');
+  let ackFiles = [];
+  try { ackFiles = readdirSync(ackDir).filter((f) => /^ack-.+\.json$/.test(f)); } catch { /* 目录不存在/被文件占位：无账可清 */ }
+  const active = new Map(triggers.map((t) => [`${t.kind}-${t.id}`, t]));
+  for (const f of ackFiles) {
+    let a = null;
+    try { a = JSON.parse(readFileSync(join(ackDir, f), 'utf8')); } catch { continue; }
+    const key = a.trigger;
+    if (!key || !key.startsWith('mr-')) continue; // task 关账留待单查 API（KI-1）
+    if (!gitlabViewComplete) continue; // 本轮看不见 ≠ 消失：软失败/过滤轮不动账
+    const id = key.slice(3);
+    const cur = active.get(key);
+    if (!cur) {
+      // 触发消失：merged / approved / closed → 释放认领 + 删 ack（含工单）(关账)
+      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      rmSync(join(ackDir, f));
+      rmSync(join(ackDir, `pack-${id}.md`), { force: true });
+      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: okRel });
+      stats.gone += 1;
+      console.log(`[task-loop] ${key} 不再触发（已合并/已批红/已关闭）——释放认领并清理 ack 与工单（关账）`);
+    } else if (!a.fingerprint || a.fingerprint !== triggerFingerprint(cur)) {
+      // 内容有更新（或旧格式 ack 无指纹、无法比对）：重置 ack，本轮 claim 循环会重新认领重写。
+      // 旧格式选择重认领而非补写：无基准可比对，且 pending 清单本身可能已过期，重建才是对的（CR 🟡#6）。
+      const why = a.fingerprint ? 'ack_stale' : 'ack_migrated';
+      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      rmSync(join(ackDir, f));
+      recordEvent('task-loop', why, { kind: 'mr', id, released: okRel });
+      stats.stale += 1;
+      console.log(`[task-loop] ${key} ${a.fingerprint ? '待修内容有更新' : '旧格式 ack 迁移（一次性重认领）'}——重置 ack，本轮重新认领`);
+    }
+  }
+}
+
+if (triggers.length === 0) {
+  console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`);
+  finish({ code: softFail.length ? 1 : 0, stamp: !softFail.length });
+}
 
 let blocked = 0;
 for (const t of triggers) {
@@ -363,6 +441,7 @@ for (const t of triggers) {
 
   const c = claim({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id, ttlMs: rules.runtime?.budget?.claimTtlMs });
   if (!c.claimed) {
+    stats.skip += 1;
     if (c.reason === 'zombie') {
       recordEvent('task-loop', 'claim_zombie', { kind: t.kind, id: t.id, ageMs: c.ageMs });
       console.error(`[task-loop] ${t.kind}-${t.id} 认领已过期（${Math.round(c.ageMs / 3600_000)}h）——按 blocked 升级，不自动抢（ADR D2）`);
@@ -377,6 +456,7 @@ for (const t of triggers) {
     continue;
   }
   held.set(`${t.kind}-${t.id}`, { kind: t.kind, id: t.id });
+  stats.claimed += 1;
   recordEvent('task-loop', 'claimed', { kind: t.kind, id: t.id, ref: c.ref });
 
   // ---- 接单（2026-11-15 定稿）：只流转 New→Processing，零评论 ----
@@ -425,15 +505,54 @@ for (const t of triggers) {
     const fromDiscussions = t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ source: 'discussion', id: d.id, note: n.id, body: (n.body || '').slice(0, 120) })));
     const fromComments = (t.comments || []).map((c) => ({ source: 'comment', id: c.id, note: c.note, body: (c.body || '').slice(0, 120), author: c.author }));
     const ack = [...fromDiscussions, ...fromComments];
+    // 空清单终态（2026-11-16）：MR 打回但 0 条待修（意见全 resolved、动词是唯一证据）≠ 有活干。
+    // 认领保留（防下轮重复触发空转），但 state=awaiting_rereview + fingerprint 落账：
+    // fingerprint 变（新评论/新讨论）→ sweep 重置重认领；触发消失 → sweep 关账。
+    const noop = t.kind === 'mr' && ack.length === 0;
+    const fingerprint = t.kind === 'mr' ? triggerFingerprint(t) : undefined;
     mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
-    writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, budget: budget.snapshot() }, null, 2));
+    writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, state: noop ? 'awaiting_rereview' : 'working', ...(fingerprint ? { fingerprint } : {}), budget: budget.snapshot() }, null, 2));
     budget.spendRound();
     budget.pause();
+    // 会话包落盘（2026-11-16）：认领即出工单——交互会话接手 = 读 pack-<id>.md 开工，不必翻 ack JSON。
+    // headless 自动执行仍留 T5（影子周准入）；这里先把"等人来发现"变成"等读一份现成工单"。
+    if (!noop) {
+      try {
+        const { buildR1ProfileA, buildR1ProfileB } = await import('./lib/session-pack.mjs');
+        let pack;
+        if (t.kind === 'mr') {
+          const commentsForPack = [
+            ...t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ discussion_id: d.id, note_id: n.id, author: n.author?.username || '?', body: n.body }))),
+            ...(t.comments || []).map((x) => ({ discussion_id: x.id, note_id: x.note, author: x.author, body: x.body })),
+          ];
+          pack = buildR1ProfileA({ mr: t.mr, comments: commentsForPack, changedFiles: [], headless });
+        } else {
+          pack = buildR1ProfileB({ bug: t.bug || { work_item_id: t.id, name: `（MQL 未取到标题，见单 ${t.id}）` }, repo: feishuCfg.repoHint || '（未配置 runtime.feishu.repoHint——按单据产品线确定目标仓库）', baseRef: 'main' });
+        }
+        writeFileSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), `# 会话包 ${t.kind}-${t.id}（${new Date().toISOString()} 自动打包）\n\n`
+          + '> 接手方式：交互会话读本文按 prompt 开工，产物按协议写回本目录。开工前若 .ai/tasks/ 里还没有对应档案，\n'
+          + '> 先建档：飞书缺陷 `bash scripts/init-harness.sh <slug> S --type bugfix --related feishu:' + `${t.id}` + '`；MR 打回 `--type change --related <原任务> --baseline <commit>`。\n'
+          + (t.kind === 'mr' ? '> 注：变更文件清单未随轮询拉取（省 API）——工单里的"涉及文件"不可当全集，接手后先 git diff 基线自取。\n' : '')
+          + '\n' + pack.prompt + '\n\n## 预期产物\n' + pack.artifacts.map((x) => `- ${x}`).join('\n') + '\n');
+        stats.pack += 1;
+        console.log(`[task-loop] 会话包已落盘：.ai/task-loop/pack-${t.id}.md（交互接手即读它）`);
+      } catch (e) {
+        console.error(`[task-loop] 会话包生成失败（不影响认领）：${e?.message || e}`);
+      }
+    }
     // 终态：本轮修复没做完（v1 占位），认领**继续持有**——但必须显式落账。
     // 只记 claimed 不记配对事件，孤儿引用在任何报表里都看不出来（crewAI 的 EventPairingError
     // 同一个道理：start 没有 end 就该当场报错，而不是等翻日志才发现）。
-    recordEvent('task-loop', 'claim_held', { kind: t.kind, id: t.id, ref: c.ref, budget: budget.snapshot() });
-    console.log(`[task-loop] ${t.kind}-${t.id} 已认领并落确认清单（${ack.length} 条待修意见，v1 占位——headless 修复在 T5 接入）`);
+    if (noop) {
+      stats.noop += 1;
+      // 上一次 working 轮落过的旧工单一并清掉：内容已收敛到零待修，旧工单是过期指令（CR 二审残留）
+      rmSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), { force: true });
+      recordEvent('task-loop', 'claim_noop', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot() });
+      console.log(`[task-loop] ${t.kind}-${t.id} 已认领但 0 条待修意见——修复已推、等 re-review；认领保留防重复触发（fingerprint 变化即重认领，触发消失即关账）`);
+    } else {
+      recordEvent('task-loop', 'claim_held', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot() });
+      console.log(`[task-loop] ${t.kind}-${t.id} 已认领并落确认清单（${ack.length} 条待修意见，v1 占位——headless 修复在 T5 接入）`);
+    }
   } catch (e) {
     // 认领之后失败 → 当场释放，别把 MR 锁在一个没人干活的引用上（上次实测的泄漏路径）
     budget.pause();
@@ -456,5 +575,4 @@ for (const t of triggers) {
 }
 // 正常收尾仍持有的认领不释放（任务没做完，锁要留着），但清空账目避免 exit 钩子二次处理
 held.clear();
-stampLastRun();
-process.exit(blocked > 0 ? 1 : 0);
+finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length });

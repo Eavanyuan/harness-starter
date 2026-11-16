@@ -1,0 +1,255 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "task-loop-close",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "126667b",
+    "affected_ids": [
+      "RS-task-loop US-1（源容错 + 关账半环验收行）",
+      "FS-任务循环执行器 §4.4（轮次围栏/多源容错/ack 生命周期）",
+      "FS-任务循环执行器 §4.7（pack 落盘）",
+      "FS-任务循环执行器 §6/§8/§9/§10",
+      "scripts/task-loop.mjs",
+      "scripts/lib/gitlab-triggers.mjs（triggerFingerprint）",
+      "scripts/install-task-loop.sh（wrapper 2>&1）",
+      "harness.rules.json（runtime.taskLoop.pollSeconds 7200→900）"
+    ],
+    "change_tier": 2,
+    "change_tier_note": "行为变更但局部：不改触发判定形状、不改认领协议、不改接口；新增的是容错分流、本地 ack 生命周期与工单落盘，全部向后兼容（旧 ack 无 state/fingerprint 只走关账分支）",
+    "created_at": "2026-11-16T14:44:23Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-16T14:50:00Z",
+      "exited_at": "2026-11-16T15:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-16T15:00:00Z",
+      "exited_at": "2026-11-16T15:00:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：无多方案决策点——四处缺口各自只有单一走向（容错必须分流、ack 必须关账、工单必须落盘、节拍必须收紧），取舍已在 RS 开放问题写明",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-16T15:00:00Z",
+      "exited_at": "2026-11-16T15:00:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS 受影响段落同批更新，无新接口/新契约需要评审会",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-16T15:00:00Z",
+      "exited_at": "2026-11-16T15:00:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单实现 todo 集合 + 统一验证，无依赖拆分",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-16T15:00:00Z",
+      "exited_at": "2026-11-16T16:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-16T16:05:00Z",
+      "exited_at": "2026-11-16T16:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（审阅者子代理，两轮：一审 request changes 🔴1+🟡6 全处置；二审 approve，残留文档级 4 项已顺手清 + 补 2 用例）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-task-loop-close.md",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（受影响段落同批更新）",
+    "review": ".ai/review/CR-2026-11-16-task-loop-close.md",
+    "retro": "retro/task-loop-close-2026-11-16.md"
+  },
+  "todos": [
+    {
+      "id": "TC1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "多源容错：临时故障（超时/断网/5xx）跳过该源不 die 不落戳、硬故障仍 die 且双通道（stdout 同步）；剖面 A/B 同口径",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "task-loop 5f（500→soft：不 die/围栏源故障/不落戳）+ 5f-bis（401→die 且 stdout 可见、无围栏行）；变异：临时判定恒假 → 5f 红",
+        "feature_complete": "单源临时故障不再致盲另一源（2026-11-16 实测事故：内网 GitLab 断连 9 小时，旧版每 tick die(1) 拖死剖面 B）",
+        "quality_clean": "正则覆盖 message+cause（fetch 的网络错在 cause.code）；die 双通道终端里同文两行，代价写进注释"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TC1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "TC2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "轮次围栏：每轮必印一行结束摘要（触发/认领/待复核/跳过/关账/内容更新/会话包/源故障/耗时/exit），载入凭据后无声退出不可能",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5f/5g/5h/5i 均断言围栏行与计数（源故障 gitlab / 关账 1 / 内容更新 1 / 待复核 1）",
+        "feature_complete": "所有轮次出口走 finish()（未接入/无触发/正常收尾/软失败），die 出口不印围栏（die=未成轮）",
+        "quality_clean": "围栏走 stdout：不依赖 wrapper 2>&1 重装即生效；软失败不落戳语义印在围栏行内"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TC1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "TC3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "ack 生命周期：sweep（MR 触发消失→释放+删 ack+trigger_gone 关账；fingerprint 变化→ack_stale 重认领）+ 空清单终态 awaiting_rereview/claim_noop + triggerFingerprint（id 投影不取 body）",
+      "files": [
+        "scripts/task-loop.mjs",
+        "scripts/lib/gitlab-triggers.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 双文件过",
+        "tests": "5g（健康空集两轮端到端：关账+引用删除+工单同删+trigger_gone 晚于 claimed）+ 5g-bis（软失败轮不动账：ack/工单/认领保留、无 trigger_gone——CR 🔴#1 回归钉）+ 5h（旧格式 ack_migrated 一次性重认领重建+同内容再跑幂等）+ 5i（纯动词零待修：awaiting_rereview+claim_noop+无 pack）；变异：关 sweep→3红、noop 恒假→1红、去视角守卫→2红",
+        "feature_complete": "修完的 MR 不再挂到 25h TTL 僵尸升级；评审新增意见自动重认领；纯动词打回有明确终态不再说『已落清单 0 条』",
+        "quality_clean": "CR 🔴#1 修复：sweep 仅在本轮 GitLab 真实轮询成功且未用 --mr 收窄时判\"消失\"（软失败/过滤/剖面演练轮不动账——误关账会释放认领、清零 budget/TTL）；旧格式 ack 迁移走重认领而非补写（无基准可比对、pending 可能已过期）；关账同删工单；task 关账不做（KI-1）；ack 解析失败跳过不崩"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TC3.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "TC4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "认领即落会话工单：pack-<id>.md（session-pack R1 prompt + 接手方式 + 建档指令 + 预期产物）；空清单终态不落包；headless 自动执行仍留 T5",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5h 断言 pack 首落含建议甲不含建议乙、重落后含建议乙；5i 断言 noop 不落 pack",
+        "feature_complete": "人接手从翻 ack JSON 变成读一份现成工单；工单内含 init-harness 建档指令（bugfix/change 两种形态）",
+        "quality_clean": "pack 生成失败只告警不回滚认领（工单是增强不是前提）；MR 与 bug 两形态分别走 buildR1ProfileA/B"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TC3.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "TC5",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "节拍 7200→900（P1 延迟上限 2h→15min）+ wrapper exec 2>&1（stderr 不再被 plist 分流藏住）+ 影响链文档（RS-task-loop-close 新建、RS-task-loop US-1 两行、FS §4.4/§4.7/§6/§8/§9/§10）",
+      "files": [
+        "harness.rules.json",
+        "scripts/install-task-loop.sh",
+        "docs/01-requirements/RS-task-loop-close.md",
+        "docs/01-requirements/RS-task-loop.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 安装器过；JSON 可解析",
+        "tests": "5j（pollSeconds 900 入库）+ 10d（wrapper 2>&1 结构断言，含既有不 source 断言不回归）",
+        "feature_complete": "节拍改配置即生效（不用重装）；wrapper 2>&1 新装即得，旧安装由 runner 侧 die 双通道兜底（兼容口径 FS §10）",
+        "quality_clean": "阈值改配置不改代码；429/5xx 归临时（CR 🟡#1）；repoHint 配置化去硬编码（CR 🟡#5，FS §8 登记）；执行位 755 找回（CR 🟡#3）；pollSeconds 生效前提（心跳 ≤ 节拍）写入 FS §8"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TC5.log",
+        "command": "bash test/task-loop.test.sh && bash -n scripts/install-task-loop.sh && node -e 'const j=require(\"./harness.rules.json\"); if(j.runtime.taskLoop.pollSeconds!==900) process.exit(1)'"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "飞书单（task-*）的 ack 无关账路径：MQL 只查 New 状态，接单后单子变 Processing 不再出现在触发集，sweep 对 task ack 不动作；需按单号反查状态的单查 API 才能判『已解决→关账』。本批只做 MR 侧关账",
+      "owner": "task-loop",
+      "status": "open",
+      "resolution": "acknowledged：MR 侧关账已落地并实测；飞书单需按单号反查状态的单查 API（MQL 单查 vs 工作项详情），留待「接单→修复→关单」全链第二次实跑时定接口"
+    },
+    {
+      "id": "KI-2",
+      "text": "定时器轮次账本在用户级目录（HARNESS_LEDGER_DIR=~/.harness/task-loop）与仓库账本并存——有意隔离（不脏工作树），但 --report/ledger:report 不聚合两处，排查需人肉记得看用户目录",
+      "owner": "task-loop",
+      "status": "open",
+      "resolution": "acknowledged：双账本是有意隔离（定时器写入不脏仓库工作树）；排查口径已写入 FS §10；--report 聚合与 KI-1 同批做"
+    },
+    {
+      "id": "KI-3",
+      "text": "fetchTriggers 列表无翻页（per_page=100，GitLab 单页上限）：本人 open MR >100 条时最老的掉出第一页，gitlabViewComplete 守卫拦不住，会被 sweep 误关账（CR 二审新发现，🔴#1 同类形态）。彻底解法=关账前按 iid 单查 MR 状态复核（ack 需存 project_id）",
+      "owner": "task-loop",
+      "status": "open",
+      "resolution": "acknowledged：per_page=100 是 GitLab 单页上限，单人 open MR >100 极难触顶；彻底解法（关账前按 iid 单查 MR 状态复核，ack 落 project_id）已在代码注释与 CR 登记，实现留下批"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

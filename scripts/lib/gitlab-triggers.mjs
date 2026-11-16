@@ -183,7 +183,10 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   };
   const optional = async (path) => { try { return await api(path); } catch { return null; } };
 
-  const mrs = await api('/merge_requests?scope=created_by_me&state=opened&per_page=20');
+  // per_page=100（GitLab 单页上限）：列表无翻页，页大小就是 sweep 的视角边界——本人 open MR
+  // 超过页大小会把最老的挤出列表，被 sweep 误判"触发消失"关账（CR 二审新发现，🔴#1 同类形态）。
+  // 100 对单人已极难触顶；真触顶时的彻底解法是关账前单查 MR 状态复核（KI-3 登记）。
+  const mrs = await api('/merge_requests?scope=created_by_me&state=opened&per_page=100');
   const out = [];
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
@@ -209,4 +212,20 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     out.push({ kind: 'mr', id: mr.iid, mr, unresolved: r.unresolved, comments: reviewCommentsByOthers(discs, username), reviewState: r.reviewState, signal: r.signal, approval: r.approval });
   }
   return out;
+}
+
+/**
+ * 触发内容指纹（2026-11-16 关账半环）：待修内容的最小稳定投影。
+ * 用途：ack 里记下它，下一轮 sweep 对比——相同=内容没变（等 re-review/等修复，不动）；
+ * 不同=评审又写了新东西（新讨论/新评论），重置 ack 重新认领。只取 id 不取 body：
+ * body 改写（改错别字）不算新意见，避免无关编辑触发重认领。
+ */
+export function triggerFingerprint(t) {
+  const parts = [
+    ...(t.unresolved || []).flatMap((d) => (d.notes || [])
+      .filter((n) => n.resolvable && !n.resolved)
+      .map((n) => `d${d.id}n${n.id}`)),
+    ...(t.comments || []).map((c) => `c${c.id ?? c.note}`),
+  ].sort();
+  return parts.length ? parts.join(',') : 'empty';
 }

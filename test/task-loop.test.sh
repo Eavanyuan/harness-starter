@@ -246,7 +246,7 @@ const verbDiscs = [{ id: "d1", notes: [
 const calls = [];
 const fake = async (url) => {
   calls.push(url);
-  const json = url.endsWith("/merge_requests?scope=created_by_me&state=opened&per_page=20") ? [mrWithVerb, mrQuiet]
+  const json = url.endsWith("/merge_requests?scope=created_by_me&state=opened&per_page=100") ? [mrWithVerb, mrQuiet]
     : /\/projects\/1\/merge_requests\/7\/discussions$/.test(url) ? verbDiscs
     : /\/projects\/2\/merge_requests\/8\/discussions$/.test(url) ? []
     : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
@@ -288,7 +288,7 @@ try { changesRequestedAt(discs, ""); } catch { threwVerb = true; }
 // 端到端：动词型触发的 payload 里带着建议性评论
 const mrs = [{ iid: 9, project_id: 3, sha: "s9", author: { username: me } }];
 const fake = async (url) => {
-  const json = url.endsWith("scope=created_by_me&state=opened&per_page=20") ? mrs
+  const json = url.endsWith("scope=created_by_me&state=opened&per_page=100") ? mrs
     : /discussions$/.test(url) ? discs
     : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
     : null;
@@ -457,6 +457,316 @@ git -C "$TL2/r.git" for-each-ref refs/heads/claims/mr-11 --format='%(refname)' |
 check "认领引用已删除（无残留）" "0" "$r"
 node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);process.exit(t.includes("claimed")&&t.includes("released")&&t.indexOf("released")>t.indexOf("claimed")?0:1)' "$TMP/ledgerRE/events.jsonl"
 check "账本：claimed 有配对的 released" "0" "$?"
+
+echo "== 5f. 源临时故障（超时/断网/5xx）：跳过该源不 die、不落节流戳、围栏可见（2026-11-16 实测事故）=="
+# 背景：内网 GitLab 断连 9 小时，剖面 A 每轮超时 die(1)，剖面 B 还没轮询就被拖死；
+# 且 die 只写 stderr（plist 分流到 .err），.out 里只见"凭据已载入"。三件事一起验：
+# ①500=临时 → 不 die，走到围栏；②exit 1 但不落节流戳（下 tick 立即重试，不吃节拍）；③围栏行走 stdout。
+TL5F="$TMP/e2e5f"; git init -q --bare "$TL5F/r.git"
+git clone -q "$TL5F/r.git" "$TL5F/w" 2>/dev/null
+( cd "$TL5F/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => { s.statusCode = 500; s.end("{}"); });
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = "", err = "";
+child.stdout.on("data", (d) => { out += d; });
+child.stderr.on("data", (d) => { err += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const soft = /临时不可达/.test(out) && !/剖面 A 触发轮询失败/.test(out);
+const fence = /轮次结束：.*源故障 gitlab/.test(out) && /不落节流戳/.test(out);
+const noStamp = !existsSync(repo + "/.ai/locks/task-loop.last-run");
+console.log(code, soft ? "soft-ok" : "soft-bad", fence ? "fence-ok" : "fence-bad", noStamp ? "nostamp-ok" : "stamp-bad");
+' "$HERE" "$TL5F/w" "$TMP/ledger5f" > "$TMP/e2e5f.txt" 2>&1
+grep -q "^1 soft-ok fence-ok nostamp-ok$" "$TMP/e2e5f.txt" && r=0 || { cat "$TMP/e2e5f.txt"; r=1; }
+check "源临时故障：跳过不 die、围栏可见、不落戳（exit 1 下 tick 重试）" "0" "$r"
+
+echo "== 5f-bis. 硬故障（401）仍 die，且 die 双通道（stdout 同步，.out 不再无声）=="
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => { s.statusCode = 401; s.end("{}"); });
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = "";
+child.stdout.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const died = /剖面 A 触发轮询失败/.test(out);
+const fenced = /轮次结束/.test(out);
+console.log(code, died ? "die-ok" : "die-bad", fenced ? "fence-bad" : "nofence-ok");
+' "$HERE" "$TL5F/w" "$TMP/ledger5fb" > "$TMP/e2e5fb.txt" 2>&1
+grep -q "^1 die-ok nofence-ok$" "$TMP/e2e5fb.txt" && r=0 || { cat "$TMP/e2e5fb.txt"; r=1; }
+check "硬故障 die(1) 且报错同步到 stdout（die 即未成轮，不印围栏行）" "0" "$r"
+
+echo "== 5f-ter. 429（限流）归临时故障：不 die、跳过该源（CR 二审补用例）=="
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => { s.statusCode = 429; s.end("{}"); });
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+console.log(code, /临时不可达/.test(out) && !/剖面 A 触发轮询失败/.test(out) ? "soft-ok" : "soft-bad");
+' "$HERE" "$TL5F/w" "$TMP/ledger5ft" > "$TMP/e2e5ft.txt" 2>&1
+grep -q "^1 soft-ok$" "$TMP/e2e5ft.txt" && r=0 || { cat "$TMP/e2e5ft.txt"; r=1; }
+check "429 限流：归临时不 die（限流不该把剖面 B 拖死）" "0" "$r"
+
+echo "== 5g. 关账半环：MR 不再触发（合并/批红/关闭）→ 释放认领 + 删 ack + trigger_gone 落账 =="
+# 背景：修完的 MR 被批红后触发集里不再有它，ack 与远端认领会一直挂到 TTL 僵尸升级——
+# "修完了"在账面上看不出来。第二轮返回空触发集，验证 sweep 把账关掉。
+TL5G="$TMP/e2e5g"; git init -q --bare "$TL5G/r.git"
+git clone -q "$TL5G/r.git" "$TL5G/w" 2>/dev/null
+( cd "$TL5G/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=打回待修；2=空触发集（已批红/合并）
+const mr = () => JSON.stringify([{ iid: 31, project_id: 1, title: "关账验证", sha: "abc", author: { username: "me" } }]);
+const notes = () => JSON.stringify([{ id: "d1", notes: [{ id: 51, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "改成幂等", created_at: "2026-11-16T03:00:00Z" }] }]);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(phase === 1 ? mr() : "[]");
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) return s.end(notes());
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T02:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; });
+  child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run();
+const ack1 = existsSync(repo + "/.ai/task-loop/ack-31.json");
+const pack1 = existsSync(repo + "/.ai/task-loop/pack-31.md");
+phase = 2;
+const r2 = await run();
+srv.close();
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = ack1 && pack1 && r1.code === 0 && r2.code === 0
+  && !existsSync(repo + "/.ai/task-loop/ack-31.json")
+  && !existsSync(repo + "/.ai/task-loop/pack-31.md")
+  && types.includes("trigger_gone") && types.indexOf("trigger_gone") > types.indexOf("claimed")
+  && /关账 1/.test(r2.out) && /不再触发/.test(r2.out);
+console.log(ok ? "ok" : "bad", r1.code, r2.code);
+' "$HERE" "$TL5G/w" "$TMP/ledger5g" > "$TMP/e2e5g.txt" 2>&1
+grep -q "^ok 0 0$" "$TMP/e2e5g.txt" && r=0 || { cat "$TMP/e2e5g.txt"; r=1; }
+check "关账：触发消失→释放+删 ack 与工单+trigger_gone（围栏计 关账 1）" "0" "$r"
+git -C "$TL5G/r.git" for-each-ref refs/heads/claims/mr-31 --format='%(refname)' | grep -q . && r=1 || r=0
+check "关账后认领引用已删（不留僵尸到 TTL）" "0" "$r"
+
+echo "== 5g-bis. 软失败轮不动账：源断连时存量 ack/认领/工单原样保留（CR 复审 🔴#1 回归钉）=="
+# 复审实测复现的误关账形态：健康轮认领 → 断连软失败轮 → 旧实现把 ack 删了、trigger_gone 落账、
+# 认领释放（MR 并没合并）。断连→恢复循环还会反复清零 budget/TTL 绕过 maxRounds 升级保护。
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let broken = false;
+const srv = createServer((q, s) => {
+  if (broken) { s.statusCode = 500; s.end("{}"); return; }
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 61, project_id: 1, title: "软失败守账", sha: "abc", author: { username: "me" } }]));
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [{ id: 81, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "意见", created_at: "2026-11-16T05:00:00Z" }] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T04:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run();
+broken = true;
+const r2 = await run(); // 断连软失败：不得动账
+srv.close();
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = r1.code === 0 && r2.code === 1
+  && existsSync(repo + "/.ai/task-loop/ack-61.json") && existsSync(repo + "/.ai/task-loop/pack-61.md")
+  && !types.includes("trigger_gone") && !types.includes("ack_stale") && !types.includes("ack_migrated")
+  && /源故障 gitlab/.test(r2.out);
+console.log(ok ? "ok" : "bad", r1.code, r2.code);
+' "$HERE" "$TL5F/w" "$TMP/ledger5gb" > "$TMP/e2e5gb.txt" 2>&1
+grep -q "^ok 0 1$" "$TMP/e2e5gb.txt" && r=0 || { cat "$TMP/e2e5gb.txt"; r=1; }
+check "软失败轮不动账：ack/工单保留、无 trigger_gone（本轮看不见≠消失）" "0" "$r"
+git -C "$TL5F/r.git" for-each-ref refs/heads/claims/mr-61 --format='%(refname)' | grep -q "claims/mr-61"
+check "软失败轮认领不释放（不被别的机器抢走）" "0" "$?"
+
+echo "== 5g-ter. --mr 过滤轮不动账：视角收窄不等于触发消失（CR 二审补用例）=="
+# TL5F/w 里已有 ack-61（5g-bis 留下）：用 --mr 999 收窄视角跑一轮，ack 必须原样保留。
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 61, project_id: 1, title: "软失败守账", sha: "abc", author: { username: "me" } }]));
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [{ id: 81, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "意见", created_at: "2026-11-16T05:00:00Z" }] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T04:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo, "--mr", "999"], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = code === 0 && existsSync(repo + "/.ai/task-loop/ack-61.json")
+  && !types.includes("trigger_gone") && !types.includes("ack_migrated");
+console.log(ok ? "ok" : "bad", code);
+' "$HERE" "$TL5F/w" "$TMP/ledger5gt" > "$TMP/e2e5gt.txt" 2>&1
+grep -q "^ok 0$" "$TMP/e2e5gt.txt" && r=0 || { cat "$TMP/e2e5gt.txt"; r=1; }
+check "--mr 过滤轮不动账（视角收窄≠消失）" "0" "$r"
+
+echo "== 5h. 待修内容更新：fingerprint 变化 → 重置 ack 重新认领 + 会话包重落（含 pack 首次落盘）=="
+TL5H="$TMP/e2e5h"; git init -q --bare "$TL5H/r.git"
+git clone -q "$TL5H/r.git" "$TL5H/w" 2>/dev/null
+( cd "$TL5H/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let extra = 0; // 0=只有建议甲；1=评审又补了建议乙
+const notes = () => JSON.stringify([{ id: "d1", notes: [
+  { id: 61, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议甲：下沉杂凑", created_at: "2026-11-16T03:00:00Z" },
+  ...(extra ? [{ id: 63, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议乙：补测试", created_at: "2026-11-16T04:00:00Z" }] : []),
+  { id: 62, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-16T03:30:00Z" },
+] }]);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 41, project_id: 1, title: "指纹验证", sha: "abc", author: { username: "me" } }]));
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) return s.end(notes());
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T02:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run();
+const pack1 = readFileSync(repo + "/.ai/task-loop/pack-41.md", "utf8");
+// 旧格式迁移（CR 🟡#6）：剥掉 fingerprint 模拟升级前存量 ack（live ack-1882 形态）
+const ack1 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-41.json", "utf8"));
+delete ack1.fingerprint;
+writeFileSync(repo + "/.ai/task-loop/ack-41.json", JSON.stringify(ack1, null, 2));
+extra = 1;
+const r2 = await run(); // 无指纹 + 内容变 → ack_migrated 一次性重认领重建（不是补写）
+const r3 = await run(); // 同内容再跑：fingerprint 一致 → 不再动账（迁移幂等）
+srv.close();
+const ack2 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-41.json", "utf8"));
+const pack2 = readFileSync(repo + "/.ai/task-loop/pack-41.md", "utf8");
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const claimedCount = types.filter((x) => x === "claimed").length;
+const ok = r1.code === 0 && r2.code === 0 && r3.code === 0
+  && /建议甲/.test(pack1) && !/建议乙/.test(pack1)
+  && ack2.pending.length === 2 && /建议乙/.test(pack2) && !!ack2.fingerprint
+  && types.includes("ack_migrated") && !types.includes("ack_stale")
+  && types.lastIndexOf("claimed") > types.indexOf("ack_migrated")
+  && claimedCount === 2
+  && /内容更新 1/.test(r2.out) && /会话包/.test(r1.out);
+console.log(ok ? "ok" : "bad", r1.code, r2.code, r3.code, ack2.pending.length);
+' "$HERE" "$TL5H/w" "$TMP/ledger5h" > "$TMP/e2e5h.txt" 2>&1
+grep -q "^ok 0 0 0 2$" "$TMP/e2e5h.txt" && r=0 || { cat "$TMP/e2e5h.txt"; r=1; }
+check "内容更新/迁移：旧格式→ack_migrated 重认领重建 2 条含指纹；同内容再跑不动账（幂等）" "0" "$r"
+git -C "$TL5H/r.git" for-each-ref refs/heads/claims/mr-41 --format='%(refname)' | grep -q "claims/mr-41"
+check "重认领后引用仍在（还挂着活）" "0" "$?"
+
+echo "== 5i. 空清单终态：纯动词打回（零意见零评论）→ awaiting_rereview + claim_noop，不落会话包 =="
+TL5I="$TMP/e2e5i"; git init -q --bare "$TL5I/r.git"
+git clone -q "$TL5I/r.git" "$TL5I/w" 2>/dev/null
+( cd "$TL5I/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 51, project_id: 1, title: "纯动词", sha: "abc", author: { username: "me" } }]));
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 71, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-16T03:30:00Z" },
+  ] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T02:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-51.json", "utf8"));
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = code === 0 && ack.state === "awaiting_rereview" && ack.fingerprint === "empty" && ack.pending.length === 0
+  && types.includes("claim_noop") && !types.includes("claim_held")
+  && !existsSync(repo + "/.ai/task-loop/pack-51.md")
+  && /等 re-review/.test(out) && /待复核 1/.test(out);
+console.log(ok ? "ok" : "bad", code);
+' "$HERE" "$TL5I/w" "$TMP/ledger5i" > "$TMP/e2e5i.txt" 2>&1
+grep -q "^ok 0$" "$TMP/e2e5i.txt" && r=0 || { cat "$TMP/e2e5i.txt"; r=1; }
+check "空清单终态：awaiting_rereview+claim_noop+无 pack（不再说『已落清单 0 条』那种含混话）" "0" "$r"
+
+echo "== 5j. 节拍收紧入库：pollSeconds 900（P1 延迟上限 2h→15min）=="
+grep -q '"pollSeconds": 900' "$HERE/harness.rules.json"
+check "runtime.taskLoop.pollSeconds=900 已入库（文档口径同步 FS §8）" "0" "$?"
 
 echo "== 6. T4a 归因：指纹归一化 + merge-base 基线实跑 + 集合差 =="
 # 纯函数层：参数值变化不改变身份（同一失败两次运行、期望/实际互换、全角括号、ANSI 色码）
@@ -643,6 +953,10 @@ echo "== 10d. wrapper 是凭据的唯一入口：干净环境（模拟 launchd�
 # launchd 不继承登录 shell 的 env，systemd 的 unit 也不再写 Environment=。
 # 所以这条必须用 env -i 跑：带环境的测试证明不了"定时器环境里能读到凭据"。
 bash -n "$D/run-round.sh"; check "wrapper 语法合法" "0" "$?"
+# stderr 合流（2026-11-16）：plist 把 stderr 分流到 .err，只走 stderr 的报错在 .out 里不可见
+# （实测：源超时 die(1) 连转 9 小时，.out 只有"凭据已载入"）。exec 行 2>&1 把 node 输出合进 .out；
+# bash 自身 shell-init 噪声仍留 .err（发生在 exec 之前）。
+grep -q '2>&1' "$D/run-round.sh"; check "wrapper exec 行 2>&1（stderr 不再被藏起来）" "0" "$?"
 # 结构判据：包装脚本不得把凭据文件当**代码**加载（`.` 与 `source` 两种写法、行首还是行中都算——
 # `set -a; . file; set +a` 这种一行式写法是最容易混进来的一种）。
 # 一旦 source，"能写凭据文件"就升级成"能以定时器身份执行任意命令"——这是本层的核心边界，
@@ -653,8 +967,9 @@ grep -q 'HARNESS_ENV_FILE=' "$D/run-round.sh"; check "wrapper 只交出凭据文
 # HOME 必须显式给假目录：node 的 os.homedir() 在 HOME 缺失时回落 passwd 里的真实家目录，
 # 于是会读到本机真实的 feishu-oauth.json 并对生产飞书发请求——测试不该有外部副作用。
 OUT="$(env -i HOME="$TMP/h2" PATH=/usr/bin:/bin /bin/bash "$D/run-round.sh" 2>&1 | head -3)"
-# 地址指向不可达端口：连不上恰好证明 GITLAB_URL/TOKEN 被读进来了（没读到会走"未接入"分支退出 0）
-case "$OUT" in *"剖面 A 触发轮询失败"*) check "wrapper 注入凭据并进入 runner" "0" "0" ;; *) check "wrapper 注入凭据并进入 runner" "0" "1: $OUT" ;; esac
+# 地址指向不可达端口：连不上（临时故障）不再 die，但"剖面 A 临时不可达"同样证明
+# GITLAB_URL/TOKEN 被读进来了（没读到会走"未接入"分支退出 0，不提剖面 A）。
+case "$OUT" in *"剖面 A"*) check "wrapper 注入凭据并进入 runner" "0" "0" ;; *) check "wrapper 注入凭据并进入 runner" "0" "1: $OUT" ;; esac
 
 echo "== 10e. 重装不覆盖已有凭据（换一个变量不该把上次的 token 清掉） =="
 printf 'HARNESS_EXTRA=kept\n' >> "$D/task-loop.env"
@@ -770,8 +1085,9 @@ printf 'GITLAB_URL=http://127.0.0.1:1\nGITLAB_TOKEN=glpat-from-file\n' > "$GOODC
 run_clean_env() { env -i HOME="$TMP/h6" PATH=/usr/bin:/bin HARNESS_ENV_FILE="$GOODC" \
   HARNESS_LEDGER_DIR="$TMP/l6" "$NODE_BIN" "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" 2>&1 | head -6; }
 OUT="$(run_clean_env)"
-# 地址指向不可达端口：连不上恰好证明 url/token 被读进来了（没读到会走"未接入"分支退出 0）
-case "$OUT" in *"剖面 A 触发轮询失败"*) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "0" ;; *) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "1: $OUT" ;; esac
+# 地址指向不可达端口：连不上（临时故障）不再 die，但只要提到"剖面 A"就证明 url/token 被读进来了
+# （没读到会走"未接入"分支退出 0，一个字都不提剖面 A）。
+case "$OUT" in *"剖面 A"*) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "0" ;; *) check "干净环境 + 凭据文件 → 进入 runner 并真的用了凭据" "0" "1: $OUT" ;; esac
 case "$OUT" in *"凭据文件已载入 2 键"*) check "载入了几键有交代（排查「配了没生效」要看得到）" "0" "0" ;; *) check "载入了几键有交代" "0" "1: $OUT" ;; esac
 chmod 644 "$GOODC"
 OUT="$(run_clean_env)"

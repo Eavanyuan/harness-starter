@@ -84,6 +84,20 @@
 - 输出：`{rounds, activeMs}` 快照入 `ack-<id>.json` 与账本；`{ok, reason}`
 - 失败分支：等待 CI/人审不计墙钟（`pause/resume` 界定活动区间）；缺审批时间 → `ok:false` + `无法判定审批时间`（判不了就明说不判）；自批/陈批 → 拒绝；认领后任何异常 → `task_failed` + `released`，不留孤儿引用
 
+**轮次围栏与多源容错（2026-11-16 变更 task-loop-close）**
+
+- 输入：各源轮询结果与失败异常（`e.message` + `e.cause.code/message`）
+- 处理：临时故障（超时/断网/5xx/429，正则含 `fetch failed`/`ECONN*`/`HTTP 429`/`HTTP 5xx`）→ 跳过该源继续其余源，`source_soft_fail` 落账，**不落节流戳**（exit 1，下一 tick 立即重试）；硬故障（401/403/路径错）→ `die(1)` 整轮停（未成轮，不印围栏——不无声由 die 双通道保证）。成轮必印一行**围栏**：`轮次结束：触发 N / 认领 N / 待复核 N / 跳过 N / 关账 N / 内容更新 N｜耗时｜exit`，走 stdout
+- 输出：`.out` 里永远能回答"这轮干了什么/死在哪"——未接入/无触发/正常收尾/软失败四个出口都走 `finish()` 印围栏；硬故障 `die(1)` 是未成轮不印围栏，但 die 双通道（stderr+stdout 同步）保证不无声（配合 wrapper `2>&1`）
+- 失败分支：临时故障不 die（单源故障不致盲另一源——2026-11-16 实测：内网 GitLab 断连 9 小时，旧版每 tick 超时 die(1)，剖面 B 全程失明）；不落戳避免"临时故障吃两小时节拍"
+
+**ack 生命周期（关账半环）**
+
+- 输入：本地 `ack-*.json` 与本轮触发集；`triggerFingerprint(t)`（待修项 id 排序投影，不取 body——改错别字不算新意见）
+- 处理：认领时 ack 新增 `state`（`working`/`awaiting_rereview`）与 `fingerprint` 字段；每轮 sweep（非 dry-run，且**仅当本轮 GitLab 真实轮询成功且未用 `--mr` 收窄**——软失败/过滤/剖面演练轮里"不在触发集"是视角问题不是事实变化，误关账会释放认领、清零 budget/TTL）：MR 不再触发（合并/批红/关闭）→ 释放认领 + 删 ack 与工单 + `trigger_gone`（关账）；fingerprint 变化（评审新写了东西）→ 重置 ack 重认领（`ack_stale`）；旧格式 ack 无 fingerprint → 一次性重认领迁移（`ack_migrated`，无基准可比对且 pending 可能已过期，重建优于补写）；纯动词零待修 → `claim_noop` + `awaiting_rereview`，认领保留防重复触发空转；同时用 `session-pack` 落 `pack-<id>.md` 会话工单（交互接手即读，headless 自动执行仍留 T5）
+- 输出："修完了"在账面上可见（关账计数进围栏行）；待修内容不再挂着旧清单干活；人接手从翻 ack JSON 变成读一份现成工单
+- 失败分支：飞书单的关账需按单号反查状态（MQL 单查），本批不做（KI-1 登记）；ack 解析失败跳过不崩（脏文件不阻断轮次）
+
 ### 4.5 T4a 失败指纹与基线实跑
 
 - 输入：套件 stdout（含 ANSI 色码与 `(期望 x，实际 y)` 尾巴）
@@ -101,7 +115,7 @@
 ### 4.7 T5 会话打包 / CI 盯梢 / 定时器 / 影子周
 
 - 输入：MR 或 bug 上下文、历轮日志、失败指纹；CI pipeline 状态
-- 处理：`session-pack.mjs` 组 R1/Rn prompt；`ci-watch.mjs` 零 LLM 轮询终态；`install-task-loop.sh` 渲染 launchd/systemd 单元（默认 180s）；`--dry-run` 累积 `shadow.jsonl`，`--report` 出统计
+- 处理：`session-pack.mjs` 组 R1/Rn prompt；**runner 认领时直接落盘 `pack-<id>.md`**（2026-11-16 task-loop-close：认领即出工单，含接手方式/建档指令/预期产物；空清单终态不落包）；`ci-watch.mjs` 零 LLM 轮询终态；`install-task-loop.sh` 渲染 launchd/systemd 单元（默认 180s）；`--dry-run` 累积 `shadow.jsonl`，`--report` 出统计
 - 输出：`acks.json`/`todo.json`/`round-N.md`；终态或 `timeout`；影子周报告（唯一触发 N / 重复命中 / 按天分布）
 - 失败分支：产物缺件 fail-closed（不拿部分产物当完成）；CI 盯梢超时返回 `timeout` 交上层升级（不判红）；安装前校验目标仓库 hook 接线，无接线 `exit 69`；**凭据不进 plist / unit**（见下）
 - 定时器的执行体不是 `node`，而是 `$HOME/.harness/task-loop/run-round.sh`（0700）：它把同目录 `task-loop.env`（0600）的**路径**交给 runner（`HARNESS_ENV_FILE`），再 `exec node`。plist / unit 只写"用 `/bin/bash` 跑这个脚本"，**不含任何秘密**。理由不是洁癖——这两个文件会被 `launchctl print` / `systemctl cat` 原样打印到终端，也经常被"贴配置求助"带出去；旧版安装器直接把 `GITLAB_TOKEN` 渲染进去，等于把口令落在一个随时会被展示的文件里。副作用是换 token 只改 `task-loop.env`，不用重装（重装会丢 launchd 的已加载状态）。
@@ -173,8 +187,8 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 
 | 变更 | 类型 | 迁移脚本 | down 脚本 | 破坏性 |
 |---|---|---|---|---|
-| `.ai/task-loop/{shadow.jsonl,ack-<id>.json}` | 新增本地文件 | 无（首次运行自建目录） | 删目录即可 | 否 |
-| `.ai/ledger/events.jsonl` 新增事件类型 `trigger_found/claimed/claim_held/task_failed/released/release_failed/claim_zombie/claim_skip/budget_exhausted/shadow_hit/profile_b_polled` | 追加型 | 无 | 无（只追加不改写） | 否 |
+| `.ai/task-loop/{shadow.jsonl,ack-<id>.json,pack-<id>.md}` | 新增本地文件（ack 带 `state`/`fingerprint` 字段；pack 为会话工单） | 无（首次运行自建目录） | 删目录即可 | 否 |
+| `.ai/ledger/events.jsonl` 新增事件类型 `trigger_found/claimed/claim_held/claim_noop/task_failed/released/release_failed/claim_zombie/claim_skip/ack_stale/ack_migrated/trigger_gone/source_soft_fail/budget_exhausted/shadow_hit/profile_b_polled` | 追加型 | 无 | 无（只追加不改写） | 否 |
 | `refs/heads/claims/<kind>-<id>` | 新增远端分支命名空间 | 无 | `git push origin :refs/heads/claims/<kind>-<id>` | 否（TTL 兜底） |
 | `harness.rules.json` 新增 `runtime.budget`（`maxRounds`/`maxActiveMs`/`claimTtlMs`） | 新增配置段 | 无（缺省用代码默认值） | 删段即回默认 | 否 |
 | `harness.rules.json` 新增 `runtime.gitlab`（`url`）；`runtime.feishu` 的 `workItemType` 换成 `taskTypes[]` | 新增配置段 + 字段替换 | 无（缺 `taskTypes` 时仍认 `workItemType`，缺 `url` 即视为未接入） | 删段即回"不接" | 否（旧值仍可读） |
@@ -210,6 +224,9 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | `HARNESS_ENV_FILE` | `$HOME/.harness/task-loop/task-loop.env` | 凭据文件路径（`run-round.sh` 会 export 它）。指到不存在的路径 = 该文件不生效，与"未接入"同判据 | 否 |
 | `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：交出凭据**路径** → `exec node`（不注入值，不 source） | 装定时器时生成 |
 | `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
+| `runtime.taskLoop.pollSeconds` | `900`（2026-11-16 由 7200 收紧） | 轮询节拍（秒）。P1 单从出现到接单的延迟上限从 2 小时压到 15 分钟；源临时故障不落戳，下一 tick 立即重试。生效前提：定时器心跳 ≤ 节拍（默认 180s 满足） | 否 |
+| `runtime.feishu.repoHint` | 空 | 工单（pack）里剖面 B 的目标仓库指引——产品路由是部署事实，随空间配置走，不硬编码进脚手架 | 否 |
+| `FEISHU_REPO_HINT` | 无 | 覆盖 `runtime.feishu.repoHint` 的临时手段（切空间/演练） | 否 |
 | `HARNESS_GITLAB_PROJECT` | 无 | doctor 门禁在场性检查的目标项目（`group/project`）；不配则只提醒"未检查" | 否 |
 | `GIT_REMOTE` | `origin` | 认领 push 的目标远端 | 否 |
 | `runtime.feishu.projectKey` | 无 | 剖面 B 接的飞书项目空间标识（如 `taosdata_td`）。缺了 MQL 就是单段表名 = 一句 `semantic error` | 剖面 B 必填 |
@@ -241,6 +258,8 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | 多任务类型 | `taskTypes` 两项 → 两条 MQL，表名各不相同；`--type` 可覆盖 | 一个 MQL 只能查一种工作项 |
 | 真触发端到端 | 假 GitLab → `claimed` → `claim_held`，退出 0 | `--dry-run` 走不到这条路 |
 | 认领后异常 | `task_failed` + `released`，远端引用被删，退出 1 | 不得静默 `exit 0` |
+| 源临时故障（2026-11-16） | 500/断网 → 不 die、围栏行含 `源故障 gitlab`、不落节流戳（exit 1 下 tick 重试）；401 硬故障仍 die 且报错同步 stdout（die 双通道） | 单源故障不致盲另一源；`.out` 不再只见"凭据已载入" |
+| 关账半环（2026-11-16） | 触发消失 → 释放认领 + 删 ack 与工单 + `trigger_gone`，围栏计 `关账 1`；fingerprint 变化 → `ack_stale` + 重认领 + ack/pack 更新；纯动词零待修 → `claim_noop` + `state:awaiting_rereview` + 不落 pack；**软失败/`--mr` 过滤轮存量 ack 原样保留**（本轮看不见 ≠ 消失） | 变异验证：临时判定恒假/关 sweep/noop 恒假 → 各自变红（1/3/1）；CR 复审补的负向用例：断连轮不动账 |
 | 预算 | 轮次第 N 轮才耗尽；100s 等待不计墙钟；活动 1100ms/上限 1000ms 才耗尽 | `resume()` 记的是"此刻"，时钟顺序反了测不到 |
 | 三分流 + 三道闸 | 五形态 + 过期/指纹不同/豁免率 60% 告警 + 7% 不误报 + 分母缺失不猜 | 分母由调用方给 |
 | 影子周统计 | 3×#42+1×#43 → 唯一 2；脏行（裸数字/null）不污染 | 按天分布 + 验收口径印出 |
@@ -255,11 +274,12 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | 权限漂移 | `--status` 对 644 报"过宽"并给 `chmod 600` | `cp` / `rsync` 都保留不了 0600 |
 | 旧版泄露 | 旧 plist 含明文 token → 重装时提示撤销重建 | 重写文件不会让已落盘的 token 失效 |
 
-> 判据有效性用**变异**检验：已做过的十三处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据 / wrapper 改回 `set -a; . file` / 非法行改成静默跳过 / 文件强行覆盖 env / doctor 不读凭据文件）分别产生新增红（1 / 2+1 / 1 / 4）。绿不算证据，能变红才算。
+> 判据有效性用**变异**检验：已做过的十六处（反转触发判定 / 拿掉 `createBudget` / 短路 `release` / 僵尸退回单机 `git show` / 豁免率退回恒等 1 / 去掉空 username 守卫 / 不查 `/user` 只留空串 / `pick()` 退回 `undefined` / 去掉 GitLab 地址里的 `/api/v4` 判据 / wrapper 改回 `set -a; . file` / 非法行改成静默跳过 / 文件强行覆盖 env / doctor 不读凭据文件 / 临时故障判定恒假退回 die / 关掉 ack sweep / noop 终态恒假）分别产生新增红（1 / 2+1 / 1 / 4 / 1 / 3 / 1）。绿不算证据，能变红才算。
 
 ## 10 兼容与回滚
 
 - 旧数据怎么办：`harness.rules.json` 缺 `runtime.budget` 时走代码默认值（`3` / `30min` / `24h`），老仓库不改配置也能起
 - 旧客户端怎么办：无客户端；`refs/heads/claims/*` 是人可能误 checkout 的斜杠分支，命名即文档，doctor 与 wiring 套件提示
 - 出问题怎么回滚：`touch .ai/task-loop/OFF` 立即停（下次 tick 即生效）；`bash scripts/install-task-loop.sh <repo> --uninstall` 卸定时器；认领残留 `git push origin :refs/heads/claims/<kind>-<id>` 或等 TTL
+- task-loop-close 变更的兼容口径：`pollSeconds` 改配置即生效（不用重装）；**wrapper 的 `2>&1` 与围栏行需重装（或手改 `run-round.sh`）才对已装定时器生效**——不重装也不损失功能，只是旧安装的报错仍只落 `.err`（`die` 双通道已在 runner 侧兼容）；旧 ack 无 `fingerprint` 字段 → 首次被 sweep 读到且触发仍在时**一次性重认领迁移**（`ack_migrated`，重建 ack 与工单——比补写更诚实：旧 pending 清单无基准可比对，可能已过期）；新事件类型为追加型，旧消费者不受影响
 - 已知残留（如实记，未修）：① `test/wiring.test.sh` 的 `find -newer` 在秒级粒度下有假通过窗口；② GitHub Actions Node 20 deprecation 警告；③ 真实 GitLab 若既无审批系统留言又无 `/approvals` 权限，审批状态只能判"无法判定"——按不通过处理，不猜，但会多跑一轮
