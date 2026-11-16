@@ -1,0 +1,42 @@
+# cmd: npm run -s test:agents
+# started: 2026-11-16T01:44:08Z
+# finished: 2026-11-16T01:44:08Z
+# exit_code: 0
+# commit: unknown
+# task: local-cr-gate
+# ---- output tail (last 200 lines) ----
+== 1. 生成物与源一致 ==
+  [32m✓[0m 无漂移
+== 2. 三套产物数量一致 ==
+  [32m✓[0m claude=zcode
+  [32m✓[0m claude=deepseek
+  [32m✓[0m 产物数=启用数（无 agents.enabled 时=源数）
+== 3. name 与文件名一致、tools 非空 ==
+  [32m✓[0m frontmatter 不合规数
+== 4. 工具集不得超出能力声明，文档类不得带 Edit/Bash ==
+  [32m✓[0m 越权工具数
+  [32m✓[0m 文档类带写码工具数
+== 5. 写入范围进入产物（writes 不再只是源文件里的注释）==
+  [32m✓[0m 缺写入范围的产物数
+  [32m✓[0m writes.json 存在
+  [32m✓[0m writes.json 的 agent 数=启用数
+== 6. writes 无占位符残留、无空值 ==
+  [32m✓[0m 占位符已替换
+  [32m✓[0m 空 writes 的 agent 数
+== 7. 漂移检测真能拦住手改 ==
+  [32m✓[0m 手改后 check 失败
+  [32m✓[0m 重建后恢复一致
+== 8. CR 模板包含 §0 硬规则逐条核（防模板被改丢关键节）==
+  [32m✓[0m CR 模板包含硬规则逐条核表
+  [32m✓[0m CR 模板声明两种路径都适用
+  [32m✓[0m CR 模板要求先跑 resolve-skills
+== 9. AGENTS.md 包含审查规则和 verify-run 工具引用 ==
+  [32m✓[0m AGENTS.md 含审查前必加载 skill 规则
+  [32m✓[0m AGENTS.md 含 verify-run.sh 引用
+  [32m✓[0m AGENTS.md 含 --type change/bugfix 引用
+== 10. AGENTS.md 含意图路由表（先分类再动手）==
+  [32m✓[0m 意图路由表存在
+  [32m✓[0m 路由表覆盖 feature/change/bugfix/审查/测试
+  [32m✓[0m 路由表含'禁止跳过分类直接改代码'
+
+结果：23 通过，0 失败

@@ -243,6 +243,14 @@ printf ' ' >> "$REPO/harness.rules.json"
 check "rules 微改（+1 空格）→ 缓存失效（打包文件数 1）" "1" "$(bundle_count)"
 
 kill $MOCK_PID 2>/dev/null; wait $MOCK_PID 2>/dev/null
+echo "== 6. M3：machine_checks 为空的类型 + --machine-only → exit 2（防空壳绿灯） =="
+# cr 类型 machine_checks=[]，走 --machine-only 会产出零检查的"通过"——exit 2 拒绝
+node "$HERE/scripts/ai-review.mjs" --type cr --machine-only --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews6" >/dev/null 2>&1
+check "cr + --machine-only → exit 2（不产出空壳绿灯）" "2" "$?"
+# rs 类型 machine_checks=2 条，--machine-only 应正常跑机器判据（不因 M3 误伤）
+node "$HERE/scripts/ai-review.mjs" --type rs --machine-only --root "$REPO" --files "$FILES_GOOD" --out "$REPO/.ai/reviews6b" >/dev/null 2>&1
+check "rs + --machine-only 仍可用（machine_checks 非空）" "0" "$?"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

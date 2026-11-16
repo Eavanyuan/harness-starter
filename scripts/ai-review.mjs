@@ -175,6 +175,12 @@ const machineRed = machineFindings.some((f) => f.severity === 'red');
 // 正是这个开关唯一存在的理由（RS US-2 与指南 §四 都把它当"合法降级出口"写）。
 // 同理：L0 已经出 🔴 时再调模型，结论不可能改变，只多一笔 token。
 if (machineOnly) {
+  // M3（2026-11-16 复审抓回）：machine_checks 为空的类型走 --machine-only 是空壳绿灯——
+  // 零检查产出 exit 0 "通过"，会喂饱任何"verdict 存在且 red=0"的下游校验（如 coder
+  // 提交前 CR 门禁）。cr/evidence 两类当前 machine_checks=[]，禁用 --machine-only。
+  if (!Array.isArray(rule.machine_checks) || rule.machine_checks.length === 0) {
+    die(2, `--machine-only 对 ${opt.type} 无效：该类型零条机器判据（machine_checks 空），产出的是空壳绿灯。\n  选项：配 AI_REVIEW_API_KEY 走完整审；或给 ${opt.type} 加 machine_checks 后再用 --machine-only`);
+  }
   modelNote = 'none（--machine-only，只跑机器判据）';
 } else if (machineRed) {
   modelNote = 'none（机器判据已阻断，未调模型）';

@@ -4,6 +4,7 @@
 > 规则：🔴 = 0 且 🟡 均已表态，方可 approve；approve 权在人。
 >
 > **本模板适用于所有审查路径**——正式 CR（code-reviewer agent / `/cr`）和本地手动审查（人在会话里说"审一下"）。
+> 产出路径：正式 CR 记录 → `.ai/review/`（本目录）；ai-review.mjs 自动 verdict → `.ai/reviews/`（缓存，机器可读）。两者是不同产物：前者给人看（含 §0 逐条核表），后者给门禁读（exit code + findings JSON）。
 > 区别只在分发方式：正式 CR 走 MR comment 闭环；手动审查落会话输出 + `.ai/review/`。
 > 两种路径都必须先跑 `node scripts/resolve-skills.mjs --diff` 并按命中 skill 的硬规则表逐条核。
 >

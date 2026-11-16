@@ -17,7 +17,7 @@
    已交付功能的改动与缺陷修复不新建流程——用 `--type change|bugfix` 建独立 state（关联原任务，
    change 另锚需求基线），共用同一套门禁，裁剪规则见 `guides/需求变更与Bug修复.md`；
 2) 每次流转前执行该阶段门禁（`harness.config.json` 的 gates + 下方清单），把每项结果写进 `gate_result.checks`；
-3) 调度对应子 agent 做领域工作，你不亲自写业务代码、不代审规格；
+3) 调度对应子 agent 做领域工作，你不亲自写业务代码、不代审规格。**review 阶段必须调度 code-reviewer 子 agent**（不是自己审，也不是让 coder 自审——同上下文自审=盲区一致的白审）；
 4) 门禁不过：停在原阶段，产出「缺什么 / 谁补 / 重跑哪条检查」三项，不要原地重试；
    每条 `human_decision` blocker 必须带齐这五个字段，缺一个就会被下游按最保守的默认处理：
    - `question`：一句人话，不要写"待定"；
