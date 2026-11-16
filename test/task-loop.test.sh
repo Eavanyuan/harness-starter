@@ -206,6 +206,102 @@ process.exit([a.reviewState, a.triggered, b.reviewState, b.triggered, d.reviewSt
 ' "$HERE" > "$TMP/trigger.txt" 2>&1
 check "五形态：无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算" "0" "$?"
 
+echo "== 5c-bis. 打回动词独立触发（live 形态：普通评论 + 撤批 + requested changes，零 resolvable）=="
+# 2026-11-16 MR !1882 实测：评审者 approve→unapprove→requested changes + 普通评论（non-resolvable），
+# 整条 MR 零 resolvable 讨论。旧判定：unresolved=0 → pending，MR 打回不可见。动词必须是独立的打回证据。
+node --input-type=module -e '
+import { classifyMr } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const me = "me";
+const plain = (o = {}) => ({ id: "c", system: false, resolvable: false, resolved: false, author: { username: "lead" }, created_at: "2026-11-16T01:58:19Z", body: "请查看非阻断项目", ...o });
+const sys = (body, at, who = "lead") => ({ id: "s", system: true, resolvable: false, resolved: false, author: { username: who }, created_at: at, body });
+const mr = { iid: 1882, author: { username: me } };
+const c = (discussions, lastPushAt) => classifyMr({ mr, discussions, username: me, lastPushAt });
+// L1 live 复现：普通评论 + 批 + 撤批 + 动词（全晚于末次 push 2026-11-15T13:13）
+const l1 = c([{ id: "d1", notes: [plain(), sys("approved this merge request", "2026-11-16T01:59:03Z"), sys("unapproved this merge request", "2026-11-16T02:24:35Z"), sys("requested changes", "2026-11-16T02:24:41Z")] }], "2026-11-15T13:13:01Z");
+// L2 批红晚于动词 → approved（最后的话算数）
+const l2 = c([{ id: "d1", notes: [sys("requested changes", "2026-11-16T02:00:00Z"), sys("approved this merge request", "2026-11-16T03:00:00Z")] }], "2026-11-15T13:13:01Z");
+// L3 动词早于末次 push（新 commit 已覆盖）且无未解决意见 → pending
+const l3 = c([{ id: "d1", notes: [sys("requested changes", "2026-11-16T02:00:00Z")] }], "2026-11-16T05:00:00Z");
+// L4 本人发的动词 → 不算（与自留言同口径）
+const l4 = c([{ id: "d1", notes: [sys("requested changes", "2026-11-16T02:00:00Z", me)] }], "2026-11-15T13:13:01Z");
+// L5 评审者 a 批红后评审者 b 要求改动（无撤批留言）→ 最后的话是动词 → 打回
+const l5 = c([{ id: "d1", notes: [sys("approved this merge request", "2026-11-16T02:00:00Z", "a"), sys("requested changes", "2026-11-16T03:00:00Z", "b")] }], "2026-11-15T13:13:01Z");
+const row = (x) => [x.reviewState, x.triggered, x.signal].join(":");
+const all = [row(l1), row(l2), row(l3), row(l4), row(l5)].join(",");
+console.log(all);
+process.exit(all === "changes_requested:true:review_verb,approved:false:approval,pending:false:none,pending:false:none,changes_requested:true:review_verb" ? 0 : 1);
+' "$HERE" > "$TMP/verb.txt" 2>&1
+check "动词五形态：live 打回 / 批红在后不算 / push 已覆盖 / 自发不算 / 他批后另人动词" "0" "$?"
+
+echo "== 5c-ter. fetchTriggers 热路径粗筛放行动词型 MR（旧版在 classifyMr 之前就 continue 掉）=="
+node --input-type=module -e '
+import { fetchTriggers } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const mrWithVerb = { iid: 7, project_id: 1, sha: "s1", author: { username: "me" } };
+const mrQuiet = { iid: 8, project_id: 2, sha: "s2", author: { username: "me" } };
+const verbDiscs = [{ id: "d1", notes: [
+  { id: "n1", system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "普通评论", created_at: "2026-11-16T01:58:19Z" },
+  { id: "n2", system: true, author: { username: "lead" }, body: "unapproved this merge request", created_at: "2026-11-16T02:24:35Z" },
+  { id: "n3", system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-16T02:24:41Z" },
+]}];
+const calls = [];
+const fake = async (url) => {
+  calls.push(url);
+  const json = url.endsWith("/merge_requests?scope=created_by_me&state=opened&per_page=20") ? [mrWithVerb, mrQuiet]
+    : /\/projects\/1\/merge_requests\/7\/discussions$/.test(url) ? verbDiscs
+    : /\/projects\/2\/merge_requests\/8\/discussions$/.test(url) ? []
+    : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
+    : null;
+  if (json === null) return { ok: false, status: 404, json: async () => ({}) };
+  return { ok: true, json: async () => json };
+};
+const out = await fetchTriggers({ url: "https://g.example", token: "t", username: "me", fetchImpl: fake });
+const quietWentDeep = calls.some((u) => /projects\/2\/repository\/commits/.test(u));
+console.log(JSON.stringify({ n: out.length, id: out[0]?.id, signal: out[0]?.signal, quietWentDeep }));
+process.exit(out.length === 1 && String(out[0].id) === "7" && out[0].signal === "review_verb" && !quietWentDeep ? 0 : 1);
+' "$HERE" > "$TMP/fetch-verb.txt" 2>&1
+check "fetchTriggers：动词型 MR 不被粗筛吃掉，无信号 MR 仍省 API 调用" "0" "$?"
+
+echo "== 5c-quater. 建议性评论进修复范围（无 resolvable 时不空清单，但不双列、不收自发）=="
+# 用户指令 2026-11-16：审核意见里的建议修改项纳入接单修复范围。动词型触发零 resolvable，
+# 若只列 unresolved，ack 清单为空——修复会话不知道要修什么。
+node --input-type=module -e '
+import { reviewCommentsByOthers, fetchTriggers, changesRequestedAt } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const me = "me";
+const note = (o = {}) => ({ id: "n", system: false, resolvable: false, resolved: false, author: { username: "lead" }, created_at: "2026-11-16T01:58:19Z", body: "建议修改项 X", ...o });
+const sys = (body, at, who = "lead") => ({ id: "s", system: true, author: { username: who }, created_at: at, body });
+const discs = [
+  { id: "d1", notes: [note(), sys("requested changes", "2026-11-16T02:24:41Z")] },        // 普通评论 → 收
+  { id: "d2", notes: [note({ id: "mine", body: "自己的留言", author: { username: me } })] },   // 自发 → 不收
+  { id: "d3", notes: [note({ id: "r", resolvable: true, resolved: false })] },              // resolvable → 走 unresolved，不双列
+  { id: "d4", notes: [sys("approved this merge request", "2026-11-16T01:59:03Z")] },      // 系统留言 → 不收
+];
+const rc = reviewCommentsByOthers(discs, me);
+// resolvable 线程里的普通回复也是建议项（note 级过滤，不整线程跳过——CR R3）
+const d5 = [{ id: "d5", notes: [note({ id: "rr", resolvable: true, resolved: false, body: "改成幂等" }), note({ id: "pr", body: "补充：变量名也要改" })] }];
+const rc5 = reviewCommentsByOthers(d5, me);
+const ok1 = rc.length === 1 && rc[0].note === "n" && rc[0].id === "d1" && rc5.length === 1 && rc5[0].note === "pr";
+let threw = false;
+try { reviewCommentsByOthers(discs, ""); } catch { threw = true; }
+// 动词同样不静默：空 username 抛错（CR R2，与 unresolvedByOthers 同口径）
+let threwVerb = false;
+try { changesRequestedAt(discs, ""); } catch { threwVerb = true; }
+// 端到端：动词型触发的 payload 里带着建议性评论
+const mrs = [{ iid: 9, project_id: 3, sha: "s9", author: { username: me } }];
+const fake = async (url) => {
+  const json = url.endsWith("scope=created_by_me&state=opened&per_page=20") ? mrs
+    : /discussions$/.test(url) ? discs
+    : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
+    : null;
+  if (json === null) return { ok: false, status: 404, json: async () => ({}) };
+  return { ok: true, json: async () => json };
+};
+const out = await fetchTriggers({ url: "https://g.example", token: "t", username: me, fetchImpl: fake });
+const ok2 = out.length === 1 && out[0].comments && out[0].comments.length === 1 && out[0].unresolved.length === 1;
+console.log(ok1, threw, threwVerb, ok2);
+process.exit(ok1 && threw && threwVerb && ok2 ? 0 : 1);
+' "$HERE" > "$TMP/comments.txt" 2>&1
+check "建议性评论：收普通与 resolvable 线程内回复/不收自发与系统/不双列/动词空 username 抛错" "0" "$?"
+
 echo "== 5d. 真触发端到端：假 GitLab → 认领 → 账本配对 =="
 # 这条路径上一版完全没走过：--dry-run 不经过 claim 与 budget，所以影子周全绿而单任务首跑即崩。
 TLROOT="$TMP/e2e"; git init -q --bare "$TLROOT/r.git"
@@ -245,6 +341,84 @@ git -C "$TLROOT/r.git" for-each-ref refs/heads/claims/mr-7 --format='%(refname)'
 check "认领引用落在远端" "0" "$?"
 node -e 'const fs=require("fs");const t=fs.readFileSync(process.argv[1],"utf8").trim().split("\n").map((l)=>JSON.parse(l).type);const i=t.indexOf("trigger_found"),j=t.indexOf("claimed"),k=t.indexOf("claim_held");process.exit(i>=0&&j>i&&k>j?0:1)' "$TMP/ledgerE2E/events.jsonl"
 check "账本：trigger_found → claimed → claim_held（无孤儿）" "0" "$?"
+
+echo "== 5d-bis. 动词型触发 → ack 待修清单含建议性评论（零 resolvable 不空清单）=="
+# CR R1（2026-11-16）：fromComments→ack 的合并曾零覆盖——删掉那行套件仍全绿，而文档/state 声称已验。
+# 这条端到端补上：MR !1882 形态（普通评论+撤批+动词，零 resolvable）→ runner 落的 ack 必须带着评论。
+TL3="$TMP/e2e3"; git init -q --bare "$TL3/r.git"
+git clone -q "$TL3/r.git" "$TL3/w" 2>/dev/null
+( cd "$TL3/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 13, project_id: 1, title: "动词型", sha: "abc", author: { username: "me" } }]));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 21, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议修改项：杂凑下沉", created_at: "2026-11-16T01:58:19Z" },
+    { id: 22, system: true, author: { username: "lead" }, body: "unapproved this merge request", created_at: "2026-11-16T02:24:35Z" },
+    { id: 23, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-16T02:24:41Z" },
+  ] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-15T13:13:01Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = "", err = "";
+child.stdout.on("data", (d) => { out += d; });
+child.stderr.on("data", (d) => { err += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+let ack = null;
+try { ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-13.json", "utf8")); } catch {}
+const okAck = ack && Array.isArray(ack.pending) && ack.pending.length === 1
+  && ack.pending[0].source === "comment" && /杂凑下沉/.test(ack.pending[0].body);
+console.log(code, okAck ? "ack-ok" : "ack-bad", /1 条待修意见/.test(out) ? "msg-ok" : "msg-bad", /ReferenceError/.test(err) ? "CRASH" : "no-crash");
+' "$HERE" "$TL3/w" "$TMP/ledgerE2E3" > "$TMP/e2e3.txt" 2>&1
+grep -q "^0 ack-ok msg-ok no-crash$" "$TMP/e2e3.txt" && r=0 || { cat "$TMP/e2e3.txt"; r=1; }
+check "动词型端到端：零 resolvable，ack 落 1 条建议性评论（fromComments 有覆盖）" "0" "$r"
+
+echo "== 5d-ter. dry-run/shadow 展示面：动词型触发显示并落账建议评论数（CR 二轮遗留①）=="
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const p = q.url.split("?")[0];
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 14, project_id: 1, title: "动词 dry-run", sha: "abc", author: { username: "me" } }]));
+  if (/discussions$/.test(p)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 31, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议修改项 Y", created_at: "2026-11-16T01:58:19Z" },
+    { id: 32, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-16T02:24:41Z" },
+  ] }]));
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-15T13:13:01Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--dry-run", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: repo + "/.ledger" },
+});
+let out = "";
+child.stdout.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+let last = null;
+try { last = JSON.parse(readFileSync(repo + "/.ai/task-loop/shadow.jsonl", "utf8").trim().split("\n").pop()); } catch {}
+const okMsg = /修复 0 条未解决讨论 \+ 1 条建议评论/.test(out);
+const okShadow = last && last.id === 14 && last.unresolved === 0 && last.comments === 1;
+console.log(code, okMsg ? "msg-ok" : "msg-bad", okShadow ? "shadow-ok" : "shadow-bad");
+' "$HERE" "$TL3/w" > "$TMP/e2e4.txt" 2>&1
+grep -q "^0 msg-ok shadow-ok$" "$TMP/e2e4.txt" && r=0 || { cat "$TMP/e2e4.txt"; r=1; }
+check "dry-run/shadow：动词型显示与落账都含建议评论数" "0" "$r"
 
 echo "== 5e. 认领之后失败 → 当场释放（不留孤儿引用） =="
 # 实测过的泄漏：崩在 claim 之后，引用留在远端，release 从未被调用，第二次运行认领被拒，

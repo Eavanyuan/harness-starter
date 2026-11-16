@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "mr-verb-trigger",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "cb839644b7a3ba1218bec86debc53b0e5ae5679c",
+    "affected_ids": [
+      "RS-task-loop US-1",
+      "FS-任务循环执行器 §4.4",
+      "FS-任务循环执行器 §6",
+      "gitlab-triggers classifyMr",
+      "gitlab-triggers fetchTriggers"
+    ],
+    "change_tier": 2,
+    "change_tier_note": "行为变更但局部：一个判定函数的打回证据从单路（未解决讨论）扩为两路并列（讨论/动词），含审批先后序比较；不改接口形状、不改 runner 集成、不改飞书剖面",
+    "created_at": "2026-11-16T02:55:53Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-16T03:00:00Z",
+      "exited_at": "2026-11-16T03:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": { "harness": "1.1.0" }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-16T03:10:00Z",
+      "exited_at": "2026-11-16T03:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：无多方案决策点——动词作独立打回证据是缺口直接推出的单一走向，先后序沿用既有『最后表态算数』回放哲学",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-16T03:10:00Z",
+      "exited_at": "2026-11-16T03:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §4.4 同批更新，无新接口/新契约需要评审会",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-16T03:10:00Z",
+      "exited_at": "2026-11-16T03:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单实现 todo + 统一验证，无依赖拆分",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-16T03:10:00Z",
+      "exited_at": "2026-11-16T06:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": { "harness": "1.1.0" }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-16T06:30:00Z",
+      "exited_at": "2026-11-16T07:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（审阅者子代理，两轮：一轮打回 5 项全部处置，二轮可交付）",
+      "model": null,
+      "skill_versions": { "harness": "1.1.0" }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-16T07:20:00Z",
+      "exited_at": "2026-11-16T07:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-16T07:30:00Z",
+      "exited_at": "2026-11-16T07:30:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：教训已沉淀在 CR 记录与 RS 背景（live 事故 MR !1882）；独立 retro 文档留 TDC 影子周后一并做（同 task-loop 口径）",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-mr-verb-trigger.md",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（受影响段落同批更新）",
+    "review": ".ai/review/CR-2026-11-16-mr-verb-trigger.md",
+    "retro": "retro/mr-verb-trigger-2026-11-16.md"
+  },
+  "todos": [
+    {
+      "id": "MV1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "触发判定补动词证据 + 建议性评论进修复范围：classifyMr 两路并列 + 批红须晚于动词 + fetchTriggers 粗筛放行 + changesRequestedAt/reviewCommentsByOthers 过滤本人 + ack 待修清单含建议性评论；测试 5c-bis/ter/quater 先红后绿，六变异全红",
+      "files": [
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/task-loop.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 全过（gitlab-triggers / task-loop）；bash -n 套件过",
+        "tests": "task-loop 91/91（86 存量 + 5c-bis 动词五形态 + 5c-ter 粗筛 + 5c-quater 建议性评论 + 5d-bis 动词型端到端 ack + 5d-ter dry-run/shadow 展示面）；新增用例先在旧实现上红，修后绿。变异九处全红：粗筛去动词=1 / 批红不看先后=2 / 第三分支退回=2 / 动词去本人过滤=1 / 评论退回整线程跳过=1 / 评论收自发=1 / 动词去空 username 抛错=1 / 删 fromComments→ack 合并=1 / dry-run 文案退回=2（CR 二轮遗留②少计已修正）",
+        "feature_complete": "RS 六条验收逐条对上：live 形态（MR !1882 真实数据 fetchTriggers 返回 1 条 changes_requested/review_verb）、批红晚于动词=approved、动词早于 push=pending、自发动词=不算、建议性评论进 payload comments 与 ack、存量五形态原样通过",
+        "quality_clean": "无新配置键；无信号 MR 仍只打 discussions 一个接口；/approvals 降级无批红时间时不给 approved（判不了明说不判）；评论与 unresolved 不双列，ack 不会对同一条意见回两次"
+      },
+      "verify": {
+        "log_path": ".ai/verify/MV1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "MV2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "影响链文档：新建 RS-mr-verb-trigger（S 档一段话 rs）；RS-task-loop US-1 验收行补打回证据两路并列；FS §4.4 判定段改写（撤掉『GitLab 没有 review verb』的过时说法，写明两组先后关系）；FS §6 测试矩阵补『动词五形态』一行",
+      "files": [
+        "docs/01-requirements/RS-mr-verb-trigger.md",
+        "docs/01-requirements/RS-task-loop.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "文档类，无编译",
+        "tests": "npm run verify:state 过（本任务 state 与产物一致）；FS 契约由 test/task-loop-contract.test.sh 在 gate 内覆盖",
+        "feature_complete": "init 提示的『受影响 RS/FS → TODO → 测试』影响链四件齐：rs 新建、RS US-1 验收行、FS §4.4 判定描述、FS §6 矩阵行，与代码行为同批落",
+        "quality_clean": "RS/FS 只动受影响句段，未顺手重写其他章节；变更说明标注日期与任务名，可回溯"
+      },
+      "verify": {
+        "log_path": ".ai/verify/MV2.log",
+        "command": "bash -c 'grep -q 动词 docs/01-requirements/RS-task-loop.md && grep -q 建议性评论 docs/02-features/task-loop/FS-任务循环执行器.md && grep -q 开放问题 docs/01-requirements/RS-mr-verb-trigger.md'"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-mr-verb-trigger",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "收尾：npm run gate 全量绿（S 档折叠 ci 停留的仓内等价物）；日志生成后本 todo 才写入 state（自举顺序，避免 gate 校验自己尚不存在的日志）",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "PASS（gate 内含全仓 node --check / bash -n）",
+        "tests": "gate 全量绿（31 套件，含 task-loop 91 条；见日志）",
+        "feature_complete": "真实数据复验在 MV1：fetchTriggers 对 MR !1882 返回 changes_requested/review_verb，下一轮轮询将认领",
+        "quality_clean": "日志带归属头（verify-run --task），# cmd 含 npm run gate，满足 S 档折叠加查"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-mr-verb-trigger.log",
+        "command": "npm run gate"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "动词型触发曾零待修清单：unresolved=[] 时 ack 为空、文案打『0 条待修意见』。已修：建议性评论（reviewCommentsByOthers）进 payload comments 与 ack 清单（不双列/不收自发与系统留言），回答『要修什么』；headless 逐条回复动作本身仍留 T5",
+      "owner": "task-loop",
+      "status": "closed",
+      "resolution": "fixed：MV1 建议性评论进 ack（5c-quater + 5d-bis 端到端断言）；回复动作留 T5 属既定范围切分"
+    },
+    {
+      "id": "KI-2",
+      "text": "老版本 GitLab（无 requested changes 系统留言）上评审者若也只用普通评论表态，仍然不可见——但那是本次修复之前就存在的形态，diff 讨论路径不受影响",
+      "owner": "task-loop",
+      "status": "closed",
+      "resolution": "acknowledged：修复前即不可见的存量盲区，不国本次变更引入；真实空间（git.tdengine.net，GitLab 16+）已验有动词留言，live 复验 MR !1882 触发成功；若未来接入无动词老实例再立项"
+    }
+  ],
+  "gate_result": {
+    "last_check": "2026-11-16T07:35:00Z",
+    "stage": "done",
+    "checks": [
+      { "name": "todos_completed_with_evidence", "pass": true },
+      { "name": "stage_history_chain_legal", "pass": true },
+      { "name": "cr_record_with_s0", "pass": true },
+      { "name": "gate_green_real_exit_code", "pass": true }
+    ]
+  }
+}

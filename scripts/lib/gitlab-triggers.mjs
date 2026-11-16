@@ -56,12 +56,20 @@ export function approvalFromDiscussions(discussions) {
   return { approvers: approvers.map((username) => ({ username })), approvedAt, sawSystemNote: events.length > 0 };
 }
 
-/** 最近一次"requested changes"系统留言（GitLab 16+ 有该 review verb；老版本为空）。 */
-export function changesRequestedAt(discussions) {
+/**
+ * 最近一次"requested changes"系统留言（GitLab 16+ 有该 review verb；老版本为空）。
+ * username 必填：本人发的动词不算打回证据，与 unresolvedByOthers / reviewCommentsByOthers
+ * 同口径——判不了"谁是我"就抛，不静默混入（空值会把自发动词当成他人打回）。
+ */
+export function changesRequestedAt(discussions, username = null) {
+  if (!username || !String(username).trim()) {
+    throw new Error('changesRequestedAt 缺 username：空值会把你自己的 requested changes 当成他人的打回证据');
+  }
   let last = null;
   for (const d of discussions || []) {
     for (const n of d.notes || []) {
       if (!n.system) continue;
+      if (n.author?.username === username) continue;
       if (/requested changes/i.test(String(n.body || ''))) {
         if (!last || new Date(n.created_at) > new Date(last)) last = n.created_at;
       }
@@ -71,8 +79,41 @@ export function changesRequestedAt(discussions) {
 }
 
 /**
+ * 评审人的建议性评论（非系统、非本人）——接单后的修复范围输入。
+ *
+ * 为什么需要（2026-11-16 MR !1882 实测 + 用户指令）：评审人常用普通评论写
+ * 「建议修改项」（non-resolvable），这类评论既不进 unresolved（没有 resolvable 标志），
+ * 也永远不会被 resolve。若只把 resolvable 讨论当待修清单，动词型触发的 ack 会是空的，
+ * 修复会话拿不到「要修什么」——审核意见里的建议项必须纳入接单修复范围。
+ * 已在 unresolved 里的讨论（他人未解决 resolvable）不重复列：那是另一路证据，双列会在 ack 里回两条。
+ */
+export function reviewCommentsByOthers(discussions, username) {
+  if (!username || !String(username).trim()) {
+    throw new Error('reviewCommentsByOthers 缺 username：空值会把你自己的评论当成待修意见');
+  }
+  const out = [];
+  for (const d of discussions || []) {
+    for (const n of d.notes || []) {
+      if (n.system) continue;                    // 系统留言不是评审意见
+      if (n.author?.username === username) continue; // 自发不算
+      if (n.resolvable) continue;                // resolvable note 由 unresolved 承担，不双列；
+                                                // 但同线程里后续的普通回复（non-resolvable）
+                                                // 也是建议项，按 note 级过滤而不是整线程跳过
+      out.push({ id: d.id, note: n.id, body: String(n.body || ''), createdAt: n.created_at, author: n.author?.username });
+    }
+  }
+  return out;
+}
+
+/**
  * 单条 MR 的分流（纯函数）。返回 { reviewState, signal, triggered, unresolved, approval }。
  * reviewState：approved（已过停点，不动）| changes_requested（待修）| pending（无待修意见）
+ *
+ * 打回证据两路并列，任一成立且无更新的批红即触发：
+ *   1. 他人未解决的 resolvable 讨论（diff 意见）
+ *   2. 他人晚于最后一次 push 的 requested changes 动词（GitLab 16+）。
+ * 2026-11-16 MR !1882 实测：评审者用普通评论 + approve→unapprove + 动词表态，整条 MR
+ * 零 resolvable 讨论——只认证据 1 会把真实打回判 pending，MR 对 runner 不可见。
  */
 export function classifyMr({ mr, discussions, username, lastPushAt = null, approvers = null }) {
   const unresolved = unresolvedByOthers(discussions, username);
@@ -84,13 +125,17 @@ export function classifyMr({ mr, discussions, username, lastPushAt = null, appro
     lastPushAt,
     approvedAt: ap.approvedAt,
   });
-
-  if (approval.ok) return { reviewState: 'approved', signal: 'approval', triggered: false, unresolved, approval };
-  if (unresolved.length === 0) return { reviewState: 'pending', signal: 'none', triggered: false, unresolved, approval };
-
-  const crAt = changesRequestedAt(discussions);
+  const crAt = changesRequestedAt(discussions, username);
   // 打回动词必须晚于最后一次 push 才算数：批之前的申请改动已被新 commit 覆盖
   const crFresh = crAt && (!lastPushAt || new Date(crAt) > new Date(lastPushAt));
+  // 批红要成为"最后的话"必须晚于打回动词：评审者 a 批过、评审者 b 随后要求改动，
+  // 停点仍是待修（批红时间早于动词 → 不算已过停点）。批红无时间（approvals 降级）时
+  // 判不了先后 → 不给 approved，宁可多跑一轮。
+  const approvalLastWord = approval.ok && (!crAt || (ap.approvedAt && new Date(ap.approvedAt) > new Date(crAt)));
+
+  if (approvalLastWord) return { reviewState: 'approved', signal: 'approval', triggered: false, unresolved, approval };
+  if (unresolved.length === 0 && !crFresh) return { reviewState: 'pending', signal: 'none', triggered: false, unresolved, approval };
+
   return {
     reviewState: 'changes_requested',
     signal: crFresh ? 'review_verb' : 'unresolved_discussions',
@@ -144,8 +189,10 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
     const discs = await api(`${base}/discussions`);
-    // 先粗判：无人未解决就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）
-    if (unresolvedByOthers(discs, username).length === 0) continue;
+    // 先粗判：既无他人未解决意见、也无打回动词，就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）。
+    // 动词必须进粗筛：评审者用普通评论 + requested changes 表态时没有任何 resolvable 讨论
+    // （2026-11-16 MR !1882 实测），只按未解决意见筛会把打回的 MR 在 classifyMr 之前就 continue 掉。
+    if (unresolvedByOthers(discs, username).length === 0 && !changesRequestedAt(discs, username)) continue;
     const commit = await optional(`/projects/${mr.project_id}/repository/commits/${mr.sha}`);
     const lastPushAt = commit?.committed_date || commit?.created_at || null;
     // 审批兜底：目标 GitLab 老版本没有审批系统留言时，至少取到 approved_by 名单（时间仍缺 → 判不了）
@@ -157,7 +204,9 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     }
     const r = classifyMr({ mr, discussions: discs, username, lastPushAt, approvers });
     if (!r.triggered) continue;
-    out.push({ kind: 'mr', id: mr.iid, mr, unresolved: r.unresolved, reviewState: r.reviewState, signal: r.signal, approval: r.approval });
+    // 建议性评论是修复范围的输入，跟触发证据一起进 payload（用户指令 2026-11-16：
+    // 即便评审人不逐条回复/resolve，审核意见里的建议修改项也纳入接单修复范围）。
+    out.push({ kind: 'mr', id: mr.iid, mr, unresolved: r.unresolved, comments: reviewCommentsByOthers(discs, username), reviewState: r.reviewState, signal: r.signal, approval: r.approval });
   }
   return out;
 }

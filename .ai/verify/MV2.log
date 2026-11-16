@@ -1,0 +1,7 @@
+# cmd: bash -c $'grep -q \345\212\250\350\257\215 docs/01-requirements/RS-task-loop.md && grep -q \345\273\272\350\256\256\346\200\247\350\257\204\350\256\272 docs/02-features/task-loop/FS-\344\273\273\345\212\241\345\276\252\347\216\257\346\211\247\350\241\214\345\231\250.md && grep -q \345\274\200\346\224\276\351\227\256\351\242\230 docs/01-requirements/RS-mr-verb-trigger.md'
+# started: 2026-11-16T03:35:06Z
+# finished: 2026-11-16T03:35:06Z
+# exit_code: 0
+# commit: unknown
+# task: mr-verb-trigger
+# ---- output tail (last 200 lines) ----

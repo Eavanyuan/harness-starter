@@ -331,9 +331,9 @@ for (const t of triggers) {
     // 本文件是自己的观测积累（.ai/task-loop/ 域内），不违背 dry-run 语义
     mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
     const sf = join(root, '.ai', 'task-loop', 'shadow.jsonl');
-    writeFileSync(sf, `${JSON.stringify({ ts: new Date().toISOString(), kind: t.kind, id: t.id, summary: (t.mr?.title || '').slice(0, 60), unresolved: t.unresolved.length })}\n`, { flag: 'a' });
+    writeFileSync(sf, `${JSON.stringify({ ts: new Date().toISOString(), kind: t.kind, id: t.id, summary: (t.mr?.title || '').slice(0, 60), unresolved: t.unresolved.length, comments: (t.comments || []).length })}\n`, { flag: 'a' });
     recordEvent('task-loop', 'shadow_hit', { kind: t.kind, id: t.id });
-    console.log(`[dry-run] 会认领 ${t.kind}-${t.id}${t.itemType ? `（${t.itemType}）` : ''} → worktree → headless(${headless.cli} ${headless.args.join(' ')} 权限=${headless.permission_mode}) → ${t.kind === 'mr' ? `修复 ${t.unresolved.length} 条未解决讨论` : '排期修复（缺陷/需求）'}`);
+    console.log(`[dry-run] 会认领 ${t.kind}-${t.id}${t.itemType ? `（${t.itemType}）` : ''} → worktree → headless(${headless.cli} ${headless.args.join(' ')} 权限=${headless.permission_mode}) → ${t.kind === 'mr' ? `修复 ${t.unresolved.length} 条未解决讨论 + ${(t.comments || []).length} 条建议评论` : '排期修复（缺陷/需求）'}`);
     continue;
   }
 
@@ -418,8 +418,13 @@ for (const t of triggers) {
   });
   budget.start();
   try {
-    // v1 修复动作占位：T5 接 headless 会话与 CI 归因循环；此处先落"确认意见"结构
-    const ack = t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ id: d.id, note: n.id, body: (n.body || '').slice(0, 120) })));
+    // v1 修复动作占位：T5 接 headless 会话与 CI 归因循环；此处先落"确认意见"结构。
+    // 待修清单两路：①他人未解决 resolvable 讨论；②评审人建议性评论（non-resolvable，
+    // 2026-11-16 用户指令：审核意见里的建议修改项也纳入接单修复范围——动词型触发
+    // 往往零 resolvable，只靠①会得到空清单，修复会话不知道要修什么）。
+    const fromDiscussions = t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ source: 'discussion', id: d.id, note: n.id, body: (n.body || '').slice(0, 120) })));
+    const fromComments = (t.comments || []).map((c) => ({ source: 'comment', id: c.id, note: c.note, body: (c.body || '').slice(0, 120), author: c.author }));
+    const ack = [...fromDiscussions, ...fromComments];
     mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
     writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, budget: budget.snapshot() }, null, 2));
     budget.spendRound();

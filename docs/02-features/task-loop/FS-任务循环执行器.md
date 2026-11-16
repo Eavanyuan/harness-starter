@@ -63,10 +63,10 @@
 
 - 输入：`GET /merge_requests?scope=created_by_me&state=opened` → 逐条 `discussions`，必要时补 `repository/commits/<sha>` 与 `approvals`
 - 处理：`scripts/lib/gitlab-triggers.mjs` 的 `classifyMr()`。`unresolvedByOthers()` 取"他人写的、`resolvable && !resolved`"；`approvalFromDiscussions()` 回放系统留言里的 `approved/unapproved this merge request` 得到**审批人与审批时间**
-- 输出：`{kind:'mr', id, mr, unresolved, reviewState, signal}`
+- 输出：`{kind:'mr', id, mr, unresolved, comments, reviewState, signal}`；`comments` 为评审人建议性普通评论（2026-11-16 变更 mr-verb-trigger：审核意见里的建议修改项纳入接单修复范围，不双列 resolvable、不收自发与系统留言），随触发进 ack 待修清单
 - 失败分支：HTTP 非 2xx → 抛错，runner `exit 1` 并打印失败的 path；`/approvals` 404（老版本 GitLab）→ 降级为"有名单无时间"，此时 `approvalValid` 明确返回"无法判定审批时间"→ 按不通过处理（不猜）
 
-> 两条件必须同时成立：**有他人未解决意见 且 无晚于最后一次 push 的有效批红**。只看前一条会把"批了忘 resolve"误判成打回；只看后一条会把"批完又推了 commit"误判成通过。GitLab 没有 GitHub 的 `CHANGES_REQUESTED` review verb，有则用（`signal=review_verb`），无则用讨论证据（`signal=unresolved_discussions`）。
+> 打回证据两路并列，任一成立且无"更晚的批红"即触发：**他人未解决 resolvable 讨论**，或**他人晚于最后一次 push 的 requested changes 动词**（GitLab 16+；本人发的动词不算，与自留言同口径）。批红要成为"最后的话"必须同时晚于最后一次 push 和晚于打回动词——只看讨论会把"普通评论 + 动词"的真实打回判 pending（2026-11-16 MR !1882 实测，零 resolvable 讨论时打回完全不可见）；只看批红时间会把"a 批过、b 随后要求改动"误判已过停点。批红无时间（`/approvals` 降级）时判不了先后 → 不给 approved，宁可多跑一轮。动词早于最后一次 push 且无未解决意见 → `pending`（新 commit 已覆盖）。
 
 **CAS 认领与 TTL**
 
@@ -233,6 +233,8 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | CAS 双竞争 | 先者胜、后者 `taken` | 同 sha push 同 ref 是 no-op（必须内容唯一） |
 | 跨机僵尸 | **两个独立克隆**，B 无对象 → 仍判出 `zombie` 且带 `ageMs` | fixture 先断言"B 本地没有该对象"，否则测不到跨机路径 |
 | 触发五形态 | 无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算 | 批红时间与 push 时间的先后 |
+| 动词五形态（2026-11-16） | live 打回（普通评论+撤批+动词，零 resolvable）/ 批红晚于动词不算打回 / 动词早于 push 已覆盖 / 自发动词不算 / 他批后另人动词仍打回 | 动词与 push、动词与批红两组先后关系；fetchTriggers 粗筛同步放行（无信号 MR 仍省 API） |
+| 建议性评论（2026-11-16） | 普通评论进 payload `comments` 与 ack；自发/系统留言不进；resolvable note 不双列但同线程普通回复也收（note 级过滤）；空 username 两处抛错；动词型端到端：零 resolvable 时 ack 落 1 条评论（删 fromComments 合并即红） | 评论是 non-resolvable，永远不会被 resolve——只列 resolvable 会得到空待修清单 |
 | 未接入 | 一个源都没配 → 退出 0 且逐条说明缺什么 | 显式 `--profile` 时必须 `exit 1`（"我就要跑这个"不许静默跳过） |
 | username 派生 | 不配 `GITLAB_USERNAME` 时问 `/user`，自己写的留言不算打回 | 空值在 `unresolvedByOthers` 与 `classifyMr` 两处都抛错（否则判定反向） |
 | GitLab 地址形状 | 空/空白 = 不接；`/api/v4`、缺协议、带 API 段 → 判红 | 代码自己会拼 `/api/v4`，配置再带一次就是每次 404 |
