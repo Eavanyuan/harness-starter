@@ -25,7 +25,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "ci",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -92,6 +92,26 @@
       "skill_versions": {
         "harness": "1.1.0"
       }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-16T16:50:00Z",
+      "exited_at": "2026-11-16T16:55:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠：全量 gate 仓内等价实跑，日志 CLOSE-GATE-task-loop-close）",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-16T16:55:00Z",
+      "exited_at": "2026-11-16T16:55:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：retro/task-loop-close-2026-11-16.md 已落盘（视角≠事实等四条教训）；retro-ledger 沉淀留 TDC 影子周后一并做（同 task-loop 口径）",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
     }
   ],
   "artifacts": {
@@ -220,6 +240,27 @@
         "log_path": ".ai/verify/TC5.log",
         "command": "bash test/task-loop.test.sh && bash -n scripts/install-task-loop.sh && node -e 'const j=require(\"./harness.rules.json\"); if(j.runtime.taskLoop.pollSeconds!==900) process.exit(1)'"
       }
+    },
+    {
+      "id": "CLOSE-GATE-task-loop-close",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "收尾：npm run gate 全量绿（S 档折叠 ci 停留的仓内等价物）；日志生成后本 todo 才写入 state（自举顺序，避免 gate 校验自己尚不存在的日志）",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "PASS（gate 内含全仓 node --check / bash -n）",
+        "tests": "gate 全量绿（task-loop 套件 104 条；见日志）",
+        "feature_complete": "CR 两轮（一审 request changes → 二审 approve）；KI-1/2/3 acknowledged 闭环；retro 落盘",
+        "quality_clean": "日志带归属头（verify-run --task task-loop-close），# cmd 含 npm run gate"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-task-loop-close.log",
+        "command": "npm run gate"
+      }
     }
   ],
   "blockers": [],
@@ -248,8 +289,33 @@
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "last_check": "2026-11-16T17:00:00Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "gate_green_real_exit_code",
+        "pass": true
+      },
+      {
+        "name": "cr_record_with_s0",
+        "pass": true
+      }
+    ]
   }
 }
