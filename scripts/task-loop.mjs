@@ -226,6 +226,9 @@ const GITLAB_TOKEN = gl.token;
 let triggers = [];
 // 在途集合（流水 running/pending 的我的 MR）：轮询时捕获，sweep 据此不关账不重认领
 let gitlabInflight = new Set();
+// Draft 集合（2026-11-18 draft-skip）：不触发、不认领；已认领的 Draft 在 sweep 关账（ready 后自动纳入）
+let gitlabDrafts = new Set();
+let draftSkipped = 0;
 // 飞书 MCP 调用引用（2026-11-14 接单三连接线）：声明必须在轮询块**外**——第一版声明在
 // wantFeishu 块里，认领后的 ack 段读不到，uncaughtException 把整轮掀了（实测，fail-safe 释放了认领）。
 let feishuCall = null;
@@ -275,11 +278,13 @@ if (wantGitlab) {
   const fromConfig = !username;
   try {
     if (fromConfig) username = await fetchCurrentUser({ url: GITLAB_URL, token: GITLAB_TOKEN });
-    const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr });
+    const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr, skipDrafts: taskLoopCfg.skipDrafts !== false });
     triggers.push(...fetched);
     if (fetched.inflight instanceof Set) gitlabInflight = fetched.inflight; // 数组属性经 spread 丢失，单独捕获
+    if (fetched.drafts instanceof Set) { gitlabDrafts = fetched.drafts; draftSkipped = fetched.drafts.size; }
     // 详情 404（CR 二审 🟡#2′）：MR 在列表里但详情已 404 = 刚被关/合并的竞态，跳过是正常路径，
     // 但持续 404 不许无痕——落账一行，报表里看得见。
+    if (draftSkipped > 0) console.log(`[task-loop] ${draftSkipped} 条 Draft MR 未列入（runtime.taskLoop.skipDrafts，ready 后自动纳入）`);
     if (fetched.skipped404) {
       recordEvent('task-loop', 'mr_detail_404', { count: fetched.skipped404 });
       console.log(`[task-loop] ${fetched.skipped404} 条 MR 详情 404（刚被关/合并的竞态，跳过；若持续出现查 token 权限）`);
@@ -419,6 +424,16 @@ if (!opt.dryRun) {
     if (!gitlabViewComplete) continue; // 本轮看不见 ≠ 消失：软失败/过滤轮不动账
     const id = key.slice(3);
     const cur = active.get(key);
+    if (!cur && gitlabDrafts.has(key)) {
+      // Draft MR：用户指令暂不列入修复执行腿——关账（与合并/批红同等待遇），ready 后自动重新纳入
+      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      rmSync(join(ackDir, f));
+      rmSync(join(ackDir, `pack-${id}.md`), { force: true });
+      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: okRel, why: 'draft' });
+      stats.gone += 1;
+      console.log(`[task-loop] ${key} 已转 Draft——关账（暂不列入修复执行腿，ready 后自动纳入）`);
+      continue;
+    }
     if (!cur && inflight.has(key)) {
       // 流水在跑（新推送待出结果）：既不关账也不判 stale——下一轮终态出来自然走对分支
       console.log(`[task-loop] ${key} 流水在跑（新推送待出结果）——账目保持，不动`);

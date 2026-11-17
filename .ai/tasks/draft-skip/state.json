@@ -1,0 +1,152 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "draft-skip",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "92e72ae",
+    "affected_ids": [
+      "RS-task-loop US-1（Draft 过滤验收行）",
+      "FS-任务循环执行器 §4.4/§8/§9",
+      "scripts/lib/gitlab-triggers.mjs（isDraftMr + drafts 集合 + 双层过滤）",
+      "scripts/task-loop.mjs（draft 关账分支 + skipDrafts 配置 + 提示行）",
+      "harness.rules.json（runtime.taskLoop.skipDrafts=true）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-17T22:46:30Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "行为变更但局部：Draft MR 整体退出触发/认领/修复链，开关可逆（skipDrafts=false），不改其余信号"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-18T01:30:00Z",
+      "exited_at": "2026-11-18T01:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-18T01:40:00Z",
+      "exited_at": "2026-11-18T01:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：用户指令单一走向；'暂时'落为配置开关而非硬编码",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-18T01:40:00Z",
+      "exited_at": "2026-11-18T01:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §4.4/§8/§9 同批",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-18T01:40:00Z",
+      "exited_at": "2026-11-18T01:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-18T01:40:00Z",
+      "exited_at": "2026-11-18T02:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-18T02:30:00Z",
+      "exited_at": "2026-11-18T02:50:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（一轮 approve；三条 🟡 已同批清：官方括号 Draft 形态、详情层/开关 canary、轮次重置登 KI）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-18T02:50:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-task-loop.md（US-1 Draft 行）",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§8/§9）",
+    "review": ".ai/review/CR-2026-11-18-draft-skip.md"
+  },
+  "todos": [
+    {
+      "id": "DS1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "Draft MR 不列入修复执行腿：isDraftMr（work_in_progress 权威 + Draft:/WIP: 前缀兜底）双层过滤（列表+详情——列表缺字段同款教训）+ drafts 集合 + sweep 关账（why=draft，删 ack/工单/释放认领）+ skipDrafts 配置开关（默认 true，false 恢复）+ 提示行",
+      "files": [
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/task-loop.mjs",
+        "harness.rules.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 双件过；JSON 可解析",
+        "tests": "5r 单元（wip 字段/Draft:/WIP:/（草稿）/(Draft)/[Draft] 前缀命中、普通标题不误伤；fake fetchImpl canary：列表缺字段时详情层兜住（skip=true 零触发+drafts 集合）、skipDrafts=false 恢复纳入）+ 5r 端到端（认领→转 Draft 关账 why=draft+提示行→ready 自动重新纳入）；122 全绿；变异：isDraftMr 恒假→2 红、sweep 分支退化→1 红、（列表层变异被详情层防御中和——深度防御）",
+        "feature_complete": "!1847（Draft: feat(category)）即实测对象：此前执行器已在其上跑了 5 轮——本变更后下一拍自动关账停修",
+        "quality_clean": "CR 🟡 全清：正则补官方 (Draft)/[Draft]/（草稿）形态；详情层与开关路径补 canary；轮次重置语义登 KI"
+      },
+      "verify": {
+        "log_path": ".ai/verify/DS1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "关账清零轮次（draft 关账/普通关账→再认领 rounds 从 1 重计）：Draft 往返或关账-重开会绕过跨流水轮次上限（昨夜 !1847 实测跑到 round-5）",
+      "owner": "task-loop",
+      "status": "closed",
+      "resolution": "acknowledged：与 ci-inflight-hold KI-2 同族；彻底解法=轮次历史独立于 ack 生命周期（history 文件或按 MR+时间窗累计），留下批"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

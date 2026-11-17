@@ -213,7 +213,15 @@ export async function fetchCurrentUser({ url, token, fetchImpl = fetch }) {
   return String(username);
 }
 
-export async function fetchTriggers({ url, token, username, fetchImpl = fetch, mrFilter }) {
+/** Draft 判定：work_in_progress 是权威字段；标题 Draft:/WIP: 前缀兜底（老版本/手工前缀）。 */
+export function isDraftMr(mr) {
+  // 前缀兜底：Draft:/WIP:（WIP: 是 GitLab<14 旧形态，保留无害）+ 现行官方括号形态 (Draft)/[Draft]/（草稿）
+  // （CR 🟡#1：实例实测存在无 work_in_progress 字段的列表响应，兜底必须覆盖官方标题形态）
+  const t = String(mr?.title || '');
+  return mr?.work_in_progress === true || /^(draft|wip)\s*[:：（(]/i.test(t) || /^[（([]\s*(draft|wip)\s*[）)\]]/i.test(t);
+}
+
+export async function fetchTriggers({ url, token, username, fetchImpl = fetch, mrFilter, skipDrafts = true }) {
   const api = async (path) => {
     const res = await fetchImpl(`${url}/api/v4${path}`, {
       headers: { 'private-token': token },
@@ -230,6 +238,9 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   const mrs = await api('/merge_requests?scope=created_by_me&state=opened&per_page=100');
   const out = [];
   out.skipped404 = 0; // 详情 404 计数（刚被关的竞态）：调用方据此落账，不无痕
+  // Draft MR（2026-11-18 draft-skip，用户指令"暂时不列入修复执行腿"）：作者明示未就绪——
+  // CI 红/评审意见都是预期噪声。整体不触发；已认领的由 sweep 按 drafts 集合关账（ready 后自动纳入）。
+  out.drafts = new Set();
   // 在途集合（2026-11-17 ci-inflight-hold）：流水在跑/待跑的 MR。它们不是触发（没失败），
   // 但也绝不能被 sweep 当"触发消失"关账——执行器刚推的修复正跑着，此时关账=误报"已合并"。
   // 终态白名单只认 success/failed（CR 🟡#1）：其余一律在途——含 canceled/skipped（人停的，
@@ -238,6 +249,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   const TERMINAL = new Set(['success', 'failed']);
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
+    if (skipDrafts && isDraftMr(mr)) { out.drafts.add(`mr-${mr.iid}`); continue; }
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
     const discs = await api(`${base}/discussions`);
     // 先粗判：既无他人未解决意见、也无打回动词，就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）。
@@ -261,6 +273,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
         if (/HTTP 404/.test(String(e?.message || e))) { out.skipped404 += 1; continue; }
         throw e;
       }
+      if (skipDrafts && isDraftMr(detail)) { out.drafts.add(`mr-${mr.iid}`); continue; } // 列表缺字段的同款教训：详情的 work_in_progress 才权威
       const hp = detail?.head_pipeline;
       if (!hp || !TERMINAL.has(hp.status)) out.inflight.add(`mr-${mr.iid}`); // 无流水（推送→创建的秒级窗口）同样保持
       if (hp && hp.status === 'failed') {

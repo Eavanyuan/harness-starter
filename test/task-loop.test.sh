@@ -261,6 +261,96 @@ process.exit(out.length === 1 && String(out[0].id) === "7" && out[0].signal === 
 ' "$HERE" > "$TMP/fetch-verb.txt" 2>&1
 check "fetchTriggers：动词型 MR 不被粗筛吃掉，无信号 MR 仍省 API 调用" "0" "$?"
 
+echo "== 5r. Draft MR 不列入（draft-skip）：三种信号全不触发；已认领后转 Draft → 关账；ready 恢复；开关可关 =="
+node --input-type=module -e '
+import { isDraftMr } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+must(isDraftMr({ work_in_progress: true, title: "x" }), "wip-flag");
+must(isDraftMr({ title: "Draft: feat(x)" }), "draft-prefix");
+must(isDraftMr({ title: "WIP: fix" }), "wip-prefix");
+must(!isDraftMr({ work_in_progress: false, title: "feat(x)" }), "normal-not-draft");
+must(!isDraftMr({ title: "drafts notes about drafts" }), "word-mid-title-no");
+must(isDraftMr({ title: "(Draft) fix x" }), "paren-draft");
+must(isDraftMr({ title: "[Draft] feat y" }), "bracket-draft");
+// canary（CR 🟡#2）：详情层过滤与开关路径——fake fetchImpl 直接喂 GitLab 形态（列表缺字段、详情权威）
+const { fetchTriggers } = await import("'"$HERE"'/scripts/lib/gitlab-triggers.mjs");
+const fake = (routes) => async (u) => {
+  for (const [re, body, text] of routes) if (re.test(u)) return { ok: true, status: 200, json: async () => body, text: async () => text || "" };
+  return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
+};
+const routes = [
+  [/merge_requests\?/, [{ iid: 88, project_id: 1, target_branch: "main", title: "fix(x) 列表缺字段", sha: "abc", author: { username: "me" } }]], // 列表不带 work_in_progress（实例实测形态）
+  [/\/user$/, { username: "me" }],
+  [/discussions$/, []],
+  [/merge_requests\/88$/, { iid: 88, target_branch: "main", work_in_progress: true, head_pipeline: { id: 9, status: "failed", web_url: "http://g" } }], // 详情：Draft 且 CI 红
+  [/pipelines\/9\/jobs$/, [{ id: 5, name: "b", stage: "build", status: "failed", web_url: "http://j" }]],
+  [/jobs\/5\/trace$/, null, "[ERROR] /w/a/src/A.java:[1,1] boom\n"],
+  [/pipelines\?ref=/, [{ id: 8, status: "success", sha: "b" }]],
+];
+const on = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: fake(routes), skipDrafts: true });
+must(on.length === 0 && on.drafts.has("mr-88"), "detail-layer-catches-draft");
+const off = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: fake(routes), skipDrafts: false });
+must(off.length === 1 && off[0].signal === "ci_pipeline", "skip-false-restores");
+console.log("unit-ok");
+' > "$TMP/d5r.txt" 2>&1
+grep -q "^unit-ok$" "$TMP/d5r.txt" && r=0 || { cat "$TMP/d5r.txt"; r=1; }
+check "Draft 判定：wip 字段/Draft:/WIP: 前缀命中，普通标题不误伤" "0" "$r"
+
+TL5R="$TMP/e2e5r"; git init -q --bare "$TL5R/r.git"
+git clone -q "$TL5R/r.git" "$TL5R/w" 2>/dev/null
+( cd "$TL5R/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=正常 MR（CI 红，认领） 2=转 Draft（关账） 3=ready 且仍红（重新纳入）
+const TRACE = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
+const mrObj = () => phase === 1 ? { iid: 97, project_id: 1, target_branch: "main", title: "fix(x)", sha: "abc", author: { username: "me" } }
+  : phase === 2 ? { iid: 97, project_id: 1, target_branch: "main", title: "Draft: fix(x)", sha: "abc", work_in_progress: true, author: { username: "me" } }
+  : { iid: 97, project_id: 1, target_branch: "main", title: "fix(x)", sha: "abc", work_in_progress: false, author: { username: "me" } };
+const hp = phase === 2 ? { id: 7602, status: "running" } : { id: 7601, status: "failed", web_url: "http://g/7601" };
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([mrObj()]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/97\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/97$/.test(u)) return s.end(JSON.stringify({ ...mrObj(), head_pipeline: hp }));
+  if (u === "/api/v4/projects/1/pipelines/7601/jobs") return s.end(JSON.stringify([{ id: 17, name: "b", stage: "build", status: "failed", web_url: "http://j/17" }]));
+  if (/\/jobs\/17\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6997, status: "success", sha: "b" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run(); // 认领
+const claimed = r1.code === 0 && existsSync(repo + "/.ai/task-loop/ack-97.json");
+phase = 2;
+const r2 = await run(); // Draft：不触发 + 关账已有账目
+const lines = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const goneEv = lines.find((x) => x.type === "trigger_gone");
+const closed = r2.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-97.json")
+  && goneEv && goneEv.detail.why === "draft" && /Draft MR 未列入/.test(r2.out);
+phase = 3;
+const r3 = await run(); // ready 且仍红：重新纳入
+srv.close();
+const recl = r3.code === 0 && existsSync(repo + "/.ai/task-loop/ack-97.json");
+console.log(claimed ? "claimed-ok" : "claimed-bad", closed ? "closed-ok" : "closed-bad", recl ? "reclaimed-ok" : "reclaimed-bad", r1.code, r2.code, r3.code);
+' "$HERE" "$TL5R/w" "$TMP/ledger5r" > "$TMP/e2e5r.txt" 2>&1
+grep -q "^claimed-ok closed-ok reclaimed-ok 0 0 0$" "$TMP/e2e5r.txt" && r=0 || { cat "$TMP/e2e5r.txt"; r=1; }
+check "Draft 全链：认领→转 Draft 关账(why=draft)+提示行→ready 自动重新纳入" "0" "$r"
+
 echo "== 5c-quin. 评审结论评论形态（!1916 R2 实测）：普通评论 Request Changes 晚于推送 → 触发；早于推送/无结论词/本人不算 =="
 node --input-type=module -e '
 import { classifyMr, reviewVerdictCommentAt } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
