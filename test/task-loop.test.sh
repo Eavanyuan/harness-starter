@@ -928,7 +928,9 @@ const ok = code === 0
   && ack.ci.opaque === true && ack.ci.traceFailures === 1
   && types.includes("ci_opaque") && !types.includes("claim_noop")
   && /自动归因失败/.test(pack) && /http:\/\/g\/j\/41/.test(pack);
-console.log(ok ? "ok" : "bad", code);
+const fsmod = await import("node:fs");
+const traceFile = fsmod.existsSync(repo + "/.ai/task-loop/traces/81/gradle-build.log");
+console.log(ok && traceFile ? "ok" : "bad", code);
 ' "$HERE" "$TL5T/w" "$TMP/ledger5t" > "$TMP/e2e5t.txt" 2>&1
 grep -q "^ok 0$" "$TMP/e2e5t.txt" && r=0 || { cat "$TMP/e2e5t.txt"; r=1; }
 check "无法归因：trace 拉不到 → job 级工单+ci_opaque（不是 inherited_only『不修』）" "0" "$r"
@@ -1084,6 +1086,157 @@ console.log(ok1 ? "ok1" : "bad1", ok2 ? "ok2" : "bad2", r1.code, r2.code);
 ' "$HERE" "$TL5T3/w" "$TMP/ledger5t3" > "$TMP/e2e5t3.txt" 2>&1
 grep -q "^ok1 ok2 0 0$" "$TMP/e2e5t3.txt" && r=0 || { cat "$TMP/e2e5t3.txt"; r=1; }
 check "零识别栈同样 opaque；详情 404 竞态有观测行不 die（mr_detail_404）" "0" "$r"
+
+echo "== 5m. 在途流水不关账：推送后 running 保持账目，终态 success 才关账（ci-inflight-hold 实测事故钉）=="
+# 实测：执行器 18:10 推送 → 流水 running → 18:14 sweep 把 !1847 当"已合并/已批红"关账（误报）。
+TL5M="$TMP/e2e5m"; git init -q --bare "$TL5M/r.git"
+git clone -q "$TL5M/r.git" "$TL5M/w" 2>/dev/null
+( cd "$TL5M/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=failed(认领) 2=running(在途) 2.5=无流水(推送→创建的秒级窗口) 3=success(终态关账)
+const TRACE = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
+const hp = () => phase === 1 ? { id: 7001, status: "failed", web_url: "http://g/p/7001" }
+  : phase === 2 ? { id: 7002, status: "running", web_url: "http://g/p/7002" }
+  : phase === 2.5 ? null
+  : { id: 7002, status: "success", web_url: "http://g/p/7002" };
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 95, project_id: 1, target_branch: "main", title: "在途", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/95\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/95$/.test(u)) return s.end(JSON.stringify({ iid: 95, target_branch: "main", head_pipeline: hp() }));
+  if (u === "/api/v4/projects/1/pipelines/7001/jobs") return s.end(JSON.stringify([{ id: 13, name: "b", stage: "build", status: "failed", web_url: "http://j/13" }]));
+  if (/\/jobs\/13\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6999, status: "success", sha: "b" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run(); // 认领 failed
+phase = 2;
+const r2 = await run(); // running：不关账、不重认领、账目保持
+phase = 2.5;
+const r25 = await run(); // 无流水（推送→创建窗口）：同样保持（终态白名单的对面）
+const held = r2.code === 0 && r25.code === 0 && existsSync(repo + "/.ai/task-loop/ack-95.json") && /流水在跑/.test(r2.out) && /流水在跑/.test(r25.out);
+const types2 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const noGone = !types2.includes("trigger_gone");
+phase = 3;
+const r3 = await run(); // success：真终态，关账
+srv.close();
+const closed = r3.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-95.json") && /关账 1/.test(r3.out);
+console.log(held && noGone ? "held-ok" : "held-bad", closed ? "closed-ok" : "closed-bad", r1.code, r2.code, r25.code, r3.code);
+' "$HERE" "$TL5M/w" "$TMP/ledger5m" > "$TMP/e2e5m.txt" 2>&1
+grep -q "^held-ok closed-ok 0 0 0 0$" "$TMP/e2e5m.txt" && r=0 || { cat "$TMP/e2e5m.txt"; r=1; }
+check "在途流水：running 与无流水窗口都保持账目（无 trigger_gone），success 才关账" "0" "$r"
+
+echo "== 5m-bis. 跨流水轮次上限：第 4 轮归因 → needs_human 升级，不再出工单（防越修越坏循环）=="
+TL5MB="$TMP/e2e5mb"; git init -q --bare "$TL5MB/r.git"
+git clone -q "$TL5MB/r.git" "$TL5MB/w" 2>/dev/null
+( cd "$TL5MB/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let pipeId = 7101;
+const TRACE = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 96, project_id: 1, target_branch: "main", title: "轮次上限", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/96\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/96$/.test(u)) return s.end(JSON.stringify({ iid: 96, target_branch: "main", head_pipeline: { id: pipeId, status: "failed", web_url: "http://g/" + pipeId } }));
+  if (new RegExp("/api/v4/projects/1/pipelines/" + pipeId + "/jobs$").test(u)) return s.end(JSON.stringify([{ id: 21, name: "b", stage: "build", status: "failed", web_url: "http://j/21" }]));
+  if (/\/jobs\/21\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6998, status: "success", sha: "b" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+// 轮 1：正常认领（rounds=1）
+const r1 = await run();
+if (!existsSync(repo + "/.ai/task-loop/ack-96.json")) { console.log("R1-DIAG code=" + r1.code + " out=" + r1.out.slice(0, 800)); process.exit(1); }
+const ack1 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-96.json", "utf8"));
+// 轮 2：新流水 → stale 重认领，rounds 携带为 2
+pipeId = 7102;
+const r2 = await run();
+const ack2 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-96.json", "utf8"));
+// 轮 3：预置 rounds=3 的 ack + 新流水 → 第 4 轮归因 → needs_human 升级、无工单
+pipeId = 7103;
+const a = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-96.json", "utf8"));
+a.ci.rounds = 3;
+writeFileSync(repo + "/.ai/task-loop/ack-96.json", JSON.stringify(a, null, 2));
+const r3 = await run();
+srv.close();
+if (!existsSync(repo + "/.ai/task-loop/ack-96.json")) { console.log("R3-DIAG code=" + r3.code + " out=" + r3.out.slice(0, 900)); process.exit(1); }
+const ack3 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-96.json", "utf8"));
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = r1.code === 0 && r2.code === 0 && r3.code === 0
+  && ack1.ci.rounds === 1 && ack2.ci.rounds === 2
+  && ack3.state === "needs_human" && ack3.ci.rounds === 4
+  && !existsSync(repo + "/.ai/task-loop/pack-96.md")
+  && types.includes("ci_escalated") && /升级给人/.test(r3.out);
+console.log(ok ? "ok" : "bad", r1.code, r2.code, r3.code, ack1.ci.rounds, ack2.ci.rounds, ack3.ci.rounds, ack3.state);
+' "$HERE" "$TL5MB/w" "$TMP/ledger5mb" > "$TMP/e2e5mb.txt" 2>&1
+grep -q "^ok 0 0 0 1 2 4 needs_human$" "$TMP/e2e5mb.txt" && r=0 || { cat "$TMP/e2e5mb.txt"; r=1; }
+check "轮次携带与上限：rounds 跨流水累计（1→2→4），超 3 → needs_human+ci_escalated+无新工单" "0" "$r"
+
+echo "== 5n. 轮次锁：并发轮互斥（launchd 180s 心跳 vs 慢轮次），孤儿锁 30min 接管 =="
+TL5N="$TMP/e2e5n"; git init -q --bare "$TL5N/r.git"
+git clone -q "$TL5N/r.git" "$TL5N/w" 2>/dev/null
+( cd "$TL5N/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+# 新鲜锁 → 跳过（HOME 隔离：锁检查之后才解析源，顺序一挪就会读真凭据——同 10d 教训）
+mkdir -p "$TMP/h5n1" "$TL5N/w/.ai/locks" && printf "other-123\n" > "$TL5N/w/.ai/locks/task-loop.round"
+OUT1="$(env HOME="$TMP/h5n1" GITLAB_URL= GITLAB_TOKEN= HARNESS_ENV_FILE=/nonexistent node "$HERE/scripts/task-loop.mjs" --once --root "$TL5N/w" 2>&1 | head -2)"
+case "$OUT1" in *"上一轮仍在进行"*) r1=0 ;; *) r1=1; echo "FRESH-LOCK-OUT: $OUT1";; esac
+check "新鲜轮次锁 → 本轮跳过（不并发改账）" "0" "$r1"
+# 🔴 CR 回归钉：跳过的进程不得删持有者的锁（否则慢轮场景第三进程趁虚而入=锁自毁）
+[ -s "$TL5N/w/.ai/locks/task-loop.round" ]; check "跳过后持有者的锁仍在（exit 只清自己的锁）" "0" "$?"
+# 孤儿锁（mtime 40 分钟前）→ 接管照跑
+touch -t "$(date -v-40M +%Y%m%d%H%M.%S 2>/dev/null || date -d '40 minutes ago' +%Y%m%d%H%M.%S)" "$TL5N/w/.ai/locks/task-loop.round"
+# HOME 必须给假目录：否则读到本机真实 feishu 凭据并对生产飞书发请求（同 10d 的教训）
+mkdir -p "$TMP/h5n"
+OUT2="$(env HOME="$TMP/h5n" GITLAB_URL= GITLAB_TOKEN= HARNESS_ENV_FILE=/nonexistent node "$HERE/scripts/task-loop.mjs" --once --root "$TL5N/w" 2>&1 | grep -c "未接入任何触发源")"
+check "孤儿锁（>30min）→ 接管并正常跑（退出 0 路径不受影响）" "1" "$OUT2"
+[ -e "$TL5N/w/.ai/locks/task-loop.round" ] && r3=1 || r3=0
+check "正常轮结束自清锁（不留假锁害下一轮）" "0" "$r3"
+# 🟡#2：fresh clone 首跑没有 locks 目录——锁要自建目录而不是静默无锁
+TL5N2="$TMP/e2e5n2"; git init -q --bare "$TL5N2/r.git" 2>/dev/null
+git clone -q "$TL5N2/r.git" "$TL5N2/w" 2>/dev/null
+( cd "$TL5N2/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+rm -rf "$TL5N2/w/.ai/locks"
+OUT4="$(env HOME="$TMP/h5n1" GITLAB_URL= GITLAB_TOKEN= HARNESS_ENV_FILE=/nonexistent node "$HERE/scripts/task-loop.mjs" --once --root "$TL5N2/w" 2>&1 | grep -c "未接入任何触发源")"
+check "fresh clone 无 locks 目录 → 自建并正常跑（不静默无锁）" "1" "$OUT4"
 
 echo "== 5k-quin. 识别器单元：多栈行/噪声跳过/路径归一/去重/未知基线保守 =="
 node --input-type=module -e '

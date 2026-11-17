@@ -117,7 +117,10 @@ export async function fetchPipelineFailures({ url, token, projectId, pipelineId,
     try { trace = await api(`/projects/${projectId}/jobs/${j.id}/trace`, true); } catch { traceOk = false; traceFailures += 1; }
     const fs = extractCiFailures(trace);
     const excerpt = trace.split('\n').filter((l) => /\[ERROR\]|FAILED|--- FAIL|[✗✕]/.test(l)).slice(0, excerptPerJob);
-    byJob.push({ job: j.name, stage: j.stage, webUrl: j.web_url, traceOk, failureCount: fs.length, failures: fs.map((f) => ({ ...f, suite: j.name })), excerpt });
+    // 全量日志尾巴（ci-inflight-hold）：opaque 时执行器没有凭据拉 trace——runner 代落盘，
+    // 会话读文件不读凭据（"会话永不持凭据"的兑现）。每 job 只留尾部 400 行（定位够用，体积可控）。
+    const tail = trace.split('\n').slice(-400).join('\n');
+    byJob.push({ job: j.name, stage: j.stage, webUrl: j.web_url, traceOk, failureCount: fs.length, failures: fs.map((f) => ({ ...f, suite: j.name })), excerpt, tail });
     for (const f of fs) if (!seen.has(f.fingerprint)) seen.set(f.fingerprint, { ...f, suite: j.name });
   }
   // 一个流水线里多 job 同因编译错是常态（实测 api-test 与 compile-and-upload 同一份报错）：

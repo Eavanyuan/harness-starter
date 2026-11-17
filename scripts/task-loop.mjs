@@ -17,8 +17,9 @@
  * 退出码：0 正常（含无事可做 / 未接入）；1 有触发但被安全闸拦、接入的源坏了、或某源临时不可达
  *   （临时不可达 = 跳过该源继续跑其余源，但不落节流戳——下一 tick 立即重试，不吃两小时节拍）；64 用法错。
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, readdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { hostname } from 'node:os';
 import { loadRules } from './lib/review-rules.mjs';
 import { claim, release } from './lib/claim.mjs';
 import { createBudget } from './lib/task-loop-core.mjs';
@@ -135,16 +136,48 @@ function stampLastRun() {
 // 背景：plist 的 stdout/stderr 分流 + 源失败 die(1) 只写 stderr，.out 里 9 小时只见"已载入"。
 // 围栏行永远走 stdout，无论本轮成败都能对账（触发/认领/关账计数 + 耗时 + exit 码）。
 const ROUND_START = Date.now();
-const stats = { claimed: 0, noop: 0, skip: 0, gone: 0, stale: 0, pack: 0 };
+const stats = { claimed: 0, noop: 0, skip: 0, gone: 0, stale: 0, pack: 0, escalated: 0 };
 const softFail = []; // {source}：临时不可达（超时/断网/5xx）——跳过该源、不落戳、exit 1 下 tick 重试
 function finish({ code, stamp }) {
   const parts = [`触发 ${triggers.length}`, `认领 ${stats.claimed}`, `待复核 ${stats.noop}`, `跳过 ${stats.skip}`, `关账 ${stats.gone}`, `内容更新 ${stats.stale}`];
   if (stats.pack) parts.push(`会话包 ${stats.pack}`);
   if (softFail.length) parts.push(`源故障 ${softFail.map((f) => f.source).join('+')}（跳过该源，下 tick 重试）`);
+  if (stats.escalated) parts.push(`升级 ${stats.escalated}`);
   console.log(`[task-loop] 轮次结束：${parts.join(' / ')}｜耗时 ${((Date.now() - ROUND_START) / 1000).toFixed(1)}s｜exit ${code}${stamp ? '' : '（不落节流戳，下一 tick 立即重试）'}`);
   if (stamp) stampLastRun();
   process.exit(code);
 }
+// ---- 本地轮次互斥（2026-11-17 ci-inflight-hold）----
+// launchd 心跳 180s，而一轮可跑 10s+；轮次一旦超过心跳就会并发第二份进程。认领有 CAS 仲裁，
+// 但 sweep/ack 写盘没有。排他文件锁：新轮直接跳过；超过 30min 的锁视为孤儿可接管
+// （持有进程已死，锁内容是 host/pid/时间）。
+const ROUND_LOCK_MAX_AGE_MS = 30 * 60_000;
+const roundLockPath = join(root, '.ai', 'locks', 'task-loop.round');
+let roundLockOwned = false; // 🔴 CR：只有持有者能在退出时删锁——跳过的进程删掉别人的活锁=锁自毁
+function acquireRoundLock() {
+  mkdirSync(join(root, '.ai', 'locks'), { recursive: true }); // fresh clone 首跑没有 locks 目录（CR 🟡#2：ENOENT 不是"判不了"是"没地方放"）
+  const write = () => { const fd = openSync(roundLockPath, 'wx'); writeSync(fd, `${hostname()}-${process.pid}-${new Date().toISOString()}\n`); closeSync(fd); };
+  try { write(); roundLockOwned = true; return true; } catch (e) {
+    if (e.code !== 'EEXIST') return true; // 判不了锁就不过度保守（锁是保险不是门禁）
+    try {
+      const age = Date.now() - statSync(roundLockPath).mtimeMs;
+      if (age < ROUND_LOCK_MAX_AGE_MS) return false;
+      rmSync(roundLockPath, { force: true }); // 孤儿锁接管（>30min：一轮不该跑这么久，budget 兜底）
+      try { write(); roundLockOwned = true; return true; }
+      catch (e2) {
+        // 接管竞态（CR 🟡#3）：别人先一步重建了锁——看新锁年龄，新鲜=有活人，退出
+        if (e2.code === 'EEXIST') { try { return (Date.now() - statSync(roundLockPath).mtimeMs) >= ROUND_LOCK_MAX_AGE_MS; } catch { return false; } }
+        throw e2;
+      }
+    } catch { return true; }
+  }
+}
+process.on('exit', () => { if (roundLockOwned) { try { rmSync(roundLockPath, { force: true }); } catch { /* 最后一道，不抛 */ } } });
+if (!acquireRoundLock()) {
+  console.log('[task-loop] 上一轮仍在进行（轮次锁 < 30min）——本轮跳过，CAS 认领已防重复认领');
+  process.exit(0); // 不持有锁：exit 钩子不动锁文件（CR 🔴：跳过者删持有者的锁=放并发进来）
+}
+
 const headless = rules.runtime?.headless;
 if (!headless?.cli || !Array.isArray(headless.args)) die(1, 'runtime.headless 剖面缺失（cli/args 必填，见 harness.rules.json）');
 if (headless.hooks !== false) {
@@ -191,6 +224,8 @@ const gl = resolveGitlabConfig({ rules });
 const GITLAB_URL = gl.url;
 const GITLAB_TOKEN = gl.token;
 let triggers = [];
+// 在途集合（流水 running/pending 的我的 MR）：轮询时捕获，sweep 据此不关账不重认领
+let gitlabInflight = new Set();
 // 飞书 MCP 调用引用（2026-11-14 接单三连接线）：声明必须在轮询块**外**——第一版声明在
 // wantFeishu 块里，认领后的 ack 段读不到，uncaughtException 把整轮掀了（实测，fail-safe 释放了认领）。
 let feishuCall = null;
@@ -242,6 +277,7 @@ if (wantGitlab) {
     if (fromConfig) username = await fetchCurrentUser({ url: GITLAB_URL, token: GITLAB_TOKEN });
     const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr });
     triggers.push(...fetched);
+    if (fetched.inflight instanceof Set) gitlabInflight = fetched.inflight; // 数组属性经 spread 丢失，单独捕获
     // 详情 404（CR 二审 🟡#2′）：MR 在列表里但详情已 404 = 刚被关/合并的竞态，跳过是正常路径，
     // 但持续 404 不许无痕——落账一行，报表里看得见。
     if (fetched.skipped404) {
@@ -356,6 +392,8 @@ if (wantFeishu) {
 }
 
 const ranSources = [wantGitlab ? 'gitlab' : null, wantFeishu ? 'feishu' : null].filter(Boolean).join('+');
+// 跨流水轮次携带（ci-inflight-hold）：sweep 重置 ack 时记下"这是第几轮"，claim 循环据此判升级
+const carryRounds = new Map();
 
 // ---- ack 生命周期 sweep（2026-11-16 关账半环）：触发源消失/内容已变 → 清账或重认 ----
 // 背景：认领落 ack 后若 MR 被合并/批红，触发集里不再有它——ack 与远端认领会一直挂到 TTL
@@ -370,6 +408,9 @@ if (!opt.dryRun) {
   let ackFiles = [];
   try { ackFiles = readdirSync(ackDir).filter((f) => /^ack-.+\.json$/.test(f)); } catch { /* 目录不存在/被文件占位：无账可清 */ }
   const active = new Map(triggers.map((t) => [`${t.kind}-${t.id}`, t]));
+  // 在途集合（fetchTriggers.inflight）：执行器刚推的修复流水正跑着——不触发也不许关账。
+  // 误关账实测形态：推送后 head_pipeline=running → 非 failed 不在触发集 → 被当"已合并/已批红"关掉。
+  const inflight = gitlabInflight;
   for (const f of ackFiles) {
     let a = null;
     try { a = JSON.parse(readFileSync(join(ackDir, f), 'utf8')); } catch { continue; }
@@ -378,6 +419,11 @@ if (!opt.dryRun) {
     if (!gitlabViewComplete) continue; // 本轮看不见 ≠ 消失：软失败/过滤轮不动账
     const id = key.slice(3);
     const cur = active.get(key);
+    if (!cur && inflight.has(key)) {
+      // 流水在跑（新推送待出结果）：既不关账也不判 stale——下一轮终态出来自然走对分支
+      console.log(`[task-loop] ${key} 流水在跑（新推送待出结果）——账目保持，不动`);
+      continue;
+    }
     if (!cur) {
       // 触发消失：merged / approved / closed → 释放认领 + 删 ack（含工单）(关账)
       const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
@@ -389,6 +435,8 @@ if (!opt.dryRun) {
     } else if (!a.fingerprint || a.fingerprint !== triggerFingerprint(cur)) {
       // 内容有更新（或旧格式 ack 无指纹、无法比对）：重置 ack，本轮 claim 循环会重新认领重写。
       // 旧格式选择重认领而非补写：无基准可比对，且 pending 清单本身可能已过期，重建才是对的（CR 🟡#6）。
+      // 轮次携带：连续第 N 轮修复（跨流水累计），新 ack 会用它判预算外升级。
+      if (a.fingerprint?.startsWith('ci:')) carryRounds.set(String(id), (a.ci?.rounds ?? 1) + 1);
       const why = a.fingerprint ? 'ack_stale' : 'ack_migrated';
       const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
       rmSync(join(ackDir, f));
@@ -512,6 +560,8 @@ for (const t of triggers) {
     let ciInfo = null;
     let ciAttr = null;
     let ciFetch = null;
+    // fingerprint 在 CI 分支与通用路径都要用（升级分支也落它）——先算，避免 TDZ
+    const fingerprint = t.kind === 'mr' ? triggerFingerprint(t) : undefined;
     if (t.signal === 'ci_pipeline') {
       const { fetchPipelineFailures, fetchLatestPipelineForRef, attributeCi } = await import('./lib/ci-failures.mjs');
       ciFetch = await fetchPipelineFailures({ url: GITLAB_URL, token: GITLAB_TOKEN, projectId: t.mr.project_id, pipelineId: t.ci.pipelineId });
@@ -533,6 +583,7 @@ for (const t of triggers) {
       } catch (e) {
         console.error(`[task-loop] ${t.id} 基线流水拉取失败（按无法取基线处理）：${e?.message || e}`);
       }
+      const rounds = carryRounds.get(String(t.id)) ?? 1; // 跨流水累计轮次（sweep 携带）；首轮=1
       ciAttr = attributeCi({ mine: ciFetch.failures, baseline });
       // CR 🔴#1：提取为空有两种成因（trace 拉不到 / 日志形态不被识别——Gradle 实测零识别），
       // 都不是"全部继承"。failedJobs>0 而 failures 空 = **无法归因**：job 本身就是活，落
@@ -553,7 +604,30 @@ for (const t of triggers) {
       if ((ciFetch.failedJobTotal ?? 0) > (ciFetch.failedJobs?.length ?? 0) || ciFetch.jobsPageTruncated || (ciFetch.traceFailures ?? 0) > 0) {
         console.log(`[task-loop] ${t.id} 归因视角不完整：失败 job ${ciFetch.failedJobs.length}/${ciFetch.failedJobTotal}${ciFetch.jobsPageTruncated ? '（jobs 列表翻页截断）' : ''}${ciFetch.traceFailures ? `，trace 拉取失败 ${ciFetch.traceFailures} 个` : ''}——以 job 链接为准`);
       }
-      ciInfo = { pipelineId: t.ci.pipelineId, pipelineUrl: t.ci.webUrl, sha: t.mr.sha, baselineStatus: ciAttr.baselineStatus, baselinePipelineId: ciAttr.baselinePipelineId ?? null, introducedCount: ciAttr.introduced.length, inheritedCount: ciAttr.inherited.length, opaque, failedJobTotal: ciFetch.failedJobTotal ?? ciFetch.failedJobs?.length ?? 0, traceFailures: ciFetch.traceFailures ?? 0 };
+      ciInfo = { pipelineId: t.ci.pipelineId, pipelineUrl: t.ci.webUrl, projectId: t.mr.project_id, sha: t.mr.sha, rounds, baselineStatus: ciAttr.baselineStatus, baselinePipelineId: ciAttr.baselinePipelineId ?? null, introducedCount: ciAttr.introduced.length, inheritedCount: ciAttr.inherited.length, opaque, failedJobTotal: ciFetch.failedJobTotal ?? ciFetch.failedJobs?.length ?? 0, traceFailures: ciFetch.traceFailures ?? 0 };
+      // 轮次上限（maxRounds 跨流水累计）：修一轮推一轮还红=可能越修越坏（实测 round1 13→round2 16）。
+      // 超限不再出工单——升级给人，防"每 30 分钟推一个更坏的 commit"无限循环。
+      if (rounds > (rules.runtime?.budget?.maxRounds ?? 3)) {
+        stats.escalated = (stats.escalated || 0) + 1;
+        recordEvent('task-loop', 'ci_escalated', { kind: t.kind, id: t.id, pipelineId: t.ci.pipelineId, rounds, introduced: ciAttr.introduced.length });
+        mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
+        rmSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), { force: true }); // 旧工单是过期指令（不再让人照着修）
+        const pendingForHuman = ciAttr.introduced.map((f) => ({ source: 'ci', kind: f.kind, fingerprint: f.fingerprint, body: `[${f.suite}] ${f.body || f.fingerprint}` }));
+        writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: pendingForHuman, state: 'needs_human', ...(fingerprint ? { fingerprint } : {}), ci: ciInfo, budget: budget.snapshot() }, null, 2));
+        budget.spendRound(); budget.pause();
+        held.delete(`${t.kind}-${t.id}`); // 有意持有（等人工），不计入异常释放清单
+        console.log(`[task-loop] ${t.kind}-${t.id} 已修 ${rounds - 1} 轮仍红（第 ${rounds} 次归因）——停止自动修复升级给人：ack state=needs_human，无新工单；人工处置后推新流水或关 MR 即自动关账`);
+        continue;
+      }
+      // opaque 落全量日志尾巴：执行器没有 GitLab 凭据，runner 代拉代存（会话读文件不读凭据）
+      if (opaque) {
+        const traceDir = join(root, '.ai', 'task-loop', 'traces', String(t.id));
+        mkdirSync(traceDir, { recursive: true });
+        for (const b of ciFetch.byJob || []) {
+          const safe = String(b.job || 'job').replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 40);
+          writeFileSync(join(traceDir, `${safe}.log`), `# ${b.webUrl || b.job}\n${b.tail || ''}\n`);
+        }
+      }
       ack = ciAttr.introduced.map((f) => ({ source: 'ci', kind: f.kind, fingerprint: f.fingerprint, body: `[${f.suite}] ${f.body || f.fingerprint}` }));
       recordEvent('task-loop', 'ci_attributed', { kind: t.kind, id: t.id, pipelineId: t.ci.pipelineId, introduced: ciAttr.introduced.length, inherited: ciAttr.inherited.length, baseline: ciAttr.baselineStatus, opaque });
     } else {
@@ -564,7 +638,6 @@ for (const t of triggers) {
     // 空清单终态：打回但 0 条待修（意见全 resolved、动词是唯一证据）≠ 有活干；CI 全为基线同款同理（inherited_only）。
     // 认领保留（防下轮重复触发空转），但 state 落账：fingerprint 变（新评论/新流水）→ sweep 重置重认领；触发消失 → sweep 关账。
     const noop = t.kind === 'mr' && ack.length === 0;
-    const fingerprint = t.kind === 'mr' ? triggerFingerprint(t) : undefined;
     mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
     writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, state: noop ? (ciInfo ? 'inherited_only' : 'awaiting_rereview') : 'working', ...(fingerprint ? { fingerprint } : {}), ...(ciInfo ? { ci: ciInfo } : {}), budget: budget.snapshot() }, null, 2));
     budget.spendRound();

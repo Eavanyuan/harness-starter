@@ -1,0 +1,207 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ci-inflight-hold",
+    "task_type": "change",
+    "related_task": "ci-fail-trigger",
+    "remote_id": null,
+    "baseline": "ab02da5",
+    "affected_ids": [
+      "RS-task-loop US-1（在途/轮次上限语义）",
+      "FS-任务循环执行器 §4.4/§6/§9",
+      "scripts/lib/gitlab-triggers.mjs（inflight 集合）",
+      "scripts/lib/ci-failures.mjs（trace 尾部）",
+      "scripts/task-loop.mjs（在途保持/轮次携带与上限/轮次锁/traces 落盘）",
+      "test/task-loop.test.sh（5m/5m-bis/5n + 5k-ter 扩展）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-17T10:19:27Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "行为变更但局部：sweep/认领内部语义补强，不改触发形状与接口；全部由实测事故驱动"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-17T10:40:00Z",
+      "exited_at": "2026-11-17T10:50:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-17T10:50:00Z",
+      "exited_at": "2026-11-17T10:50:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：无多方案决策点——三处缺口各有单一修法；锁的 30min 孤儿阈值与 budget 口径对齐",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-17T10:50:00Z",
+      "exited_at": "2026-11-17T10:50:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §4.4 同批更新",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-17T10:50:00Z",
+      "exited_at": "2026-11-17T10:50:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单实现 todo + 统一验证",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-17T10:50:00Z",
+      "exited_at": "2026-11-17T12:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-17T12:10:00Z",
+      "exited_at": "2026-11-17T12:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（两轮：一审 🔴 锁自毁+🟡4；二审代码与测试全核实、仅文档口径收尾——补齐后按二审结论视为可交付）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-17T12:45:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠：gate 由 CLOSE-GATE 等价实跑）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-ci-inflight-hold.md",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§6/§9 同批更新）",
+    "review": ".ai/review/CR-2026-11-17-ci-inflight-hold.md"
+  },
+  "todos": [
+    {
+      "id": "IH1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "在途保持（inflight 集合经 fetchTriggers 透传，spread 丢失单独捕获）+ 跨流水轮次携带与上限（carryRounds：sweep→claim，超 maxRounds → needs_human+ci_escalated+删旧工单）+ opaque 落 trace 尾部 400 行/job",
+      "files": [
+        "scripts/task-loop.mjs",
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/lib/ci-failures.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 三件过",
+        "tests": "5m（running+无流水窗口保持、success 关账）+ 5m-bis（rounds 1→2→4、needs_human、ci_escalated、无工单）+ 5k-ter 扩展（traces）+ 118 全绿；变异五处：一审三处 + exit 无条件删锁复原 + inflight 退黑名单（各 1 红）",
+        "feature_complete": "实测事故三连修：18:14 误关账（running 被当已合并）、1896 越修越坏无上限（round1 13→round2 16）、执行器无凭据看不到日志",
+        "quality_clean": "终态白名单（success/failed）而非黑名单——未知状态保守在途；TDZ 坑当场修；inflight 数组属性 spread 丢失单独捕获"
+      },
+      "verify": {
+        "log_path": ".ai/verify/IH1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "IH2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "本地轮次排他锁：.ai/locks/task-loop.round（wx 创建；<30min 跳过本轮；>30min 孤儿接管；exit 自清）；锁是保险不是门禁（判不了放行）",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5n 五条（新鲜锁跳过/跳过不删持有者锁/孤儿锁接管/退出自清/无 locks 目录首跑；HOME 隔离）",
+        "feature_complete": "launchd 180s 心跳 vs 慢轮次的并发写账窗口关闭；CAS 认领本来就有，本锁补的是 sweep/ack 写盘面",
+        "quality_clean": "孤儿阈值 30min 与单轮预算同量级；exit 钩子里 rmSync 不抛"
+      },
+      "verify": {
+        "log_path": ".ai/verify/IH2.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "IH3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "影响链文档：RS-ci-inflight-hold（全章节）、FS §4.4 在途/轮次/锁段 + §6 事件 + §9 测试行",
+      "files": [
+        "docs/01-requirements/RS-ci-inflight-hold.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "文档类",
+        "tests": "verify:state 过",
+        "feature_complete": "事故实录（18:14 误关账、round1→round2 变差）写进 RS 背景可回溯",
+        "quality_clean": "只动受影响段"
+      },
+      "verify": {
+        "log_path": ".ai/verify/IH3.log",
+        "command": "bash -c \"grep -q ci-inflight-hold docs/01-requirements/RS-ci-inflight-hold.md && grep -q ci_escalated docs/02-features/task-loop/FS-任务循环执行器.md\""
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "孤儿锁接管 TOCTOU：两进程同时判 >30min 双双 rm+write，后写者已按新锁年龄退出（修复后不再并行），但 rm→write 窗口内锁短暂不存在",
+      "owner": "ci-inflight-hold",
+      "status": "closed",
+      "resolution": "acknowledged：窗口极窄且属保险层；EEXIST 分支已按新锁年龄判定，残余是统计意义上的零星多跑一轮，无写账风险（CAS+sweep 视角守卫仍在）"
+    },
+    {
+      "id": "KI-2",
+      "text": "信号退出（SIGKILL）不经 exit 钩子，锁残留至 30min 孤儿接管",
+      "owner": "ci-inflight-hold",
+      "status": "closed",
+      "resolution": "acknowledged：30min 上限即兜底；launchd 每轮新进程，残留锁只延迟下一轮不阻塞任务"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

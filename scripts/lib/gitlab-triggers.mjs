@@ -189,6 +189,12 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   const mrs = await api('/merge_requests?scope=created_by_me&state=opened&per_page=100');
   const out = [];
   out.skipped404 = 0; // 详情 404 计数（刚被关的竞态）：调用方据此落账，不无痕
+  // 在途集合（2026-11-17 ci-inflight-hold）：流水在跑/待跑的 MR。它们不是触发（没失败），
+  // 但也绝不能被 sweep 当"触发消失"关账——执行器刚推的修复正跑着，此时关账=误报"已合并"。
+  // 终态白名单只认 success/failed（CR 🟡#1）：其余一律在途——含 canceled/skipped（人停的，
+  // 等新推送或人工处理，TTL 兜底）与未来未知状态字串（保守方向=保持账目，不误关）。
+  out.inflight = new Set();
+  const TERMINAL = new Set(['success', 'failed']);
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
@@ -213,6 +219,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
         throw e;
       }
       const hp = detail?.head_pipeline;
+      if (!hp || !TERMINAL.has(hp.status)) out.inflight.add(`mr-${mr.iid}`); // 无流水（推送→创建的秒级窗口）同样保持
       if (hp && hp.status === 'failed') {
         out.push({ kind: 'mr', id: mr.iid, mr: { ...mr, target_branch: detail?.target_branch || mr.target_branch }, unresolved: [], comments: [], reviewState: 'ci_failed', signal: 'ci_pipeline', ci: { pipelineId: hp.id, status: hp.status, webUrl: hp.web_url } });
       }

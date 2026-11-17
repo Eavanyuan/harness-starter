@@ -1,0 +1,7 @@
+# cmd: bash -c $'grep -q ci-inflight-hold docs/01-requirements/RS-ci-inflight-hold.md && grep -q ci_escalated docs/02-features/task-loop/FS-\344\273\273\345\212\241\345\276\252\347\216\257\346\211\247\350\241\214\345\231\250.md'
+# started: 2026-11-17T10:35:39Z
+# finished: 2026-11-17T10:35:39Z
+# exit_code: 0
+# commit: unknown
+# task: ci-inflight-hold
+# ---- output tail (last 200 lines) ----
