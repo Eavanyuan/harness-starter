@@ -764,6 +764,355 @@ console.log(ok ? "ok" : "bad", code);
 grep -q "^ok 0$" "$TMP/e2e5i.txt" && r=0 || { cat "$TMP/e2e5i.txt"; r=1; }
 check "空清单终态：awaiting_rereview+claim_noop+无 pack（不再说『已落清单 0 条』那种含混话）" "0" "$r"
 
+echo "== 5k. CI 红触发端到端：无打回证据 + head_pipeline failed → 认领→拉日志→归因→失败工单（ci-fail-trigger）=="
+# 形态来自 git.tdengine.net MR !1896 实测：列表接口不带 head_pipeline（详情才有）、
+# 两个 job 同因编译错、日志带 runner 时间戳前缀、同一文件在不同 job 绝对前缀不同。
+TL5K="$TMP/e2e5k"; git init -q --bare "$TL5K/r.git"
+git clone -q "$TL5K/r.git" "$TL5K/w" 2>/dev/null
+( cd "$TL5K/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=CI 红(pipeline 7001) 2=转绿 3=新流水又红(7002)
+const TRACE = [
+  "2026-11-16T10:41:13.890073Z 01O [ERROR] COMPILATION ERROR : ",
+  "2026-11-16T10:41:13.890093Z 01O [ERROR] /root/gitlab-runner/builds/qceIO3XVF/0/rd-app/idmp/tda-server/src/main/java/com/taosdata/asset/resource/FileResource.java:[93,29] variable elementAccessScopeService is already defined in class com.taosdata.asset.resource.FileResource",
+  "2026-11-16T10:41:13.890099Z 01O [ERROR] /workspace/tda-server/src/main/java/com/taosdata/asset/service/dashboard/PanelService.java:[144,75] cannot find symbol",
+  "2026-11-16T10:40:21.908114Z 01O [INFO] Tests run: 4, Failures: 0, Errors: 0 -- in com.taosdata.X",
+].join("\n");
+const hp = () => phase === 1 ? { id: 7001, status: "failed", web_url: "http://g/pipelines/7001" }
+  : phase === 2 ? { id: 7001, status: "success", web_url: "http://g/pipelines/7001" }
+  : { id: 7002, status: "failed", web_url: "http://g/pipelines/7002" };
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0];
+  const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 91, project_id: 1, target_branch: "main", title: "CI 红验证", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/91\/discussions$/.test(u)) return s.end("[]"); // 无打回证据 → 走 CI 分支
+  if (/\/merge_requests\/91$/.test(u)) return s.end(JSON.stringify({ iid: 91, target_branch: "main", head_pipeline: hp() }));
+  if (/\/pipelines\/700[12]\/jobs$/.test(u)) return s.end(JSON.stringify([
+    { id: 11, name: "compile-and-upload", stage: "build", status: "failed", web_url: "http://g/j/11" },
+    { id: 12, name: "check", stage: "test", status: "success" },
+  ]));
+  if (/\/jobs\/11\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  // 目标分支最新流水：基线绿（phase 无关——归因应全引入）
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6999, status: "success", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run();
+const ack1 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-91.json", "utf8"));
+const pack1 = readFileSync(repo + "/.ai/task-loop/pack-91.md", "utf8");
+const t1 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok1 = r1.code === 0
+  && ack1.state === "working" && ack1.fingerprint === "ci:7001" && ack1.pending.length === 2
+  && ack1.ci && ack1.ci.baselineStatus === "success"
+  && /cannot find symbol/.test(pack1) && /FileResource/.test(pack1) && /elementAccessScopeService/.test(pack1) && /基线/.test(pack1)
+  && ["trigger_found","claimed","ci_attributed","claim_held"].every((t) => t1.includes(t))
+  && /CI 失败 2 条引入 \/ 0 条基线同款/.test(r1.out);
+// phase 3：推了新 commit → 新流水 7002 又红（≠ fingerprint ci:7001）→ ack_stale 重认领重建
+phase = 3;
+const r2 = await run();
+const ack3 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-91.json", "utf8"));
+const t3 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok3 = r2.code === 0 && ack3.fingerprint === "ci:7002" && ack3.pending.length === 2
+  && t3.includes("ack_stale") && t3.lastIndexOf("claimed") > t3.indexOf("ack_stale")
+  && /内容更新 1/.test(r2.out);
+// phase 2：修好推上去转绿 → 关账（ack 与工单同删）
+phase = 2;
+const r3 = await run();
+const closed = r3.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-91.json") && !existsSync(repo + "/.ai/task-loop/pack-91.md")
+  && /关账 1/.test(r3.out);
+srv.close();
+console.log(ok1 ? "ok1" : "bad1", closed ? "closed" : "noclose", ok3 ? "ok3" : "bad3", r1.code, r2.code, r3.code);
+' "$HERE" "$TL5K/w" "$TMP/ledger5k" > "$TMP/e2e5k.txt" 2>&1
+grep -q "^ok1 closed ok3 0 0 0$" "$TMP/e2e5k.txt" && r=0 || { cat "$TMP/e2e5k.txt"; r=1; }
+check "CI 红全链：认领→拉日志→归因（基线绿全引入）→工单；转绿关账；新流水重认领" "0" "$r"
+
+echo "== 5k-bis. 基线同款 → inherited_only：本 MR 无引入项不修、不落工单 =="
+TL5KB="$TMP/e2e5kb"; git init -q --bare "$TL5KB/r.git"
+git clone -q "$TL5KB/r.git" "$TL5KB/w" 2>/dev/null
+( cd "$TL5KB/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+// 同一份编译错：MR 流水与目标分支流水都在报 → 全部继承
+const TRACE = "2026-11-16T10:41:13.890099Z 01O [ERROR] /workspace/tda-server/src/main/java/com/taosdata/asset/service/dashboard/PanelService.java:[144,75] cannot find symbol\n";
+const jobs = (jid) => JSON.stringify([{ id: jid, name: "build", stage: "compile", status: "failed", web_url: "http://g/j/" + jid }]);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 92, project_id: 1, target_branch: "main", title: "基线同款", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/92\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/92$/.test(u)) return s.end(JSON.stringify({ iid: 92, target_branch: "main", head_pipeline: { id: 7101, status: "failed", web_url: "http://g/p/7101" } }));
+  if (u === "/api/v4/projects/1/pipelines/7101/jobs") return s.end(jobs(31));
+  if (u === "/api/v4/projects/1/pipelines/6100/jobs") return s.end(jobs(32));
+  if (/\/jobs\/3[12]\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6100, status: "failed", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-92.json", "utf8"));
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const noopEv = types.find((x) => x.type === "claim_noop");
+const ok = code === 0
+  && ack.state === "inherited_only" && ack.pending.length === 0 && ack.ci.inheritedCount === 1 && ack.ci.baselineStatus === "failed"
+  && !existsSync(repo + "/.ai/task-loop/pack-92.md")
+  && noopEv && noopEv.detail.why === "inherited_only"
+  && /基线同款/.test(out) && /不修/.test(out);
+console.log(ok ? "ok" : "bad", code);
+' "$HERE" "$TL5KB/w" "$TMP/ledger5kb" > "$TMP/e2e5kb.txt" 2>&1
+grep -q "^ok 0$" "$TMP/e2e5kb.txt" && r=0 || { cat "$TMP/e2e5kb.txt"; r=1; }
+check "基线同款终态：inherited_only+claim_noop(why)+无工单（不在本 MR 修基线红）" "0" "$r"
+
+echo "== 5k-ter. 无法归因不判『不修』：trace 拉不到 → job 级工单 + ci_opaque（CR 🔴#1 回归钉）=="
+TL5T="$TMP/e2e5t"; git init -q --bare "$TL5T/r.git"
+git clone -q "$TL5T/r.git" "$TL5T/w" 2>/dev/null
+( cd "$TL5T/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 81, project_id: 1, target_branch: "main", title: "trace 拿不到", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/81\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/81$/.test(u)) return s.end(JSON.stringify({ iid: 81, target_branch: "main", head_pipeline: { id: 7201, status: "failed", web_url: "http://g/p/7201" } }));
+  if (u === "/api/v4/projects/1/pipelines/7201/jobs") return s.end(JSON.stringify([{ id: 41, name: "gradle-build", stage: "build", status: "failed", web_url: "http://g/j/41" }]));
+  if (/\/jobs\/41\/trace$/.test(u)) { s.statusCode = 500; return s.end("{}"); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6500, status: "success", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-81.json", "utf8"));
+const pack = readFileSync(repo + "/.ai/task-loop/pack-81.md", "utf8");
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = code === 0
+  && ack.state === "working" && ack.pending.length === 1 && ack.pending[0].kind === "job" && /gradle-build/.test(ack.pending[0].fingerprint)
+  && ack.ci.opaque === true && ack.ci.traceFailures === 1
+  && types.includes("ci_opaque") && !types.includes("claim_noop")
+  && /自动归因失败/.test(pack) && /http:\/\/g\/j\/41/.test(pack);
+console.log(ok ? "ok" : "bad", code);
+' "$HERE" "$TL5T/w" "$TMP/ledger5t" > "$TMP/e2e5t.txt" 2>&1
+grep -q "^ok 0$" "$TMP/e2e5t.txt" && r=0 || { cat "$TMP/e2e5t.txt"; r=1; }
+check "无法归因：trace 拉不到 → job 级工单+ci_opaque（不是 inherited_only『不修』）" "0" "$r"
+
+echo "== 5k-quad. 详情瞬断 → 整源软失败 → 存量 ack 不误关账（CR 🔴#2 回归钉）=="
+TL5Q="$TMP/e2e5q"; git init -q --bare "$TL5Q/r.git"
+git clone -q "$TL5Q/r.git" "$TL5Q/w" 2>/dev/null
+( cd "$TL5Q/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let detailBroken = false;
+const TRACE = "2026-11-16T10:41:13.890099Z 01O [ERROR] /workspace/tda-server/src/main/java/A.java:[1,1] cannot find symbol\n";
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 71, project_id: 1, target_branch: "main", title: "详情瞬断", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/71\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/71$/.test(u)) {
+    if (detailBroken) { s.statusCode = 500; return s.end("{}"); }
+    return s.end(JSON.stringify({ iid: 71, target_branch: "main", head_pipeline: { id: 7301, status: "failed", web_url: "http://g/p/7301" } }));
+  }
+  if (u === "/api/v4/projects/1/pipelines/7301/jobs") return s.end(JSON.stringify([{ id: 51, name: "build", stage: "compile", status: "failed", web_url: "http://g/j/51" }]));
+  if (/\/jobs\/51\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6400, status: "success", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run();
+detailBroken = true;
+const r2 = await run();
+srv.close();
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = r1.code === 0 && r2.code === 1
+  && existsSync(repo + "/.ai/task-loop/ack-71.json") && existsSync(repo + "/.ai/task-loop/pack-71.md")
+  && !types.includes("trigger_gone") && /源故障 gitlab/.test(r2.out);
+console.log(ok ? "ok" : "bad", r1.code, r2.code);
+' "$HERE" "$TL5Q/w" "$TMP/ledger5q" > "$TMP/e2e5q.txt" 2>&1
+grep -q "^ok 0 1$" "$TMP/e2e5q.txt" && r=0 || { cat "$TMP/e2e5q.txt"; r=1; }
+check "详情瞬断：软失败不动账（ack/工单保留、无 trigger_gone）" "0" "$r"
+
+echo "== 5k-ter2. 混合视角不判『不修』：可见失败全继承 + 部分 trace 拉不到 → opaque（CR 二审 🔴#1′ 回归钉）=="
+TL5T2="$TMP/e2e5t2"; git init -q --bare "$TL5T2/r.git"
+git clone -q "$TL5T2/r.git" "$TL5T2/w" 2>/dev/null
+( cd "$TL5T2/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+// job 61 trace 正常且失败与基线同款（继承）；job 62 trace 500 → 视角不完整 → 不得 inherited_only
+const TRACE_A = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 83, project_id: 1, target_branch: "main", title: "混合视角", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/83\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/83$/.test(u)) return s.end(JSON.stringify({ iid: 83, target_branch: "main", head_pipeline: { id: 7401, status: "failed", web_url: "http://g/p/7401" } }));
+  if (u === "/api/v4/projects/1/pipelines/7401/jobs") return s.end(JSON.stringify([
+    { id: 61, name: "job-a", stage: "test", status: "failed", web_url: "http://g/j/61" },
+    { id: 62, name: "job-b", stage: "test", status: "failed", web_url: "http://g/j/62" },
+  ]));
+  if (u === "/api/v4/projects/1/pipelines/6200/jobs") return s.end(JSON.stringify([{ id: 63, name: "base", stage: "test", status: "failed", web_url: "http://g/j/63" }]));
+  if (/\/jobs\/61\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE_A); }
+  if (/\/jobs\/62\/trace$/.test(u)) { s.statusCode = 500; return s.end("{}"); }
+  if (/\/jobs\/63\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE_A); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6200, status: "failed", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-83.json", "utf8"));
+const pack = readFileSync(repo + "/.ai/task-loop/pack-83.md", "utf8");
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = code === 0
+  && ack.state === "working" && ack.ci.opaque === true && ack.pending.length >= 1
+  && types.includes("ci_opaque") && !types.includes("claim_noop")
+  && /视角不完整/.test(pack) && /job-b/.test(pack);
+console.log(ok ? "ok" : "bad", code);
+' "$HERE" "$TL5T2/w" "$TMP/ledger5t2" > "$TMP/e2e5t2.txt" 2>&1
+grep -q "^ok 0$" "$TMP/e2e5t2.txt" && r=0 || { cat "$TMP/e2e5t2.txt"; r=1; }
+check "混合视角：可见全继承+trace 缺失 → opaque（不判 inherited_only）" "0" "$r"
+
+echo "== 5k-ter3. 零识别栈（trace 正常但无失败行）→ 同样 opaque；404 详情有观测 =="
+TL5T3="$TMP/e2e5t3"; git init -q --bare "$TL5T3/r.git"
+git clone -q "$TL5T3/r.git" "$TL5T3/w" 2>/dev/null
+( cd "$TL5T3/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=trace 正常但 Gradle 形态零识别；2=详情 404（刚被关闭的竞态）
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 84, project_id: 1, target_branch: "main", title: "零识别", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/84\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/84$/.test(u)) {
+    if (phase === 2) { s.statusCode = 404; return s.end("{}"); }
+    return s.end(JSON.stringify({ iid: 84, target_branch: "main", head_pipeline: { id: 7501, status: "failed", web_url: "http://g/p/7501" } }));
+  }
+  if (u === "/api/v4/projects/1/pipelines/7501/jobs") return s.end(JSON.stringify([{ id: 45, name: "gradle", stage: "build", status: "failed", web_url: "http://g/j/45" }]));
+  if (/\/jobs\/45\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end("Starting Gradle Daemon...\n> Task :compileJava FAILED\n\nBUILD FAILED in 12s\n"); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 6300, status: "success", sha: "bbb" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run(); // 零识别 → opaque
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-84.json", "utf8"));
+const pack = readFileSync(repo + "/.ai/task-loop/pack-84.md", "utf8");
+phase = 2;
+const r2 = await run(); // 详情 404 → 无触发但有观测行，不 die 不崩
+srv.close();
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok1 = r1.code === 0 && ack.ci.opaque === true && ack.pending[0].kind === "job" && /自动归因失败/.test(pack) && types.includes("ci_opaque");
+const ok2 = r2.code === 0 && /404/.test(r2.out) && types.includes("mr_detail_404");
+console.log(ok1 ? "ok1" : "bad1", ok2 ? "ok2" : "bad2", r1.code, r2.code);
+' "$HERE" "$TL5T3/w" "$TMP/ledger5t3" > "$TMP/e2e5t3.txt" 2>&1
+grep -q "^ok1 ok2 0 0$" "$TMP/e2e5t3.txt" && r=0 || { cat "$TMP/e2e5t3.txt"; r=1; }
+check "零识别栈同样 opaque；详情 404 竞态有观测行不 die（mr_detail_404）" "0" "$r"
+
+echo "== 5k-quin. 识别器单元：多栈行/噪声跳过/路径归一/去重/未知基线保守 =="
+node --input-type=module -e '
+import { ciFailure, extractCiFailures, normalizeCodePath, attributeCi } from "'"$HERE"'/scripts/lib/ci-failures.mjs";
+const must = (cond, name) => { if (!cond) { console.log("FAIL " + name); process.exit(1); } };
+must(ciFailure("2026-11-16T10:41:13.890093Z 01O [ERROR] /root/gitlab-runner/builds/qceIO3XVF/0/rd-app/idmp/tda-server/src/main/java/A.java:[93,29] variable x is already defined").kind === "javac", "javac");
+must(ciFailure("[ERROR] /workspace/tda-server/src/main/java/A.java:[93,29] variable x is already defined").kind === "javac", "javac-no-prefix");
+must(ciFailure("[ERROR]   com.taosdata.XTest.testScope:42 expected: true but was: false").fingerprint === "com.taosdata.XTest.testScope", "surefire");
+must(ciFailure("FAILED tests/test_api.py::test_share_denied - AssertionError: assert 403").kind === "test", "pytest");
+must(ciFailure("--- FAIL: TestPanelScope (0.01s)").fingerprint === "TestPanelScope", "go");
+must(ciFailure("  ✗ 未入库日志不算证据 (期望 1，实际 0)").kind === "check", "repo-check");
+must(!ciFailure("2026-11-16T10:41:13.890073Z 01O [ERROR] COMPILATION ERROR : "), "noise-compilation");
+must(!ciFailure("[ERROR] Tests run: 4, Failures: 1, Errors: 0, Skipped: 0"), "noise-summary");
+must(!ciFailure("[INFO] Tests run: 4, Failures: 0"), "noise-info");
+must(ciFailure("2026-11-16T10:41:13.890093Z 01O [ERROR] /root/gitlab-runner/builds/qceIO3XVF/0/rd-app/idmp/tda-server/src/main/java/A.java:[93,29] x")?.fingerprint === ciFailure("[ERROR] /workspace/tda-server/src/main/java/A.java:[93,29] x")?.fingerprint, "path-normalize");
+must(normalizeCodePath("/workspace/tda-server/src/main/java/A.java") === "tda-server/src/main/java/A.java", "normalize-unit");
+must(extractCiFailures("[ERROR] /w/a/src/A.java:[1,1] boom\n[ERROR] /r/b/x/a/src/A.java:[1,1] boom\n[ERROR] /w/a/src/A.java:[2,1] boom").length === 1, "dedup");
+must(ciFailure("\u001b[90m2026-11-16T10:41:13.890093Z\u001b[0m 01O [ERROR] /w/a/src/A.java:[1,1] boom")?.fingerprint === ciFailure("[ERROR] /w/a/src/A.java:[1,1] boom")?.fingerprint, "ansi-timestamp");
+must(ciFailure("[ERROR] C:\\build\\a\\src\\A.java:[1,1] boom")?.fingerprint === ciFailure("[ERROR] D:\\other\\a\\src\\A.java:[1,1] boom")?.fingerprint, "backslash");
+must(ciFailure(" ✕ renders panel (12 ms)")?.fingerprint === ciFailure(" ✕ renders panel (15ms)")?.fingerprint, "jest-duration");
+const a = attributeCi({ mine: [{ id: "x", suite: "j", fingerprint: "x" }], baseline: null });
+must(a.baselineKnown === false && a.introduced.length === 1 && a.inherited.length === 0, "unknown-baseline-conservative");
+const b = attributeCi({ mine: [{ id: "x", suite: "j", fingerprint: "x" }, { id: "y", suite: "j", fingerprint: "y" }], baseline: { status: "failed", failures: [{ id: "x", suite: "b", fingerprint: "x" }] } });
+must(b.introduced.length === 1 && b.inherited.length === 1 && b.resolved.length === 0, "setdiff-reuse");
+console.log("unit-ok");
+' > "$TMP/ciunit.txt" 2>&1
+grep -q "^unit-ok$" "$TMP/ciunit.txt" && r=0 || { cat "$TMP/ciunit.txt"; r=1; }
+check "识别器/归因单元：六栈识别、噪声跳过、同文件跨 job 同指纹、未知基线保守" "0" "$r"
+
 echo "== 5j. 节拍收紧入库：pollSeconds 900（P1 延迟上限 2h→15min）=="
 grep -q '"pollSeconds": 900' "$HERE/harness.rules.json"
 check "runtime.taskLoop.pollSeconds=900 已入库（文档口径同步 FS §8）" "0" "$?"

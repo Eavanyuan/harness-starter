@@ -23,6 +23,7 @@
 - Given 达到停点 Then 判定条件为"本 MR 引入的失败 = 0 且 approved_by 非空且 approver ≠ author 且审批晚于最后一次 push"，缺一不算完成
 - Given 接入的某个源临时不可达（超时/断网/5xx/429，2026-11-16 变更 task-loop-close）When 轮询失败 Then 跳过该源继续跑其余源（不 die 不致盲），不落节流戳下一 tick 立即重试；硬故障（401/403）仍整轮 die 且报错同步 stdout；成轮必印一行围栏摘要（硬故障 die=未成轮不印，由 die 双通道保证不无声）
 - Given 已认领的 MR 被合并/批红/关闭 When 触发集里不再有它（且本轮 GitLab 轮询成功未收窄）Then 自动关账：释放认领 + 删 ack 与工单 + `trigger_gone` 落账；待修内容变化（fingerprint）→ 重置重认领（软失败/`--mr` 过滤轮不动账——本轮看不见 ≠ 消失）；纯动词零待修 → `awaiting_rereview`（claim_noop）且认领即落会话工单 `pack-<id>.md`
+- Given 我的 open MR 无打回证据但 `head_pipeline` 为 failed（2026-11-17 变更 ci-fail-trigger）When 轮询 Then 触发 `ci_pipeline` 信号：认领 → 拉 failed jobs 日志 → 多栈识别失败行（javac/surefire/pytest/jest/go/✗，跨 job 指纹去重）→ 以目标分支最新流水为基线归因（绿=全引入/红=setDiff 分引入与基线同款/取不到=明说保守）→ 引入项落 CI 失败工单；全为基线同款 → `inherited_only` 不修；新流水 → 重认领重归因；转绿 → 关账
 
 ### US-2 剖面 B：飞书 bug 自动接单（hotfix 状态机）
 

@@ -35,7 +35,7 @@ ${cmts}
 ## 本次变更涉及的文件（上下文锚，按需读取）
 ${changedFiles.map((f) => `- ${f}`).join('\n') || '-（无）'}
 
-${PROTOCOL_COMMON}
+${PROTOCOL_COMMON.replace('<N>', '1')}
 4. 修复完成后运行项目验证命令（见 worktree 内 AGENTS.md 的 verify 约定），证据留日志；
 5. acks 逐条对应打回意见；resolve 只勾你确已修复的。`,
     artifacts: ['todo.json', 'acks.json', 'resolves.json', 'round-1.md'],
@@ -78,6 +78,38 @@ ${PROTOCOL_COMMON.replace('<N>', '1')}
    尝试多种合理复现路径后仍复现不了 → todo.json 写明尝试过的路径，ack 阶段直接停（不要硬修）；
 5. 复现成功 → 同会话继续修复到红测试转绿，再跑项目验证命令留证据。`,
     artifacts: ['todo.json', 'round-1.md'],
+  };
+}
+
+/**
+ * CI 失败修复工单（ci-fail-trigger，2026-11-17）：MR 的流水红 → 引入清单 + 基线同款 + 日志摘录。
+ * failures/attribute 形状见 scripts/lib/ci-failures.mjs（fingerprint 稳定身份、excerpt 原文行）。
+ */
+export function buildR1ProfileCI({ mr, introduced, inherited = [], baselineStatus = 'unknown', failedJobs = [], excerpts = [], opaque = false, viewNote = null }) {
+  const intro = introduced.map((f) => `- [${f.kind}] ${f.fingerprint}${f.file ? `（${f.file}${f.line ? ':' + f.line : ''}）` : ''}`).join('\n');
+  const inher = inherited.map((f) => `- ${f.fingerprint}`).join('\n');
+  const jobs = failedJobs.map((j) => `- ${j.stage}/${j.name} ${j.webUrl || ''}`).join('\n');
+  const exc = excerpts.slice(0, 20).map((l) => '    ' + l.trim().slice(0, 200)).join('\n');
+  return {
+    prompt: `你是 CI 失败修复执行者。MR !${mr.iid}「${mr.title}」的流水线红了（pipeline ${baselineStatus === 'unknown' ? '基线未知' : '基线 ' + baselineStatus}）。
+${opaque ? '\n> ⚠ 自动归因失败（日志拉不到或失败行不被识别）——下面的 job 清单就是活：先打开 job 链接人工定位，别按"无引入项"处理。\n' : ''}
+## 引入失败清单（MR 侧独有——本单只修这些）
+${intro || '-（无）'}
+
+## 基线同款失败（目标分支也红，不是本 MR 引入——不在本单修，改了反而污染 MR）
+${inher || '-（无）'}
+
+## 失败的 job（日志在 GitLab，必要时拉全量 trace）
+${jobs || '-（无）'}
+${viewNote && (viewNote.failedJobTotal > viewNote.failedJobs || viewNote.jobsPageTruncated || viewNote.traceFailures > 0) ? `> ⚠ 归因视角不完整：失败 job ${viewNote.failedJobs}/${viewNote.failedJobTotal}${viewNote.jobsPageTruncated ? '，jobs 列表翻页截断' : ''}${viewNote.traceFailures > 0 ? `，trace 拉取失败 ${viewNote.traceFailures} 个` : ''}——清单不是全集，以 job 链接为准。` : ''}
+
+## 日志摘录（失败行原文，定位锚）
+${exc || '-（无）'}
+
+${PROTOCOL_COMMON.replace('<N>', '1')}
+4. 先在本地复现编译/测试失败（用日志中的命令或项目构建脚本），证据留日志；
+5. 修复引入清单里的每一项；基线同款失败不要修（单独开单，不进本 MR）。`,
+    artifacts: ['todo.json', 'acks.json', 'resolves.json', 'round-1.md'],
   };
 }
 

@@ -240,7 +240,14 @@ if (wantGitlab) {
   const fromConfig = !username;
   try {
     if (fromConfig) username = await fetchCurrentUser({ url: GITLAB_URL, token: GITLAB_TOKEN });
-    triggers.push(...await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr }));
+    const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr });
+    triggers.push(...fetched);
+    // 详情 404（CR 二审 🟡#2′）：MR 在列表里但详情已 404 = 刚被关/合并的竞态，跳过是正常路径，
+    // 但持续 404 不许无痕——落账一行，报表里看得见。
+    if (fetched.skipped404) {
+      recordEvent('task-loop', 'mr_detail_404', { count: fetched.skipped404 });
+      console.log(`[task-loop] ${fetched.skipped404} 条 MR 详情 404（刚被关/合并的竞态，跳过；若持续出现查 token 权限）`);
+    }
     recordEvent('task-loop', 'gitlab_polled', { username, identity: fromConfig ? 'token' : 'override', triggers: triggers.length });
   } catch (e) {
     // 2026-11-16 实测：内网 GitLab 不可达时这里超时 die(1)，把还没轮询的剖面 B 一起拖死——
@@ -411,7 +418,7 @@ for (const t of triggers) {
     const sf = join(root, '.ai', 'task-loop', 'shadow.jsonl');
     writeFileSync(sf, `${JSON.stringify({ ts: new Date().toISOString(), kind: t.kind, id: t.id, summary: (t.mr?.title || '').slice(0, 60), unresolved: t.unresolved.length, comments: (t.comments || []).length })}\n`, { flag: 'a' });
     recordEvent('task-loop', 'shadow_hit', { kind: t.kind, id: t.id });
-    console.log(`[dry-run] 会认领 ${t.kind}-${t.id}${t.itemType ? `（${t.itemType}）` : ''} → worktree → headless(${headless.cli} ${headless.args.join(' ')} 权限=${headless.permission_mode}) → ${t.kind === 'mr' ? `修复 ${t.unresolved.length} 条未解决讨论 + ${(t.comments || []).length} 条建议评论` : '排期修复（缺陷/需求）'}`);
+    console.log(`[dry-run] 会认领 ${t.kind}-${t.id}${t.itemType ? `（${t.itemType}）` : ''} → worktree → headless(${headless.cli} ${headless.args.join(' ')} 权限=${headless.permission_mode}) → ${t.kind === 'mr' ? (t.signal === 'ci_pipeline' ? `拉流水 ${t.ci.pipelineId} 日志归因（CI 红）→ 修引入项` : `修复 ${t.unresolved.length} 条未解决讨论 + ${(t.comments || []).length} 条建议评论`) : '排期修复（缺陷/需求）'}`);
     continue;
   }
 
@@ -498,29 +505,87 @@ for (const t of triggers) {
   });
   budget.start();
   try {
-    // v1 修复动作占位：T5 接 headless 会话与 CI 归因循环；此处先落"确认意见"结构。
-    // 待修清单两路：①他人未解决 resolvable 讨论；②评审人建议性评论（non-resolvable，
-    // 2026-11-16 用户指令：审核意见里的建议修改项也纳入接单修复范围——动词型触发
-    // 往往零 resolvable，只靠①会得到空清单，修复会话不知道要修什么）。
-    const fromDiscussions = t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ source: 'discussion', id: d.id, note: n.id, body: (n.body || '').slice(0, 120) })));
-    const fromComments = (t.comments || []).map((c) => ({ source: 'comment', id: c.id, note: c.note, body: (c.body || '').slice(0, 120), author: c.author }));
-    const ack = [...fromDiscussions, ...fromComments];
-    // 空清单终态（2026-11-16）：MR 打回但 0 条待修（意见全 resolved、动词是唯一证据）≠ 有活干。
-    // 认领保留（防下轮重复触发空转），但 state=awaiting_rereview + fingerprint 落账：
-    // fingerprint 变（新评论/新讨论）→ sweep 重置重认领；触发消失 → sweep 关账。
+    // 待修清单两路：①打回（他人未解决 resolvable 讨论 + 评审建议性评论，2026-11-16 用户指令：
+    // 建议修改项也纳入修复范围——动词型触发往往零 resolvable，只靠讨论会得到空清单）；
+    // ②CI 红（ci-fail-trigger 2026-11-17：认领后拉日志归因，引入项进清单，基线同款不修）。
+    let ack;
+    let ciInfo = null;
+    let ciAttr = null;
+    let ciFetch = null;
+    if (t.signal === 'ci_pipeline') {
+      const { fetchPipelineFailures, fetchLatestPipelineForRef, attributeCi } = await import('./lib/ci-failures.mjs');
+      ciFetch = await fetchPipelineFailures({ url: GITLAB_URL, token: GITLAB_TOKEN, projectId: t.mr.project_id, pipelineId: t.ci.pipelineId });
+      // 归因基线 = 目标分支最新流水（远端 CI 结果，不本地双树实跑——重项目全量测试一轮几分钟起，
+      // T4a 的 merge-base 双树留给需要本地复现的场景）。取不到基线明说 unknown，不猜。
+      let baseline = null;
+      try {
+        const latest = await fetchLatestPipelineForRef({ url: GITLAB_URL, token: GITLAB_TOKEN, projectId: t.mr.project_id, ref: t.mr.target_branch || 'main' });
+        // 基线口径（CR 🟡#2）：只有 success/failed 是"已完结的可判状态"——
+        // running/pending 还没出结果、canceled/skipped 是人主动停的，都不当绿（否则继承红会被
+        // 列进引入清单，修复会话按单去修基线存量——正是 RS 承诺不做的"污染 MR"）。
+        if (latest && latest.status === 'failed') {
+          const bf = await fetchPipelineFailures({ url: GITLAB_URL, token: GITLAB_TOKEN, projectId: t.mr.project_id, pipelineId: latest.id });
+          baseline = { status: latest.status, pipelineId: latest.id, failures: bf.failures };
+        } else if (latest && latest.status === 'success') {
+          baseline = { status: latest.status, pipelineId: latest.id, failures: [] }; // 基线绿 → 全部按引入
+        }
+        // 其余状态（running/canceled/skipped/取不到）→ baseline 保持 null → unknown，明说不猜
+      } catch (e) {
+        console.error(`[task-loop] ${t.id} 基线流水拉取失败（按无法取基线处理）：${e?.message || e}`);
+      }
+      ciAttr = attributeCi({ mine: ciFetch.failures, baseline });
+      // CR 🔴#1：提取为空有两种成因（trace 拉不到 / 日志形态不被识别——Gradle 实测零识别），
+      // 都不是"全部继承"。failedJobs>0 而 failures 空 = **无法归因**：job 本身就是活，落
+      // job 级工单让人先打开链接定位——CI 红静默过夜（判"不修"）正是本变更要消灭的痛点。
+      // CR 二审 🔴#1′：视野不完整（trace 拉取失败 / 失败 job 被 maxJobs 截断 / jobs 翻页截断）时，
+      // "可见部分恰好全为基线同款"不等于"全部继承"——没看见的 job 里可能有引入项。
+      // 与"提取完全为空"同走 opaque：宁可让人多看一眼 job，不让 CI 红静默过夜。
+      const viewIncomplete = ((ciFetch.traceFailures ?? 0) > 0)
+        || ((ciFetch.failedJobTotal ?? 0) > (ciFetch.failedJobs?.length ?? 0))
+        || !!ciFetch.jobsPageTruncated;
+      const opaque = (ciFetch.failedJobs?.length > 0)
+        && (ciFetch.failures.length === 0 || (ciAttr.introduced.length === 0 && viewIncomplete));
+      if (opaque) {
+        recordEvent('task-loop', 'ci_opaque', { kind: t.kind, id: t.id, pipelineId: t.ci.pipelineId, failedJobs: ciFetch.failedJobs.length, traceFailures: ciFetch.traceFailures ?? 0 });
+        ciAttr = { ...ciAttr, introduced: ciFetch.failedJobs.map((j) => ({ id: `job:${j.name}`, fingerprint: `job:${j.name}`, kind: 'job', suite: j.stage || 'job', body: `${j.webUrl || ''}` })), inherited: [] };
+      }
+      // 截断透明（CR 🟡#3）：没看全的失败 job 要说，不静默缩视角
+      if ((ciFetch.failedJobTotal ?? 0) > (ciFetch.failedJobs?.length ?? 0) || ciFetch.jobsPageTruncated || (ciFetch.traceFailures ?? 0) > 0) {
+        console.log(`[task-loop] ${t.id} 归因视角不完整：失败 job ${ciFetch.failedJobs.length}/${ciFetch.failedJobTotal}${ciFetch.jobsPageTruncated ? '（jobs 列表翻页截断）' : ''}${ciFetch.traceFailures ? `，trace 拉取失败 ${ciFetch.traceFailures} 个` : ''}——以 job 链接为准`);
+      }
+      ciInfo = { pipelineId: t.ci.pipelineId, pipelineUrl: t.ci.webUrl, sha: t.mr.sha, baselineStatus: ciAttr.baselineStatus, baselinePipelineId: ciAttr.baselinePipelineId ?? null, introducedCount: ciAttr.introduced.length, inheritedCount: ciAttr.inherited.length, opaque, failedJobTotal: ciFetch.failedJobTotal ?? ciFetch.failedJobs?.length ?? 0, traceFailures: ciFetch.traceFailures ?? 0 };
+      ack = ciAttr.introduced.map((f) => ({ source: 'ci', kind: f.kind, fingerprint: f.fingerprint, body: `[${f.suite}] ${f.body || f.fingerprint}` }));
+      recordEvent('task-loop', 'ci_attributed', { kind: t.kind, id: t.id, pipelineId: t.ci.pipelineId, introduced: ciAttr.introduced.length, inherited: ciAttr.inherited.length, baseline: ciAttr.baselineStatus, opaque });
+    } else {
+      const fromDiscussions = t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ source: 'discussion', id: d.id, note: n.id, body: (n.body || '').slice(0, 120) })));
+      const fromComments = (t.comments || []).map((c) => ({ source: 'comment', id: c.id, note: c.note, body: (c.body || '').slice(0, 120), author: c.author }));
+      ack = [...fromDiscussions, ...fromComments];
+    }
+    // 空清单终态：打回但 0 条待修（意见全 resolved、动词是唯一证据）≠ 有活干；CI 全为基线同款同理（inherited_only）。
+    // 认领保留（防下轮重复触发空转），但 state 落账：fingerprint 变（新评论/新流水）→ sweep 重置重认领；触发消失 → sweep 关账。
     const noop = t.kind === 'mr' && ack.length === 0;
     const fingerprint = t.kind === 'mr' ? triggerFingerprint(t) : undefined;
     mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true });
-    writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, state: noop ? 'awaiting_rereview' : 'working', ...(fingerprint ? { fingerprint } : {}), budget: budget.snapshot() }, null, 2));
+    writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, state: noop ? (ciInfo ? 'inherited_only' : 'awaiting_rereview') : 'working', ...(fingerprint ? { fingerprint } : {}), ...(ciInfo ? { ci: ciInfo } : {}), budget: budget.snapshot() }, null, 2));
     budget.spendRound();
     budget.pause();
     // 会话包落盘（2026-11-16）：认领即出工单——交互会话接手 = 读 pack-<id>.md 开工，不必翻 ack JSON。
     // headless 自动执行仍留 T5（影子周准入）；这里先把"等人来发现"变成"等读一份现成工单"。
     if (!noop) {
       try {
-        const { buildR1ProfileA, buildR1ProfileB } = await import('./lib/session-pack.mjs');
+        const { buildR1ProfileA, buildR1ProfileB, buildR1ProfileCI } = await import('./lib/session-pack.mjs');
         let pack;
-        if (t.kind === 'mr') {
+        if (t.signal === 'ci_pipeline') {
+          // CI 工单：引入清单 + 基线同款 + 失败 job 链接 + 日志摘录（定位锚）
+          const excerpts = (ciFetch?.byJob || []).flatMap((b) => b.excerpt || []).slice(0, 20);
+          const viewNote = {
+            failedJobs: ciFetch?.failedJobs?.length ?? 0,
+            failedJobTotal: ciFetch?.failedJobTotal ?? 0,
+            jobsPageTruncated: !!ciFetch?.jobsPageTruncated,
+            traceFailures: ciFetch?.traceFailures ?? 0,
+          };
+          pack = buildR1ProfileCI({ mr: t.mr, introduced: ciAttr.introduced, inherited: ciAttr.inherited, baselineStatus: ciAttr.baselineStatus, failedJobs: ciFetch?.failedJobs || [], excerpts, opaque: !!ciInfo?.opaque, viewNote });
+        } else if (t.kind === 'mr') {
           const commentsForPack = [
             ...t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ discussion_id: d.id, note_id: n.id, author: n.author?.username || '?', body: n.body }))),
             ...(t.comments || []).map((x) => ({ discussion_id: x.id, note_id: x.note, author: x.author, body: x.body })),
@@ -532,7 +597,7 @@ for (const t of triggers) {
         writeFileSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), `# 会话包 ${t.kind}-${t.id}（${new Date().toISOString()} 自动打包）\n\n`
           + '> 接手方式：交互会话读本文按 prompt 开工，产物按协议写回本目录。开工前若 .ai/tasks/ 里还没有对应档案，\n'
           + '> 先建档：飞书缺陷 `bash scripts/init-harness.sh <slug> S --type bugfix --related feishu:' + `${t.id}` + '`；MR 打回 `--type change --related <原任务> --baseline <commit>`。\n'
-          + (t.kind === 'mr' ? '> 注：变更文件清单未随轮询拉取（省 API）——工单里的"涉及文件"不可当全集，接手后先 git diff 基线自取。\n' : '')
+          + (t.kind === 'mr' && t.signal !== 'ci_pipeline' ? '> 注：变更文件清单未随轮询拉取（省 API）——工单里的"涉及文件"不可当全集，接手后先 git diff 基线自取。\n' : '')
           + '\n' + pack.prompt + '\n\n## 预期产物\n' + pack.artifacts.map((x) => `- ${x}`).join('\n') + '\n');
         stats.pack += 1;
         console.log(`[task-loop] 会话包已落盘：.ai/task-loop/pack-${t.id}.md（交互接手即读它）`);
@@ -547,11 +612,15 @@ for (const t of triggers) {
       stats.noop += 1;
       // 上一次 working 轮落过的旧工单一并清掉：内容已收敛到零待修，旧工单是过期指令（CR 二审残留）
       rmSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), { force: true });
-      recordEvent('task-loop', 'claim_noop', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot() });
-      console.log(`[task-loop] ${t.kind}-${t.id} 已认领但 0 条待修意见——修复已推、等 re-review；认领保留防重复触发（fingerprint 变化即重认领，触发消失即关账）`);
+      recordEvent('task-loop', 'claim_noop', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot(), ...(ciInfo ? { why: 'inherited_only' } : {}) });
+      console.log(ciInfo
+        ? `[task-loop] ${t.kind}-${t.id} 已认领但失败全为基线同款（${ciInfo.inheritedCount} 条，基线 ${ciInfo.baselineStatus}）——本 MR 无引入项不修；新流水或基线变化即重评`
+        : `[task-loop] ${t.kind}-${t.id} 已认领但 0 条待修意见——修复已推、等 re-review；认领保留防重复触发（fingerprint 变化即重认领，触发消失即关账）`);
     } else {
-      recordEvent('task-loop', 'claim_held', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot() });
-      console.log(`[task-loop] ${t.kind}-${t.id} 已认领并落确认清单（${ack.length} 条待修意见，v1 占位——headless 修复在 T5 接入）`);
+      recordEvent('task-loop', 'claim_held', { kind: t.kind, id: t.id, ref: c.ref, fingerprint, budget: budget.snapshot(), ...(ciInfo ? { ci: ciInfo } : {}) });
+      console.log(ciInfo
+        ? `[task-loop] ${t.kind}-${t.id} 已认领：CI 失败 ${ciInfo.introducedCount} 条引入 / ${ciInfo.inheritedCount} 条基线同款（基线 ${ciInfo.baselineStatus}）——失败工单已落盘 .ai/task-loop/pack-${t.id}.md`
+        : `[task-loop] ${t.kind}-${t.id} 已认领并落确认清单（${ack.length} 条待修意见，v1 占位——headless 修复在 T5 接入）`);
     }
   } catch (e) {
     // 认领之后失败 → 当场释放，别把 MR 锁在一个没人干活的引用上（上次实测的泄漏路径）

@@ -188,6 +188,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   // 100 对单人已极难触顶；真触顶时的彻底解法是关账前单查 MR 状态复核（KI-3 登记）。
   const mrs = await api('/merge_requests?scope=created_by_me&state=opened&per_page=100');
   const out = [];
+  out.skipped404 = 0; // 详情 404 计数（刚被关的竞态）：调用方据此落账，不无痕
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
@@ -195,7 +196,28 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     // 先粗判：既无他人未解决意见、也无打回动词，就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）。
     // 动词必须进粗筛：评审者用普通评论 + requested changes 表态时没有任何 resolvable 讨论
     // （2026-11-16 MR !1882 实测），只按未解决意见筛会把打回的 MR 在 classifyMr 之前就 continue 掉。
-    if (unresolvedByOthers(discs, username).length === 0 && !changesRequestedAt(discs, username)) continue;
+    const hasReviewSignal = unresolvedByOthers(discs, username).length > 0 || !!changesRequestedAt(discs, username);
+    if (!hasReviewSignal) {
+      // 第二路信号（2026-11-17 ci-fail-trigger）：CI 红。实测本实例列表接口**不带** head_pipeline
+      // （8 条 open MR 全部空，详情接口才有），所以逐单拉一次详情。只看 failed——
+      // running/pending 是未出结果，success/passed 不是失败，canceled 不当失败（人主动停的）。
+      // API 成本：每轮 = 无打回证据的 open MR 数 × 1 次详情调用（节拍 900s 下可忽略）。
+      // CR 🔴#2：详情是 CI 触发的**在场判据**，不许 optional 吞错——瞬断必须 rethrow 走整源
+      // 软失败（本轮视角不完整 → sweep 不动账）；只有 404（MR 恰好刚被关/合并）按"该单不在了"
+      // 跳过，下一轮列表自然没有它。吞错会让"本轮看不见"伪装成"触发消失"→ sweep 误关账。
+      let detail = null;
+      try {
+        detail = await api(base);
+      } catch (e) {
+        if (/HTTP 404/.test(String(e?.message || e))) { out.skipped404 += 1; continue; }
+        throw e;
+      }
+      const hp = detail?.head_pipeline;
+      if (hp && hp.status === 'failed') {
+        out.push({ kind: 'mr', id: mr.iid, mr: { ...mr, target_branch: detail?.target_branch || mr.target_branch }, unresolved: [], comments: [], reviewState: 'ci_failed', signal: 'ci_pipeline', ci: { pipelineId: hp.id, status: hp.status, webUrl: hp.web_url } });
+      }
+      continue;
+    }
     const commit = await optional(`/projects/${mr.project_id}/repository/commits/${mr.sha}`);
     const lastPushAt = commit?.committed_date || commit?.created_at || null;
     // 审批兜底：目标 GitLab 老版本没有审批系统留言时，至少取到 approved_by 名单（时间仍缺 → 判不了）
@@ -221,6 +243,9 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
  * body 改写（改错别字）不算新意见，避免无关编辑触发重认领。
  */
 export function triggerFingerprint(t) {
+  // CI 形态（2026-11-17 ci-fail-trigger）：以失败流水为身份——新 commit/重跑产生新 pipeline
+  // 即内容变化（重认领重归因）；同一条流水重复轮询不重认领。内容级的指纹去重在认领时做。
+  if (t.ci) return `ci:${t.ci.pipelineId}`;
   const parts = [
     ...(t.unresolved || []).flatMap((d) => (d.notes || [])
       .filter((n) => n.resolvable && !n.resolved)

@@ -1,0 +1,217 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ci-fail-trigger",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "fd7cccb",
+    "affected_ids": [
+      "RS-task-loop US-1（CI 失败验收行）",
+      "FS-任务循环执行器 §4.4/§6/§9/§10",
+      "scripts/lib/ci-failures.mjs（新）",
+      "scripts/lib/gitlab-triggers.mjs（ci 触发 + triggerFingerprint ci 分支）",
+      "scripts/lib/session-pack.mjs（buildR1ProfileCI）",
+      "scripts/task-loop.mjs（认领后归因接线）",
+      "test/task-loop.test.sh（5k 系列）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-17T06:26:18Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "行为变更但局部：新增第三触发形态与认领后归因，不改打回/飞书路径、不改接口形状；基线归因用远端流水结果，不引入本地双树实跑"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-17T06:10:00Z",
+      "exited_at": "2026-11-17T06:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-17T06:20:00Z",
+      "exited_at": "2026-11-17T06:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：无多方案决策点——触发形态/识别/归因各自单一走向，基线取远端流水而非双树实跑的取舍已写进 RS 开放问题",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-17T06:20:00Z",
+      "exited_at": "2026-11-17T06:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS 受影响段同批更新，无新接口契约需要评审会",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-17T06:20:00Z",
+      "exited_at": "2026-11-17T06:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单实现 todo 集合 + 统一验证",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-17T06:20:00Z",
+      "exited_at": "2026-11-17T08:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-17T08:20:00Z",
+      "exited_at": "2026-11-17T09:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（审阅者子代理，三轮：一审 request changes 🔴2+🟡4；二审 🔴#1′ 半盲视角+🟡2；三审 approve，仅记录 4 条）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-17T09:10:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠：全量 gate 由 CLOSE-GATE 仓内等价实跑）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-ci-fail-trigger.md",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（受影响段落同批更新）",
+    "review": ".ai/review/CR-2026-11-17-ci-fail-trigger.md",
+    "retro": "retro/ci-fail-trigger-2026-11-17.md"
+  },
+  "todos": [
+    {
+      "id": "CF1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "lib/ci-failures.mjs：runner 前缀剥离、路径归一（源码根标记起）、六栈失败行识别（javac/surefire/pytest/jest/go/✗）、trace 拉取与跨 job 去重、attributeCi（复用 setDiff；未知基线保守）",
+      "files": [
+        "scripts/lib/ci-failures.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5k-quin 单元 17 断言（六栈识别/噪声跳过/ANSI 时间戳/反斜杠归一/jest 耗时剥尾/路径归一同指纹/去重/未知基线保守/setDiff 复用）；形态取自 MR !1896 真实日志行",
+        "feature_complete": "同一文件在不同 job 绝对前缀不同（实测 /root/gitlab-runner/builds/... vs /workspace/...）归一后同指纹；汇总行/节标题不是失败身份",
+        "quality_clean": "变异：路径归一退化→1 红；识别失败行返回 null（不猜）；trace 拉不到留空如实报"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CF1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "CF2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "触发第三形态 ci_pipeline（逐单详情判 head_pipeline，列表接口实测缺失）+ triggerFingerprint ci 分支 + runner 认领后归因接线 + buildR1ProfileCI 工单 + inherited_only 终态",
+      "files": [
+        "scripts/lib/gitlab-triggers.mjs",
+        "scripts/lib/session-pack.mjs",
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 三件过",
+        "tests": "task-loop 104→111：5k 全链（认领→归因→工单；新流水 ack_stale；转绿关账）+ 5k-bis（inherited_only）+ 5k-ter/ter2/ter3（trace 拉不到/混合视角/零识别栈→opaque job 级工单+ci_opaque；详情 404→mr_detail_404 观测不 die）+ 5k-quad（详情瞬断→软失败保账）；变异五处全红（关 CI 分支/恒无基线/路径不归一/opaque 退化×2/404 无痕）",
+        "feature_complete": "RS 验收七条逐条对上；CI 工单只修引入项、基线同款明示不修（不污染 MR）",
+        "quality_clean": "CR 两轮处置：🔴#1 空提取≠全继承（opaque）+ 🔴#1′ 半盲视角同 opaque + 🔴#2 详情在场判据不吞错（瞬断软失败保账、404 计数落账）+ 基线只认 success/failed + 工单带视角计数 + PROTOCOL <N> 字面量"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CF2.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "CF3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "影响链文档：RS-ci-fail-trigger（S 档全章节）、RS-task-loop US-1 补 CI 验收行、FS §4.4/§6/§9/§10 同批更新",
+      "files": [
+        "docs/01-requirements/RS-ci-fail-trigger.md",
+        "docs/01-requirements/RS-task-loop.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "文档类，无编译",
+        "tests": "verify:state 过；CF3 grep 链过",
+        "feature_complete": "init 提示的影响链四件齐：rs 新建、RS US-1 验收行、FS §4.4 判定段、§9 矩阵行，与代码行为同批落",
+        "quality_clean": "只动受影响句段；基线取舍（远端流水 vs 双树）写进 RS 开放问题可回溯"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CF3.log",
+        "command": "bash -c 'grep -q ci_pipeline docs/01-requirements/RS-task-loop.md && grep -q ci-fail-trigger docs/01-requirements/RS-ci-fail-trigger.md && grep -q inherited_only docs/02-features/task-loop/FS-任务循环执行器.md'"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "基线取目标分支最新流水而非 merge-base 点：含别人新红时真引入被误判继承（漏修方向，新流水重评兜底）",
+      "owner": "ci-fail-trigger",
+      "status": "closed",
+      "resolution": "acknowledged：方向偏漏修不误修、900s 内新流水重评；精确归因需接 T4a 双树实跑，留下批"
+    },
+    {
+      "id": "KI-2",
+      "text": "failedJobs=0 且 jobs 翻页截断的窄角（GitLab jobs 按 id 降序，需 ≥100 个比失败 job 更新的 job 才触达）",
+      "owner": "ci-fail-trigger",
+      "status": "closed",
+      "resolution": "acknowledged：极偏远形态，控制台仍有视角不完整行；一行条件可闭合，随 Gradle 识别同批补"
+    },
+    {
+      "id": "KI-3",
+      "text": "Gradle 原生格式（> Task :x FAILED）未识别",
+      "owner": "ci-fail-trigger",
+      "status": "closed",
+      "resolution": "acknowledged：现走 opaque 安全降级（job 级工单人工定位）不误判；真实高频出现时在 ciFailure() 加正则+quin 断言"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
