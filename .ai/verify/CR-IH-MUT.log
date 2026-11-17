@@ -1,0 +1,10 @@
+# cmd: bash /tmp/cr-ih-mut.sh
+# started: 2026-11-17T10:50:07Z
+# finished: 2026-11-17T10:50:42Z
+# exit_code: 0
+# commit: unknown
+# task: ci-inflight-hold
+# ---- output tail (last 200 lines) ----
+[mut1-去在途保持] 结果：115 通过，1 失败
+[mut2-新鲜锁不跳过] 结果：115 通过，1 失败
+[mut3-上限放开] 结果：115 通过，1 失败
