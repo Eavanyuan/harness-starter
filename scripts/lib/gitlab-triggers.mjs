@@ -207,7 +207,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
       // 第二路信号（2026-11-17 ci-fail-trigger）：CI 红。实测本实例列表接口**不带** head_pipeline
       // （8 条 open MR 全部空，详情接口才有），所以逐单拉一次详情。只看 failed——
       // running/pending 是未出结果，success/passed 不是失败，canceled 不当失败（人主动停的）。
-      // API 成本：每轮 = 无打回证据的 open MR 数 × 1 次详情调用（节拍 900s 下可忽略）。
+      // API 成本：每轮 = 无打回证据的 open MR 数 × 1 次详情调用（节拍 1800s 下可忽略）。
       // CR 🔴#2：详情是 CI 触发的**在场判据**，不许 optional 吞错——瞬断必须 rethrow 走整源
       // 软失败（本轮视角不完整 → sweep 不动账）；只有 404（MR 恰好刚被关/合并）按"该单不在了"
       // 跳过，下一轮列表自然没有它。吞错会让"本轮看不见"伪装成"触发消失"→ sweep 误关账。

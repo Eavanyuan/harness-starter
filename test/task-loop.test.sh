@@ -1266,9 +1266,9 @@ console.log("unit-ok");
 grep -q "^unit-ok$" "$TMP/ciunit.txt" && r=0 || { cat "$TMP/ciunit.txt"; r=1; }
 check "识别器/归因单元：六栈识别、噪声跳过、同文件跨 job 同指纹、未知基线保守" "0" "$r"
 
-echo "== 5j. 节拍收紧入库：pollSeconds 900（P1 延迟上限 2h→15min）=="
-grep -q '"pollSeconds": 900' "$HERE/harness.rules.json"
-check "runtime.taskLoop.pollSeconds=900 已入库（文档口径同步 FS §8）" "0" "$?"
+echo "== 5j. 节拍入库：pollSeconds 1800=30min（2026-11-17 与执行器节拍对齐）=="
+grep -q '"pollSeconds": 1800' "$HERE/harness.rules.json"
+check "runtime.taskLoop.pollSeconds=1800 已入库（文档口径同步 FS §8）" "0" "$?"
 
 echo "== 6. T4a 归因：指纹归一化 + merge-base 基线实跑 + 集合差 =="
 # 纯函数层：参数值变化不改变身份（同一失败两次运行、期望/实际互换、全角括号、ANSI 色码）

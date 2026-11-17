@@ -225,7 +225,7 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | `HARNESS_ENV_FILE` | `$HOME/.harness/task-loop/task-loop.env` | 凭据文件路径（`run-round.sh` 会 export 它）。指到不存在的路径 = 该文件不生效，与"未接入"同判据 | 否 |
 | `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：交出凭据**路径** → `exec node`（不注入值，不 source） | 装定时器时生成 |
 | `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
-| `runtime.taskLoop.pollSeconds` | `900`（2026-11-16 由 7200 收紧） | 轮询节拍（秒）。P1 单从出现到接单的延迟上限从 2 小时压到 15 分钟；源临时故障不落戳，下一 tick 立即重试。生效前提：定时器心跳 ≤ 节拍（默认 180s 满足） | 否 |
+| `runtime.taskLoop.pollSeconds` | `1800`（2026-11-17 定：与修复执行器 30 分钟节拍对齐；初版 7200→16 日 900→17 日 1800） | 轮询节拍（秒）。P1 接单延迟上限 30 分钟；源临时故障不落戳、下一 tick 立即重试（节拍只约束成功轮）。生效前提：定时器心跳 ≤ 节拍（默认 180s 满足） | 否 |
 | `runtime.feishu.repoHint` | 空 | 工单（pack）里剖面 B 的目标仓库指引——产品路由是部署事实，随空间配置走，不硬编码进脚手架 | 否 |
 | `FEISHU_REPO_HINT` | 无 | 覆盖 `runtime.feishu.repoHint` 的临时手段（切空间/演练） | 否 |
 | `HARNESS_GITLAB_PROJECT` | 无 | doctor 门禁在场性检查的目标项目（`group/project`）；不配则只提醒"未检查" | 否 |

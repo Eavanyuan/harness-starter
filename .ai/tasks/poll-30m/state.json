@@ -1,0 +1,142 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "poll-30m",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "57c06e9",
+    "affected_ids": [
+      "FS-任务循环执行器 §8（pollSeconds 行）",
+      "harness.rules.json runtime.taskLoop.pollSeconds",
+      "test/task-loop.test.sh（5j 断言）"
+    ],
+    "change_tier": 1,
+    "created_at": "2026-11-17T11:49:32Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "纯阈值变更（配置值+文档行+对齐断言），无判定逻辑改动"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-17T13:20:00Z",
+      "exited_at": "2026-11-17T13:25:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-17T13:25:00Z",
+      "exited_at": "2026-11-17T13:25:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：无决策点——用户指令的单一走向",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-17T13:25:00Z",
+      "exited_at": "2026-11-17T13:25:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §8 单行同步",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-17T13:25:00Z",
+      "exited_at": "2026-11-17T13:25:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-17T13:25:00Z",
+      "exited_at": "2026-11-17T13:45:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-17T13:45:00Z",
+      "exited_at": "2026-11-17T13:55:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（一轮 approve；🟡 两处陈旧口径已顺手清）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-17T13:55:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§8 pollSeconds 行）",
+    "review": ".ai/review/CR-2026-11-17-poll-30m.md"
+  },
+  "todos": [
+    {
+      "id": "P30",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "节拍 900→1800（30 分钟，与修复执行器对齐）：配置值 + $comment 理由 + FS §8 行 + 5j 断言 + config-keys/活注释两处陈旧口径同批清",
+      "files": [
+        "harness.rules.json",
+        "test/task-loop.test.sh",
+        "docs/02-features/task-loop/FS-任务循环执行器.md",
+        "docs/06-reference/config-keys.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "JSON 可解析；bash -n 过",
+        "tests": "task-loop 118 全绿（5j 断 1800）；变异：配置回 900 → 5j 红（1 红）",
+        "feature_complete": "改配置即生效（定时器心跳 180s 不变，真实节拍读配置——无需重装）；P1 接单延迟上限 30min",
+        "quality_clean": "CR 🟡 顺手清：config-keys.md 的 7200（8ced85c 起失配）与 gitlab-triggers.mjs 活注释 900s"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P30.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
