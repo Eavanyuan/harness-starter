@@ -20,7 +20,7 @@
     "trust_level": "L1",
     "change_tier_note": "触发判定扩展一路证据（实测盲区），不改接口形状；活评论过滤是工单内容的收窄（更准）"
   },
-  "stage": "ci",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -91,10 +91,20 @@
     {
       "stage": "ci",
       "entered_at": "2026-11-17T15:50:00Z",
-      "exited_at": null,
-      "gate": null,
+      "exited_at": "2026-11-17T16:00:00Z",
+      "gate": "pass",
       "waived_by": null,
       "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-17T16:00:00Z",
+      "exited_at": "2026-11-17T16:00:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：教训已在 CR 两轮（子串判据的误报面/结论锚定）与 RS 背景（!1916 实录）；独立 retro 留 TDC 影子周",
+      "agent": null,
       "model": null,
       "skill_versions": {}
     }
@@ -127,14 +137,60 @@
         "log_path": ".ai/verify/RV1.log",
         "command": "bash test/task-loop.test.sh"
       }
+    },
+    {
+      "id": "CLOSE-GATE-review-verdict-comment",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "收尾：npm run gate 全量绿（自举顺序）",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "PASS",
+        "tests": "gate 全量绿（task-loop 120 条）",
+        "feature_complete": "CR 两轮 approve；!1916 盲区闭合",
+        "quality_clean": "日志带归属头"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-review-verdict-comment.log",
+        "command": "npm run gate"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "last_check": "2026-11-17T16:02:00Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "gate_green_real_exit_code",
+        "pass": true
+      },
+      {
+        "name": "cr_record_with_s0",
+        "pass": true
+      }
+    ]
   }
 }
