@@ -17,6 +17,7 @@
 5. 只读 agent 不许调 `Edit` / `Bash` 改源码。改 `agents/*.agent.md` / `hooks.manifest.json` 后必须跑 `build:agents` / `build:hooks`。
 7. **变更/缺陷修复不新建独立流程**——用 `bash scripts/init-harness.sh <slug> S --type change --related <原任务> --baseline <commit>` 建关联任务。不加 `--type`/`--related` 的 change 会在追溯链校验时被拦（checkTaskTraceability）。
 8. **S 档裁剪边界**：可跳 wbs/adr/fs_review（无多方案决策点时），**必须走 rs**（哪怕一段话）和 **cr**（按 CR 模板 + §0）。跳 rs 需在 `meta.no_doc_reason` 写明理由；跳 cr 等于交付未审代码。
+9. **提交身份**：agent 代提交一律显式 `GIT_AUTHOR_*/GIT_COMMITTER_*` 为本人（Yuan Yuan `<yyuan@taosdata.com>`——agent shell 环境默认 zwork 身份会覆盖一切 git config，必须用 env 覆盖）。git author 只是线索，行为追溯以 `state.json` 的 agent 字段 + CR 记录为准；历史 `zwork@local` 提交是早期会话遗留，不再新增。
 
 ## 找 skill
 

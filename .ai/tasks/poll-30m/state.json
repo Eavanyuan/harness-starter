@@ -111,7 +111,8 @@
   ],
   "artifacts": {
     "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§8 pollSeconds 行）",
-    "review": ".ai/review/CR-2026-11-17-poll-30m.md"
+    "review": ".ai/review/CR-2026-11-17-poll-30m.md",
+    "retro": "retro/poll-30m-2026-11-17.md"
   },
   "todos": [
     {

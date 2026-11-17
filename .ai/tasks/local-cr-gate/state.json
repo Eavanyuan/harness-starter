@@ -59,7 +59,8 @@
     }
   ],
   "artifacts": {
-    "retro": "retro/local-cr-gate-本地CR门禁.md"
+    "retro": "retro/local-cr-gate-本地CR门禁.md",
+    "review": ".ai/review/CR-2026-11-16-local-cr-gate-补录.md（两日审计 🔴#2 补录，事后补审 approve）"
   },
   "todos": [
     {
