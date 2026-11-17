@@ -23,7 +23,7 @@
     "trust_level": "L1",
     "change_tier_note": "行为变更但局部：sweep/认领内部语义补强，不改触发形状与接口；全部由实测事故驱动"
   },
-  "stage": "ci",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -94,10 +94,20 @@
     {
       "stage": "ci",
       "entered_at": "2026-11-17T12:45:00Z",
-      "exited_at": null,
-      "gate": null,
+      "exited_at": "2026-11-17T12:55:00Z",
+      "gate": "pass",
       "waived_by": null,
       "agent": "orchestrator（S 档折叠：gate 由 CLOSE-GATE 等价实跑）",
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "retro",
+      "entered_at": "2026-11-17T12:55:00Z",
+      "exited_at": "2026-11-17T12:55:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：教训在 CR 两轮记录与 RS 背景（锁归属/终态白名单两课）；独立 retro 留 TDC 影子周",
+      "agent": null,
       "model": null,
       "skill_versions": {}
     }
@@ -179,6 +189,27 @@
         "log_path": ".ai/verify/IH3.log",
         "command": "bash -c \"grep -q ci-inflight-hold docs/01-requirements/RS-ci-inflight-hold.md && grep -q ci_escalated docs/02-features/task-loop/FS-任务循环执行器.md\""
       }
+    },
+    {
+      "id": "CLOSE-GATE-ci-inflight-hold",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "收尾：npm run gate 全量绿（日志生成后本 todo 才写入 state——自举顺序）",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "PASS",
+        "tests": "gate 全量绿（task-loop 118 条）",
+        "feature_complete": "CR 两轮（一审 🔴 锁自毁+🟡4 → 二审代码全核实，文档口径补齐）",
+        "quality_clean": "日志带归属头"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-ci-inflight-hold.log",
+        "command": "npm run gate"
+      }
     }
   ],
   "blockers": [],
@@ -200,8 +231,33 @@
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "last_check": "2026-11-17T13:00:00Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "gate_green_real_exit_code",
+        "pass": true
+      },
+      {
+        "name": "cr_record_with_s0",
+        "pass": true
+      }
+    ]
   }
 }
