@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "review-verdict-comment",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "d078333",
+    "affected_ids": [
+      "RS-task-loop US-1（打回证据三路）",
+      "FS-任务循环执行器 §4.4/§9",
+      "scripts/lib/gitlab-triggers.mjs（reviewVerdictCommentAt + classifyMr 第三信号 + 活评论过滤）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-17T13:49:52Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "触发判定扩展一路证据（实测盲区），不改接口形状；活评论过滤是工单内容的收窄（更准）"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-17T14:10:00Z",
+      "exited_at": "2026-11-17T14:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-17T14:20:00Z",
+      "exited_at": "2026-11-17T14:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单一走向（实测盲区直推）；结论词从严与批红先后序沿用既有哲学",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-17T14:20:00Z",
+      "exited_at": "2026-11-17T14:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §4.4 同批更新",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-17T14:20:00Z",
+      "exited_at": "2026-11-17T14:20:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-17T14:20:00Z",
+      "exited_at": "2026-11-17T15:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-17T15:20:00Z",
+      "exited_at": "2026-11-17T15:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（两轮：一审 🔴 正则误报面 → 行首锚定+四形态钉；其余核实）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-17T15:50:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-task-loop.md（US-1 三路证据行）",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§9）",
+    "review": ".ai/review/CR-2026-11-17-review-verdict-comment.md"
+  },
+  "todos": [
+    {
+      "id": "RV1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "第三路打回证据 reviewVerdictCommentAt（结论评论晚于最后 push；结论词从严；本人/系统不算）+ classifyMr 三信号与批红先后序 + 粗筛放行 + 工单只带活评审（晚于 push 的评论）",
+      "files": [
+        "scripts/lib/gitlab-triggers.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5c-quin 单元十断言（R2 触发/推送前覆盖/无结论词/本人排除/批红先后序×2/引用收尾/提问/引用行/LGTM 并存不误报 + 行首标签形态命中九形态真值表）+ 5d-quin 端到端（触发认领、ack 只含 R2、signal=review_comment）；120 全绿；变异：去信号→断言级红、活评论不过滤→1 红",
+        "feature_complete": "!1916 R2 实测盲区闭合：复审结论以普通评论发出（无新动词、无 resolvable）也能触发并重建工单",
+        "quality_clean": "CR 一审 🔴 修：行首结论锚定（任意位置子串会把引用收尾/提问当新结论，最坏把已批 MR 拉回重做）；引用行/疑问句/同行 LGTM 排除；commit 瞬断 lastPushAt 缺失的保守方向写入 FS 剩余风险"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RV1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

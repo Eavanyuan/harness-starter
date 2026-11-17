@@ -115,6 +115,42 @@ export function reviewCommentsByOthers(discussions, username) {
  * 2026-11-16 MR !1882 实测：评审者用普通评论 + approve→unapprove + 动词表态，整条 MR
  * 零 resolvable 讨论——只认证据 1 会把真实打回判 pending，MR 对 runner 不可见。
  */
+/**
+ * 评审结论评论（2026-11-17 review-verdict-comment，MR !1916 R2 实测盲区）：
+ * 评审者复审后不（再）按 requested-changes 按钮——动词系统留言停留在上一轮、
+ * 早于作者的新 push；结论以**普通评论**发出（"R2 复审结论：Request Changes…"）。
+ * 此时无 resolvable 线程 + 动词过期 → 两路信号全盲。判据从严防误报：
+ * 非系统、他人、明确的"要求改动"结论词；感谢/提问/LGTM/Approve 不算。
+ */
+export function reviewVerdictCommentAt(discussions, username) {
+  if (!username || !String(username).trim()) {
+    throw new Error('reviewVerdictCommentAt 缺 username：空值会把自己的结论评论当成他人的打回（同 changesRequestedAt 口径）');
+  }
+  // CR 一审 🔴：结论词不能任意位置子串命中——「关于 R1 的 Request Changes：均已核销，LGTM」
+  // （引用旧结论的收尾）、「…request changes 的点吗？」（提问）都会被误判成新结论，最坏把
+  // 已批准的 MR 拉回自动重做。判据收紧为**行首结论锚定**：只认作为一行开头（允许 markdown
+  // 标题/加粗/RN 轮次/「复审结论：」标签前缀）的结论短语；引用行（> 开头）不认；疑问句不认；
+  // 同行出现 LGTM/无需修改/可以合入/approve 的不认（结论与放行并存的行不当作打回）。
+  const LINE_VERDICT = /^\s{0,3}(?:[#*_-]{1,4}\s*)*(?:\*\*|__)?(?:R\d+[.。]?\s*)?(?:(?:复审|审查|评审)?结论[:：]\s*)?(?:\*\*|__)?\s*(?:request(?:ed)?\s+changes|要求改动|打回待修)/i;
+  const NOT_VERDICT = /\bLGTM\b|无需修改|可以合入|\bapprove\b|[?？]\s*$/i;
+  let last = null;
+  for (const d of discussions || []) {
+    for (const n of d.notes || []) {
+      if (n.system) continue;
+      if (n.author?.username === username) continue;
+      const body = String(n.body || '');
+      const hit = body.split('\n').some((line) => {
+        const l = line.trim();
+        if (l.startsWith('>')) return false; // 引用行：引的是别人的旧结论
+        return LINE_VERDICT.test(l) && !NOT_VERDICT.test(l);
+      });
+      if (!hit) continue;
+      if (!last || new Date(n.created_at) > new Date(last)) last = n.created_at;
+    }
+  }
+  return last;
+}
+
 export function classifyMr({ mr, discussions, username, lastPushAt = null, approvers = null }) {
   const unresolved = unresolvedByOthers(discussions, username);
   const ap = approvalFromDiscussions(discussions);
@@ -128,17 +164,22 @@ export function classifyMr({ mr, discussions, username, lastPushAt = null, appro
   const crAt = changesRequestedAt(discussions, username);
   // 打回动词必须晚于最后一次 push 才算数：批之前的申请改动已被新 commit 覆盖
   const crFresh = crAt && (!lastPushAt || new Date(crAt) > new Date(lastPushAt));
-  // 批红要成为"最后的话"必须晚于打回动词：评审者 a 批过、评审者 b 随后要求改动，
-  // 停点仍是待修（批红时间早于动词 → 不算已过停点）。批红无时间（approvals 降级）时
+  // 结论评论（!1916 R2 形态）：同样是"要求改动"的证据，同样要晚于最后一次 push
+  const vcAt = reviewVerdictCommentAt(discussions, username);
+  const vcFresh = vcAt && (!lastPushAt || new Date(vcAt) > new Date(lastPushAt));
+  // 批红要成为"最后的话"必须晚于打回动词**与**结论评论：评审者 a 批过、评审者 b 随后以任一形态要求改动，
+  // 停点仍是待修（批红时间早于任一 → 不算已过停点）。批红无时间（approvals 降级）时
   // 判不了先后 → 不给 approved，宁可多跑一轮。
-  const approvalLastWord = approval.ok && (!crAt || (ap.approvedAt && new Date(ap.approvedAt) > new Date(crAt)));
+  const approvalLastWord = approval.ok
+    && (!crAt || (ap.approvedAt && new Date(ap.approvedAt) > new Date(crAt)))
+    && (!vcAt || (ap.approvedAt && new Date(ap.approvedAt) > new Date(vcAt)));
 
   if (approvalLastWord) return { reviewState: 'approved', signal: 'approval', triggered: false, unresolved, approval };
-  if (unresolved.length === 0 && !crFresh) return { reviewState: 'pending', signal: 'none', triggered: false, unresolved, approval };
+  if (unresolved.length === 0 && !crFresh && !vcFresh) return { reviewState: 'pending', signal: 'none', triggered: false, unresolved, approval };
 
   return {
     reviewState: 'changes_requested',
-    signal: crFresh ? 'review_verb' : 'unresolved_discussions',
+    signal: crFresh ? 'review_verb' : (vcFresh ? 'review_comment' : 'unresolved_discussions'),
     triggered: true,
     unresolved,
     approval,
@@ -202,7 +243,9 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     // 先粗判：既无他人未解决意见、也无打回动词，就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）。
     // 动词必须进粗筛：评审者用普通评论 + requested changes 表态时没有任何 resolvable 讨论
     // （2026-11-16 MR !1882 实测），只按未解决意见筛会把打回的 MR 在 classifyMr 之前就 continue 掉。
-    const hasReviewSignal = unresolvedByOthers(discs, username).length > 0 || !!changesRequestedAt(discs, username);
+    const hasReviewSignal = unresolvedByOthers(discs, username).length > 0
+      || !!changesRequestedAt(discs, username)
+      || !!reviewVerdictCommentAt(discs, username); // 结论评论形态必须进粗筛，否则 classifyMr 之前就被 continue 掉（!1916 R2 实测）
     if (!hasReviewSignal) {
       // 第二路信号（2026-11-17 ci-fail-trigger）：CI 红。实测本实例列表接口**不带** head_pipeline
       // （8 条 open MR 全部空，详情接口才有），所以逐单拉一次详情。只看 failed——
@@ -236,9 +279,12 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     }
     const r = classifyMr({ mr, discussions: discs, username, lastPushAt, approvers });
     if (!r.triggered) continue;
+    // 只带"活评审"：晚于最后一次 push 的评论才是本轮回复审的意见（!1916 实测 R1 结论在推送前、
+    // R2 在推送后——R1 已被 round-1 修复核销，混进工单会让执行器重做已核销项）
+    const liveComments = reviewCommentsByOthers(discs, username).filter((c) => !lastPushAt || !c.createdAt || new Date(c.createdAt) > new Date(lastPushAt));
     // 建议性评论是修复范围的输入，跟触发证据一起进 payload（用户指令 2026-11-16：
     // 即便评审人不逐条回复/resolve，审核意见里的建议修改项也纳入接单修复范围）。
-    out.push({ kind: 'mr', id: mr.iid, mr, unresolved: r.unresolved, comments: reviewCommentsByOthers(discs, username), reviewState: r.reviewState, signal: r.signal, approval: r.approval });
+    out.push({ kind: 'mr', id: mr.iid, mr, unresolved: r.unresolved, comments: liveComments, reviewState: r.reviewState, signal: r.signal, approval: r.approval });
   }
   return out;
 }

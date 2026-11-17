@@ -17,7 +17,7 @@
 **验收标准**
 
 - Given TL 提交 CHANGES_REQUESTED 评审且存在未解决 discussions When 本地 runner 轮询到 Then git CAS 认领成功（`refs/heads/claims/mr-<iid>` 创建），agent 先在 MR 逐条回复"已确认 + 修复方案"再动手
-  - 打回证据两路并列（2026-11-16 变更 mr-verb-trigger）：他人未解决 resolvable 讨论，或他人晚于最后一次 push 的 requested changes 动词（GitLab 16+）——真实评审常用普通评论 + 动词表态，零 resolvable 讨论时后者是唯一证据；评审人的建议性普通评论一并进入待修清单（审核意见里的建议修改项纳入接单修复范围）
+  - 打回证据三路并列（2026-11-17 变更 review-verdict-comment）：他人未解决 resolvable 讨论、他人晚于最后一次 push 的 requested changes 动词（GitLab 16+），或他人晚于最后一次 push 的"要求改动"结论评论（!1916 R2 实测：复审结论以普通评论发出、动词停留在上一轮；判据为行首结论锚定——引用/提问/LGTM 并存行不算）——工单只带晚于最后一次 push 的活评审评论——真实评审常用普通评论 + 动词表态，零 resolvable 讨论时后者是唯一证据；评审人的建议性普通评论一并进入待修清单（审核意见里的建议修改项纳入接单修复范围）
 - Given 两台 runner 同时认领同一 MR Then 仅一台 push 成功，另一台非快进拒绝并跳过本轮（认领竞争落账）
 - Given 修复推送后 CI 红 When 归因为本 MR 引入 Then 进入修复子循环，同一失败同根因连续 2 次强制换法，3 轮未绿转 blocked 升级
 - Given 达到停点 Then 判定条件为"本 MR 引入的失败 = 0 且 approved_by 非空且 approver ≠ author 且审批晚于最后一次 push"，缺一不算完成

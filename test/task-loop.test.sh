@@ -261,6 +261,107 @@ process.exit(out.length === 1 && String(out[0].id) === "7" && out[0].signal === 
 ' "$HERE" > "$TMP/fetch-verb.txt" 2>&1
 check "fetchTriggers：动词型 MR 不被粗筛吃掉，无信号 MR 仍省 API 调用" "0" "$?"
 
+echo "== 5c-quin. 评审结论评论形态（!1916 R2 实测）：普通评论 Request Changes 晚于推送 → 触发；早于推送/无结论词/本人不算 =="
+node --input-type=module -e '
+import { classifyMr, reviewVerdictCommentAt } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+const mk = (body, at, who = "lead") => ({ system: false, resolvable: false, resolved: false, author: { username: who }, body, created_at: at });
+const sys = (body, at, who = "lead") => ({ system: true, author: { username: who }, body, created_at: at });
+const push = "2026-11-17T10:16:00Z";
+const r2 = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  mk("## 审查结论：Request Changes（1 阻断 + 6 建议）", "2026-11-17T07:56:00Z"),
+  sys("requested changes", "2026-11-17T09:05:00Z"),
+  sys("added 1 commit", "2026-11-17T10:16:00Z", "me"),
+  mk("## R2 复审结论：Request Changes（R1 主面已核销；1 个同族残余）", "2026-11-17T13:40:00Z"),
+] }] });
+must(r2.triggered && r2.signal === "review_comment", "r2-comment-after-push-triggers");
+const stale = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  sys("requested changes", "2026-11-17T09:05:00Z"),
+  mk("## 审查结论：Request Changes", "2026-11-17T09:50:00Z"),
+] }] });
+must(!stale.triggered && stale.reviewState === "pending", "stale-comment-covered");
+const noise = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  mk("辛苦，有个小问题想问下", "2026-11-17T13:00:00Z"),
+] }] });
+must(!noise.triggered, "non-verdict-comment-noise");
+const selfC = reviewVerdictCommentAt([{ id: "d", notes: [mk("Request Changes", "2026-11-17T14:00:00Z", "me")] }], "me");
+must(selfC === null, "self-comment-excluded");
+const appr = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  mk("R2 结论：Request Changes", "2026-11-17T13:40:00Z"),
+  sys("approved this merge request", "2026-11-17T15:00:00Z"),
+] }] });
+must(!appr.triggered && appr.reviewState === "approved", "approval-beats-comment");
+const apprOld = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  sys("approved this merge request", "2026-11-17T13:00:00Z"),
+  mk("R2 结论：Request Changes", "2026-11-17T13:40:00Z"),
+] }] });
+must(apprOld.triggered, "comment-beats-earlier-approval");
+// CR 一审 🔴 四个误报形态：引用收尾/提问/引用行/结论与 LGTM 并存——都不算新结论
+const quoteClose = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  sys("approved this merge request", "2026-11-17T13:00:00Z"),
+  mk("关于 R1 的 Request Changes：均已核销，LGTM", "2026-11-17T13:40:00Z"),
+] }] });
+must(!quoteClose.triggered && quoteClose.reviewState === "approved", "mid-line-quote-close-not-verdict");
+const ask = classifyMr({ mr: { author: { username: "me" } }, username: "me", lastPushAt: push, discussions: [{ id: "d1", notes: [
+  mk("Request Changes 的点吗？", "2026-11-17T13:40:00Z"),
+] }] });
+must(!ask.triggered, "question-not-verdict");
+const quotedLine = reviewVerdictCommentAt([{ id: "d", notes: [mk("> 审查结论：Request Changes\n其他回复正文", "2026-11-17T13:40:00Z")] }], "me");
+must(quotedLine === null, "quoted-line-not-verdict");
+const lgtmMix = reviewVerdictCommentAt([{ id: "d", notes: [mk("Request Changes，但整体 LGTM 可合入", "2026-11-17T13:40:00Z")] }], "me");
+must(lgtmMix === null, "verdict-plus-lgtm-not-verdict");
+// 行首带标签的真实形态仍命中
+const labeled = reviewVerdictCommentAt([{ id: "d", notes: [mk("## R2 复审结论：Request Changes（R1 主面已核销；1 个同族残余）", "2026-11-17T13:40:00Z")] }], "me");
+must(labeled !== null, "labeled-heading-still-verdict");
+console.log("quin-ok");
+' > "$TMP/cquin.txt" 2>&1
+grep -q "^quin-ok$" "$TMP/cquin.txt" && r=0 || { cat "$TMP/cquin.txt"; r=1; }
+check "结论评论形态：push 后的 Request Changes 评论触发/推送前覆盖不触发/无结论词不触发/批红先后序" "0" "$r"
+
+echo "== 5d-quin. 端到端：结论评论触发 → 认领 → ack 只带活评审（R2），旧 R1 不进清单 =="
+TL5DQ="$TMP/e2e5dq"; git init -q --bare "$TL5DQ/r.git"
+git clone -q "$TL5DQ/r.git" "$TL5DQ/w" 2>/dev/null
+( cd "$TL5DQ/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0];
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 26, project_id: 1, target_branch: "main", title: "结论评论", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(u)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 1, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "R1: Request Changes（6 建议）", created_at: "2026-11-17T07:56:00Z" },
+    { id: 2, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-17T09:05:00Z" },
+    { id: 3, system: true, author: { username: "me" }, body: "added 1 commit", created_at: "2026-11-17T10:16:00Z" },
+    { id: 4, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "R2 复审结论：Request Changes（残余 1 项）", created_at: "2026-11-17T13:40:00Z" },
+  ] }])); 
+  if (/repository\/commits/.test(u)) return s.end(JSON.stringify({ committed_date: "2026-11-17T10:16:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-26.json", "utf8"));
+const lines = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const tf = lines.find((x) => x.type === "trigger_found");
+const ok = code === 0
+  && ack.pending.length === 1 && /R2 复审结论/.test(ack.pending[0].body) && !/R1/.test(JSON.stringify(ack.pending))
+  && tf.detail.signal === "review_comment"
+  && /1 条待修意见/.test(out);
+console.log(ok ? "ok" : "bad", code, ack.pending.length);
+' "$HERE" "$TL5DQ/w" "$TMP/ledger5dq" > "$TMP/e2e5dq.txt" 2>&1
+grep -q "^ok 0 1$" "$TMP/e2e5dq.txt" && r=0 || { cat "$TMP/e2e5dq.txt"; r=1; }
+check "结论评论端到端：触发认领、ack 只含 R2 活评审、signal=review_comment" "0" "$r"
+
 echo "== 5c-quater. 建议性评论进修复范围（无 resolvable 时不空清单，但不双列、不收自发）=="
 # 用户指令 2026-11-16：审核意见里的建议修改项纳入接单修复范围。动词型触发零 resolvable，
 # 若只列 unresolved，ack 清单为空——修复会话不知道要修什么。
