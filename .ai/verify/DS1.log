@@ -1,8 +1,8 @@
 # cmd: bash test/task-loop.test.sh
-# started: 2026-11-17T22:51:47Z
-# finished: 2026-11-17T22:51:59Z
+# started: 2026-11-17T23:14:18Z
+# finished: 2026-11-17T23:14:32Z
 # exit_code: 0
-# commit: unknown
+# commit: e1eb1a24916b32710d8401146d5d1565c1c59dd0
 # task: draft-skip
 # ---- output tail (last 200 lines) ----
 == 1. kill switch ==

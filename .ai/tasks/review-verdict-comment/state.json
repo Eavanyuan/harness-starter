@@ -112,7 +112,8 @@
   "artifacts": {
     "rs": "docs/01-requirements/RS-task-loop.md（US-1 三路证据行）",
     "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§9）",
-    "review": ".ai/review/CR-2026-11-17-review-verdict-comment.md"
+    "review": ".ai/review/CR-2026-11-17-review-verdict-comment.md",
+    "retro": "retro/review-verdict-comment-2026-11-17.md"
   },
   "todos": [
     {
