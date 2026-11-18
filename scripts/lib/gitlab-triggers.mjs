@@ -262,6 +262,10 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   // 终态白名单只认 success/failed（CR 🟡#1）：其余一律在途——含 canceled/skipped（人停的，
   // 等新推送或人工处理，TTL 兜底）与未来未知状态字串（保守方向=保持账目，不误关）。
   out.inflight = new Set();
+  // CI 绿集合（2026-11-18 ci-green-hold，用户指令"CI 转绿不代表完成"）：流水 success 且 MR
+  // 仍 opened——CI 过关≠MR 完成，评审待修项是另一条轨道。sweep 据此把账目转"等评审"而非关账；
+  // MR 合并/关闭后才真正关账（那时它离开 opened 列表，自然不在此集合）。
+  out.ciGreen = new Set();
   const TERMINAL = new Set(['success', 'failed']);
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
@@ -296,6 +300,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
       if (skipDrafts && isDraftMr(detail)) { out.drafts.add(`mr-${mr.iid}`); continue; } // 列表缺字段的同款教训：详情的 work_in_progress 才权威
       const hp = detail?.head_pipeline;
       if (!hp || !TERMINAL.has(hp.status)) out.inflight.add(`mr-${mr.iid}`); // 无流水（推送→创建的秒级窗口）同样保持
+      if (hp && hp.status === 'success') out.ciGreen.add(`mr-${mr.iid}`);
       if (hp && hp.status === 'failed') {
         out.push({ kind: 'mr', id: mr.iid, mr: { ...mr, target_branch: detail?.target_branch || mr.target_branch }, unresolved: [], comments: [], reviewState: 'ci_failed', signal: 'ci_pipeline', ci: { pipelineId: hp.id, status: hp.status, webUrl: hp.web_url } });
       }

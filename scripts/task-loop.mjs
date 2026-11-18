@@ -143,6 +143,7 @@ function finish({ code, stamp }) {
   if (stats.pack) parts.push(`会话包 ${stats.pack}`);
   if (softFail.length) parts.push(`源故障 ${softFail.map((f) => f.source).join('+')}（跳过该源，下 tick 重试）`);
   if (stats.escalated) parts.push(`升级 ${stats.escalated}`);
+  if (stats.hold) parts.push(`等评审 ${stats.hold}`);
   console.log(`[task-loop] 轮次结束：${parts.join(' / ')}｜耗时 ${((Date.now() - ROUND_START) / 1000).toFixed(1)}s｜exit ${code}${stamp ? '' : '（不落节流戳，下一 tick 立即重试）'}`);
   if (stamp) stampLastRun();
   process.exit(code);
@@ -229,6 +230,8 @@ let gitlabInflight = new Set();
 // Draft 集合（2026-11-18 draft-skip）：不触发、不认领；已认领的 Draft 在 sweep 关账（ready 后自动纳入）
 let gitlabDrafts = new Set();
 let draftSkipped = 0;
+// CI 绿集合（仍 opened 的 MR）：CI 过关≠完成——账目转等评审，合并/关闭才关账
+let gitlabCiGreen = new Set();
 // 飞书 MCP 调用引用（2026-11-14 接单三连接线）：声明必须在轮询块**外**——第一版声明在
 // wantFeishu 块里，认领后的 ack 段读不到，uncaughtException 把整轮掀了（实测，fail-safe 释放了认领）。
 let feishuCall = null;
@@ -282,6 +285,7 @@ if (wantGitlab) {
     triggers.push(...fetched);
     if (fetched.inflight instanceof Set) gitlabInflight = fetched.inflight; // 数组属性经 spread 丢失，单独捕获
     if (fetched.drafts instanceof Set) { gitlabDrafts = fetched.drafts; draftSkipped = fetched.drafts.size; }
+    if (fetched.ciGreen instanceof Set) gitlabCiGreen = fetched.ciGreen;
     // 详情 404（CR 二审 🟡#2′）：MR 在列表里但详情已 404 = 刚被关/合并的竞态，跳过是正常路径，
     // 但持续 404 不许无痕——落账一行，报表里看得见。
     if (draftSkipped > 0) console.log(`[task-loop] ${draftSkipped} 条 Draft MR 未列入（runtime.taskLoop.skipDrafts，ready 后自动纳入）`);
@@ -438,6 +442,20 @@ if (!opt.dryRun) {
     if (!cur && inflight.has(key)) {
       // 流水在跑（新推送待出结果）：既不关账也不判 stale——下一轮终态出来自然走对分支
       console.log(`[task-loop] ${key} 流水在跑（新推送待出结果）——账目保持，不动`);
+      continue;
+    }
+    if (!cur && gitlabCiGreen.has(key)) {
+      // CI 转绿≠完成（2026-11-18 ci-green-hold，用户指令）：评审待修项是另一条轨道——
+      // 账目转"等评审"保持监视（工单撤销：CI 活儿已做完）；合并/关闭后离开 opened 列表才真关账；
+      // 期间评审新意见 → 触发评审信号 → fingerprint 变化 → 重认领转评审工单续修。
+      if (a.state !== 'awaiting_review') {
+        a.state = 'awaiting_review';
+        writeFileSync(join(ackDir, f), JSON.stringify(a, null, 2));
+        rmSync(join(ackDir, `pack-${id}.md`), { force: true });
+        recordEvent('task-loop', 'ci_green_hold', { kind: 'mr', id });
+        stats.hold = (stats.hold || 0) + 1;
+        console.log(`[task-loop] ${key} CI 转绿——不等同完成：账目转等评审（评审新意见自动续修，合并/关闭才关账）`);
+      }
       continue;
     }
     if (!cur) {

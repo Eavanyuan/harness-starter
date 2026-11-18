@@ -1056,7 +1056,7 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 const [here, repo, ledger] = process.argv.slice(1);
-let phase = 1; // 1=CI 红(pipeline 7001) 2=转绿 3=新流水又红(7002)
+let phase = 1; // 1=CI 红(7001) 3=新流水又红(7002,重认领) 2=转绿(等评审保持) 4=离开列表(合并/关闭→关账)
 const TRACE = [
   "2026-11-16T10:41:13.890073Z 01O [ERROR] COMPILATION ERROR : ",
   "2026-11-16T10:41:13.890093Z 01O [ERROR] /root/gitlab-runner/builds/qceIO3XVF/0/rd-app/idmp/tda-server/src/main/java/com/taosdata/asset/resource/FileResource.java:[93,29] variable elementAccessScopeService is already defined in class com.taosdata.asset.resource.FileResource",
@@ -1070,7 +1070,7 @@ const srv = createServer((q, s) => {
   s.setHeader("content-type", "application/json");
   const u = q.url.split("?")[0];
   const qs = q.url;
-  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 91, project_id: 1, target_branch: "main", title: "CI 红验证", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/merge_requests") return s.end(phase === 4 ? "[]" : JSON.stringify([{ iid: 91, project_id: 1, target_branch: "main", title: "CI 红验证", sha: "abc", author: { username: "me" } }]));
   if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
   if (/\/merge_requests\/91\/discussions$/.test(u)) return s.end("[]"); // 无打回证据 → 走 CI 分支
   if (/\/merge_requests\/91$/.test(u)) return s.end(JSON.stringify({ iid: 91, target_branch: "main", head_pipeline: hp() }));
@@ -1111,16 +1111,22 @@ const t3 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map
 const ok3 = r2.code === 0 && ack3.fingerprint === "ci:7002" && ack3.pending.length === 2
   && t3.includes("ack_stale") && t3.lastIndexOf("claimed") > t3.indexOf("ack_stale")
   && /内容更新 1/.test(r2.out);
-// phase 2：修好推上去转绿 → 关账（ack 与工单同删）
+// phase 2：修好推上去转绿 → CI 绿≠完成：转等评审保持（ack 在、工单撤、无 trigger_gone）
 phase = 2;
 const r3 = await run();
-const closed = r3.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-91.json") && !existsSync(repo + "/.ai/task-loop/pack-91.md")
-  && /关账 1/.test(r3.out);
+const ack3g = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-91.json", "utf8"));
+const types3 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const held3 = r3.code === 0 && existsSync(repo + "/.ai/task-loop/ack-91.json") && ack3g.state === "awaiting_review"
+  && !existsSync(repo + "/.ai/task-loop/pack-91.md") && types3.includes("ci_green_hold") && !types3.includes("trigger_gone");
+// phase 4：MR 合并/关闭 → 离开 opened 列表 → 真关账
+phase = 4;
+const r4 = await run();
 srv.close();
-console.log(ok1 ? "ok1" : "bad1", closed ? "closed" : "noclose", ok3 ? "ok3" : "bad3", r1.code, r2.code, r3.code);
+const closed = r4.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-91.json") && /关账 1/.test(r4.out);
+console.log(ok1 ? "ok1" : "bad1", held3 ? "held-ok" : "held-bad", closed ? "closed" : "noclose", ok3 ? "ok3" : "bad3", r1.code, r2.code, r3.code, r4.code);
 ' "$HERE" "$TL5K/w" "$TMP/ledger5k" > "$TMP/e2e5k.txt" 2>&1
-grep -q "^ok1 closed ok3 0 0 0$" "$TMP/e2e5k.txt" && r=0 || { cat "$TMP/e2e5k.txt"; r=1; }
-check "CI 红全链：认领→拉日志→归因（基线绿全引入）→工单；转绿关账；新流水重认领" "0" "$r"
+grep -q "^ok1 held-ok closed ok3 0 0 0 0$" "$TMP/e2e5k.txt" && r=0 || { cat "$TMP/e2e5k.txt"; r=1; }
+check "CI 红全链：认领→归因→工单；新流水重认领；转绿=等评审保持（CI 绿≠完成）；离开列表才关账" "0" "$r"
 
 echo "== 5k-bis. 基线同款 → inherited_only：本 MR 无引入项不修、不落工单 =="
 TL5KB="$TMP/e2e5kb"; git init -q --bare "$TL5KB/r.git"
@@ -1378,7 +1384,7 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 const [here, repo, ledger] = process.argv.slice(1);
-let phase = 1; // 1=failed(认领) 2=running(在途) 2.5=无流水(推送→创建的秒级窗口) 3=success(终态关账)
+let phase = 1; // 1=failed(认领) 2=running(在途) 2.5=无流水窗口 3=success(仍opened→等评审保持) 4=离开列表(关账)
 const TRACE = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
 const hp = () => phase === 1 ? { id: 7001, status: "failed", web_url: "http://g/p/7001" }
   : phase === 2 ? { id: 7002, status: "running", web_url: "http://g/p/7002" }
@@ -1387,7 +1393,7 @@ const hp = () => phase === 1 ? { id: 7001, status: "failed", web_url: "http://g/
 const srv = createServer((q, s) => {
   s.setHeader("content-type", "application/json");
   const u = q.url.split("?")[0]; const qs = q.url;
-  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 95, project_id: 1, target_branch: "main", title: "在途", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/merge_requests") return s.end(phase === 4 ? "[]" : JSON.stringify([{ iid: 95, project_id: 1, target_branch: "main", title: "在途", sha: "abc", author: { username: "me" } }]));
   if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
   if (/\/merge_requests\/95\/discussions$/.test(u)) return s.end("[]");
   if (/\/merge_requests\/95$/.test(u)) return s.end(JSON.stringify({ iid: 95, target_branch: "main", head_pipeline: hp() }));
@@ -1415,13 +1421,17 @@ const held = r2.code === 0 && r25.code === 0 && existsSync(repo + "/.ai/task-loo
 const types2 = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
 const noGone = !types2.includes("trigger_gone");
 phase = 3;
-const r3 = await run(); // success：真终态，关账
+const r3 = await run(); // success 且仍 opened：CI 绿≠完成——等评审保持，不关账
+const ack95g = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-95.json", "utf8"));
+const greenHeld = r3.code === 0 && existsSync(repo + "/.ai/task-loop/ack-95.json") && ack95g.state === "awaiting_review";
+phase = 4;
+const r4 = await run(); // 合并/关闭离开列表：真关账
 srv.close();
-const closed = r3.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-95.json") && /关账 1/.test(r3.out);
-console.log(held && noGone ? "held-ok" : "held-bad", closed ? "closed-ok" : "closed-bad", r1.code, r2.code, r25.code, r3.code);
+const closed = r4.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-95.json") && /关账 1/.test(r4.out);
+console.log(held && noGone ? "held-ok" : "held-bad", greenHeld ? "green-held" : "green-bad", closed ? "closed-ok" : "closed-bad", r1.code, r2.code, r25.code, r3.code, r4.code);
 ' "$HERE" "$TL5M/w" "$TMP/ledger5m" > "$TMP/e2e5m.txt" 2>&1
-grep -q "^held-ok closed-ok 0 0 0 0$" "$TMP/e2e5m.txt" && r=0 || { cat "$TMP/e2e5m.txt"; r=1; }
-check "在途流水：running 与无流水窗口都保持账目（无 trigger_gone），success 才关账" "0" "$r"
+grep -q "^held-ok green-held closed-ok 0 0 0 0 0$" "$TMP/e2e5m.txt" && r=0 || { cat "$TMP/e2e5m.txt"; r=1; }
+check "在途/绿流水：running、无流水窗口、success(仍 opened) 全保持；离开列表才关账" "0" "$r"
 
 echo "== 5m-bis. 跨流水轮次上限：第 4 轮归因 → needs_human 升级，不再出工单（防越修越坏循环）=="
 TL5MB="$TMP/e2e5mb"; git init -q --bare "$TL5MB/r.git"
@@ -1485,6 +1495,68 @@ console.log(ok ? "ok" : "bad", r1.code, r2.code, r3.code, ack1.ci.rounds, ack2.c
 ' "$HERE" "$TL5MB/w" "$TMP/ledger5mb" > "$TMP/e2e5mb.txt" 2>&1
 grep -q "^ok 0 0 0 1 2 4 needs_human$" "$TMP/e2e5mb.txt" && r=0 || { cat "$TMP/e2e5mb.txt"; r=1; }
 check "轮次携带与上限：rounds 跨流水累计（1→2→4），超 3 → needs_human+ci_escalated+无新工单" "0" "$r"
+
+echo "== 5t. CI 绿保持期间评审出手 → 转评审工单续修（CI 绿≠完成 的另一半）=="
+TL5T2="$TMP/e2e5t2"; git init -q --bare "$TL5T2/r.git"
+git clone -q "$TL5T2/r.git" "$TL5T2/w" 2>/dev/null
+( cd "$TL5T2/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let phase = 1; // 1=CI 红认领 2=转绿(等评审保持) 3=评审结论评论(转评审工单)
+const TRACE = "[ERROR] /w/a/src/A.java:[1,1] boom\n";
+const hp = () => phase === 1 ? { id: 8001, status: "failed", web_url: "http://g/8001" } : { id: 8001, status: "success", web_url: "http://g/8001" };
+const discs = () => phase === 3 ? [{ id: "d1", notes: [
+  { id: 31, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-18T07:00:00Z" },
+  { id: 32, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "R1 审查结论：Request Changes（残余 🔴 一项）", created_at: "2026-11-18T07:01:00Z" },
+] }] : [];
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 93, project_id: 1, target_branch: "main", title: "两回事", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/93\/discussions$/.test(u)) return s.end(JSON.stringify(discs()));
+  if (/\/merge_requests\/93$/.test(u)) return s.end(JSON.stringify({ iid: 93, target_branch: "main", head_pipeline: hp() }));
+  if (u === "/api/v4/projects/1/pipelines/8001/jobs") return s.end(JSON.stringify([{ id: 23, name: "b", stage: "build", status: "failed", web_url: "http://j/23" }]));
+  if (/\/jobs\/23\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end(TRACE); }
+  if (/repository\/commits/.test(u)) return s.end(JSON.stringify({ committed_date: "2026-11-18T06:00:00Z" }));
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 7999, status: "success", sha: "b" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const r1 = await run(); // CI 红认领
+phase = 2;
+const r2 = await run(); // 转绿 → 等评审保持
+const r2b = await run(); // 再跑一轮绿：幂等——不重复落账不刷屏（CR 🟡#1 回归钉）
+const ack2 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-93.json", "utf8"));
+const holdCount = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").filter((l) => l.includes("ci_green_hold")).length;
+const greenOk = r2.code === 0 && r2b.code === 0 && ack2.state === "awaiting_review" && holdCount === 1 && !/等评审 1/.test(r2b.out);
+phase = 3; // 评审结论评论（晚于最后 push 06:00）
+const r3 = await run(); // 触发评审信号 → fingerprint 变化 → 重认领 → 评审工单
+srv.close();
+const ack3 = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-93.json", "utf8"));
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = r1.code === 0 && greenOk && r3.code === 0
+  && ack3.state === "working" && ack3.pending.length === 1 && /残余 🔴/.test(ack3.pending[0].body)
+  && types.includes("ack_stale") && types.lastIndexOf("claimed") > types.indexOf("ack_stale")
+  && readFileSync(repo + "/.ai/task-loop/pack-93.md", "utf8").includes("残余");
+console.log(ok ? "ok" : "bad", r1.code, r2.code, r3.code);
+' "$HERE" "$TL5T2/w" "$TMP/ledger5t2" > "$TMP/e2e5t2.txt" 2>&1
+grep -q "^ok 0 0 0$" "$TMP/e2e5t2.txt" && r=0 || { cat "$TMP/e2e5t2.txt"; r=1; }
+check "CI 绿后评审出手：保持的账目自动转评审工单（stale→重认领，残余 🔴 进清单）" "0" "$r"
 
 echo "== 5n. 轮次锁：并发轮互斥（launchd 180s 心跳 vs 慢轮次），孤儿锁 30min 接管 =="
 TL5N="$TMP/e2e5n"; git init -q --bare "$TL5N/r.git"
