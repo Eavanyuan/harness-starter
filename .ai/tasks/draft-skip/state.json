@@ -114,7 +114,8 @@
   "artifacts": {
     "rs": "docs/01-requirements/RS-task-loop.md（US-1 Draft 行）",
     "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§8/§9）",
-    "review": ".ai/review/CR-2026-11-18-draft-skip.md"
+    "review": ".ai/review/CR-2026-11-18-draft-skip.md",
+    "retro": "retro/draft-skip-2026-11-18.md"
   },
   "todos": [
     {
