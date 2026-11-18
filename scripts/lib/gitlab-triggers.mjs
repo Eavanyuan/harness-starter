@@ -213,6 +213,22 @@ export async function fetchCurrentUser({ url, token, fetchImpl = fetch }) {
   return String(username);
 }
 
+/**
+ * 阻断项判定（2026-11-18 fix-suggestions，用户指令"可关闭只修阻塞问题"）：
+ * 团队评审格式里阻断项带 🔴/阻断/必须修 标记（CR 模板与 yqli 实测评论同构）。
+ * fixSuggestions=false 时：不带的建议性评论（🟡/建议）从修复范围剔除——
+ * resolvable 打回线程天然是阻断（评审者开的必须解决项），系统留言不参与。
+ */
+export const BLOCKING_RE = /🔴|阻断|必须修|必须改/i;
+
+/** 过滤建议性评论：返回剔除"非阻断建议"后的 discussions 副本（原数组不动）。 */
+export function filterSuggestionNotes(discussions) {
+  return (discussions || []).map((d) => ({
+    ...d,
+    notes: (d.notes || []).filter((n) => n.system || n.resolvable || BLOCKING_RE.test(String(n.body || ''))),
+  }));
+}
+
 /** Draft 判定：work_in_progress 是权威字段；标题 Draft:/WIP: 前缀兜底（老版本/手工前缀）。 */
 export function isDraftMr(mr) {
   // 前缀兜底：Draft:/WIP:（WIP: 是 GitLab<14 旧形态，保留无害）+ 现行官方括号形态 (Draft)/[Draft]/（草稿）
@@ -221,7 +237,7 @@ export function isDraftMr(mr) {
   return mr?.work_in_progress === true || /^(draft|wip)\s*[:：（(]/i.test(t) || /^[（([]\s*(draft|wip)\s*[）)\]]/i.test(t);
 }
 
-export async function fetchTriggers({ url, token, username, fetchImpl = fetch, mrFilter, skipDrafts = true }) {
+export async function fetchTriggers({ url, token, username, fetchImpl = fetch, mrFilter, skipDrafts = true, fixSuggestions = true }) {
   const api = async (path) => {
     const res = await fetchImpl(`${url}/api/v4${path}`, {
       headers: { 'private-token': token },
@@ -251,7 +267,11 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     if (skipDrafts && isDraftMr(mr)) { out.drafts.add(`mr-${mr.iid}`); continue; }
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
-    const discs = await api(`${base}/discussions`);
+    const rawDiscs = await api(`${base}/discussions`);
+    // fixSuggestions=false：建议性评论（非阻断）整体退出触发判定与修复范围——
+    // 纯建议的结论评论不再触发（无活儿）。注意：保留 🔴 评论只影响『是否成为待修内容』，
+    // 触发信号仍需三路之一（resolvable 线程/新鲜动词/带结论词的评论）——裸 🔴 评论不构成触发（CR 🟡#2）。
+    const discs = fixSuggestions ? rawDiscs : filterSuggestionNotes(rawDiscs);
     // 先粗判：既无他人未解决意见、也无打回动词，就不必再打审批与 commit 两个接口（20 条 MR 的轮询要省在热路径上）。
     // 动词必须进粗筛：评审者用普通评论 + requested changes 表态时没有任何 resolvable 讨论
     // （2026-11-16 MR !1882 实测），只按未解决意见筛会把打回的 MR 在 classifyMr 之前就 continue 掉。

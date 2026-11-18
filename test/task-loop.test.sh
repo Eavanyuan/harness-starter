@@ -261,6 +261,94 @@ process.exit(out.length === 1 && String(out[0].id) === "7" && out[0].signal === 
 ' "$HERE" > "$TMP/fetch-verb.txt" 2>&1
 check "fetchTriggers：动词型 MR 不被粗筛吃掉，无信号 MR 仍省 API 调用" "0" "$?"
 
+echo "== 5s. fixSuggestions 开关（默认开；关=只修阻断项）：过滤与端到端 =="
+node --input-type=module -e '
+import { filterSuggestionNotes, BLOCKING_RE, fetchTriggers } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+must(BLOCKING_RE.test("1 个同族残余 🔴 未关窗"), "red-circle");
+must(BLOCKING_RE.test("这条必须改，不改不能合"), "must-change");
+const discs = [{ id: "d1", notes: [
+  { id: 1, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议甲：命名可再抽象（🟡）", created_at: "2026-11-18T01:00:00Z" },
+  { id: 2, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "残余 🔴 未关窗", created_at: "2026-11-18T02:00:00Z" },
+  { id: 3, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "普通文字但开了线程", created_at: "2026-11-18T02:30:00Z" },
+  { id: 4, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-18T03:00:00Z" },
+] }];
+const f = filterSuggestionNotes(discs);
+must(f[0].notes.length === 3, "suggestion-dropped-3-kept");
+must(!f[0].notes.some((n) => /建议甲/.test(n.body)), "suggestion-gone");
+must(f[0].notes.some((n) => n.resolvable), "resolvable-kept");
+must(f[0].notes.some((n) => n.system), "system-kept");
+must(f[0].notes.some((n) => /🔴/.test(n.body)), "blocking-kept");
+must(discs[0].notes.length === 4, "original-untouched");
+// fake fetchImpl：纯建议结论评论（无 🔴）在 fixSuggestions=false 下不触发
+const fake = (routes) => async (u) => {
+  for (const [re, body, text] of routes) if (re.test(u)) return { ok: true, status: 200, json: async () => body, text: async () => text || "" };
+  return { ok: false, status: 404, json: async () => ({}), text: async () => "" };
+};
+const routes = (noteBody) => [
+  [/merge_requests\?/, [{ iid: 99, project_id: 1, target_branch: "main", title: "t", sha: "abc", author: { username: "me" } }]],
+  [/\/user$/, { username: "me" }],
+  [/discussions$/, [{ id: "d1", notes: [
+    noteBody ? { id: 9, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: noteBody, created_at: "2026-11-18T04:00:00Z" } : { id: 8, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-18T03:30:00Z" },
+  ] }]],
+  [/repository\/commits/, { committed_date: "2026-11-18T01:00:00Z" }],
+];
+const off = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: fake(routes("复审结论：Request Changes（三项均为 🟡 建议）")), fixSuggestions: false });
+must(off.length === 0, "pure-suggestion-verdict-not-triggered-when-off");
+const on = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: fake(routes("复审结论：Request Changes（1 项 🔴）")), fixSuggestions: true });
+must(on.length === 1 && on[0].comments.length === 1, "blocking-verdict-kept-when-on");
+const offBlk = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: fake(routes("复审结论：Request Changes（1 项 🔴）")), fixSuggestions: false });
+must(offBlk.length === 1, "blocking-verdict-kept-when-off");
+console.log("unit-ok");
+' > "$TMP/d5s.txt" 2>&1
+grep -q "^unit-ok$" "$TMP/d5s.txt" && r=0 || { cat "$TMP/d5s.txt"; r=1; }
+check "fixSuggestions：建议项过滤（🔴/阻断/必须修 保留、🟡 纯建议剔除、resolvable/系统保留）；纯建议结论评论关闭时不触发、阻断项两态都触发" "0" "$r"
+
+TL5S="$TMP/e2e5s"; git init -q --bare "$TL5S/r.git"
+git clone -q "$TL5S/r.git" "$TL5S/w" 2>/dev/null
+( cd "$TL5S/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+// 场景：结论评论含 🔴 阻断 + 🟡 建议两条 note。配置 fixSuggestions=false → ack 只剩阻断条。
+import { writeFileSync } from "node:fs";
+const rulesPath = repo + "/harness.rules.json";
+const j = JSON.parse(readFileSync(rulesPath, "utf8"));
+j.runtime.taskLoop.fixSuggestions = false;
+writeFileSync(rulesPath, JSON.stringify(j, null, 2));
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0];
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 98, project_id: 1, target_branch: "main", title: "开关验证", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(u)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 11, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "同族残余 🔴 未关窗", created_at: "2026-11-18T05:00:00Z" },
+    { id: 12, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "建议乙：可加注释（🟡）", created_at: "2026-11-18T05:01:00Z" },
+    { id: 13, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-18T05:02:00Z" },
+  ] }]));
+  if (/repository\/commits/.test(u)) return s.end(JSON.stringify({ committed_date: "2026-11-18T01:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-98.json", "utf8"));
+const ok = code === 0
+  && ack.pending.length === 1 && /🔴/.test(ack.pending[0].body) && !/建议乙/.test(JSON.stringify(ack.pending))
+  && /仅修阻断项/.test(out) && /1 条待修意见/.test(out);
+console.log(ok ? "ok" : "bad", code, ack.pending.length);
+' "$HERE" "$TL5S/w" "$TMP/ledger5s" > "$TMP/e2e5s.txt" 2>&1
+grep -q "^ok 0 1$" "$TMP/e2e5s.txt" && r=0 || { cat "$TMP/e2e5s.txt"; r=1; }
+check "fixSuggestions=false 端到端：触发与工单只剩 🔴 阻断项，🟡 建议被剔除，提示行可见" "0" "$r"
+
 echo "== 5r. Draft MR 不列入（draft-skip）：三种信号全不触发；已认领后转 Draft → 关账；ready 恢复；开关可关 =="
 node --input-type=module -e '
 import { isDraftMr } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";

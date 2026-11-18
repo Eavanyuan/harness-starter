@@ -278,13 +278,14 @@ if (wantGitlab) {
   const fromConfig = !username;
   try {
     if (fromConfig) username = await fetchCurrentUser({ url: GITLAB_URL, token: GITLAB_TOKEN });
-    const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr, skipDrafts: taskLoopCfg.skipDrafts !== false });
+    const fetched = await fetchTriggers({ url: GITLAB_URL, token: GITLAB_TOKEN, username, mrFilter: opt.mr, skipDrafts: taskLoopCfg.skipDrafts !== false, fixSuggestions: taskLoopCfg.fixSuggestions !== false });
     triggers.push(...fetched);
     if (fetched.inflight instanceof Set) gitlabInflight = fetched.inflight; // 数组属性经 spread 丢失，单独捕获
     if (fetched.drafts instanceof Set) { gitlabDrafts = fetched.drafts; draftSkipped = fetched.drafts.size; }
     // 详情 404（CR 二审 🟡#2′）：MR 在列表里但详情已 404 = 刚被关/合并的竞态，跳过是正常路径，
     // 但持续 404 不许无痕——落账一行，报表里看得见。
     if (draftSkipped > 0) console.log(`[task-loop] ${draftSkipped} 条 Draft MR 未列入（runtime.taskLoop.skipDrafts，ready 后自动纳入）`);
+    if (taskLoopCfg.fixSuggestions === false) console.log('[task-loop] fixSuggestions=false——仅修阻断项（建议性评论已退出触发与修复范围）');
     if (fetched.skipped404) {
       recordEvent('task-loop', 'mr_detail_404', { count: fetched.skipped404 });
       console.log(`[task-loop] ${fetched.skipped404} 条 MR 详情 404（刚被关/合并的竞态，跳过；若持续出现查 token 权限）`);

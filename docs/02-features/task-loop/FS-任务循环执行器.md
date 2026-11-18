@@ -64,6 +64,7 @@
 - 输入：`GET /merge_requests?scope=created_by_me&state=opened` → 逐条 `discussions`，必要时补 `repository/commits/<sha>` 与 `approvals`
 - 处理：`scripts/lib/gitlab-triggers.mjs` 的 `classifyMr()`。`unresolvedByOthers()` 取"他人写的、`resolvable && !resolved`"；`approvalFromDiscussions()` 回放系统留言里的 `approved/unapproved this merge request` 得到**审批人与审批时间**
 - 输出：`{kind:'mr', id, mr, unresolved, comments, reviewState, signal}`；`comments` 为评审人建议性普通评论（2026-11-16 变更 mr-verb-trigger：审核意见里的建议修改项纳入接单修复范围，不双列 resolvable、不收自发与系统留言），随触发进 ack 待修清单
+- 建议项开关（2026-11-18 fix-suggestions，用户指令"默认开启，可关闭只修阻塞问题"）：`runtime.taskLoop.fixSuggestions`（默认 true=建议性评审评论也进修复范围，2026-11-16 以来的行为）；置 false 时**只修阻断项**——`filterSuggestionNotes` 在触发判定前剔除不带 🔴/阻断/必须修 标记的建议性评论（纯建议的结论评论不再触发），resolvable 打回线程与系统留言天然保留。改配置即生效，轮询行打印当前态。
 - Draft 过滤（2026-11-18 draft-skip，用户指令"暂时不列入修复执行腿"）：`runtime.taskLoop.skipDrafts`（默认 true）时 Draft MR（`work_in_progress` 或 Draft:/WIP: 标题前缀，详情字段权威）**整体不触发不认领**——CI 红/评审意见在 Draft 阶段是预期噪声；已认领后转 Draft 的，sweep 关账（`trigger_gone why=draft`，删 ack/工单、释放认领），ready 后自动重新纳入。轮询行报告跳过条数。
 - 第三形态（2026-11-17 ci-fail-trigger）：无打回证据的 MR 逐单拉**详情**判 `head_pipeline.status==='failed'` → `signal:'ci_pipeline'`（列表接口实测不带 head_pipeline；详情是在场判据——瞬断 rethrow 走整源软失败保账，仅 404=该单刚被关跳过）。认领后拉 failed jobs 的 trace，`lib/ci-failures.mjs` 多栈识别（javac/surefire/pytest/jest/go/✗；先剥 ANSI 再剥 runner 时间戳前缀；路径归一到源码根标记起、反斜杠归一——同文件跨 job 同指纹；jest 剥耗时尾缀），以**目标分支最新流水**为基线做 `setDiff` 归因（只认 success/failed 为已知基线，running/canceled/取不到 → `baselineKnown:false` 明说）:引入项进 ack 待修清单与 CI 工单（`buildR1ProfileCI`），基线同款明示不修；**failed job 存在但提取为空，或视角不完整（trace 拉取失败/失败 job 被截断/jobs 翻页截断）且可见部分零引入 → 同为无法归因（`ci_opaque` + job 级工单），不判 inherited_only**；全部同款 → `state:'inherited_only'` + `claim_noop(why)`；视角截断（失败 job 5/总数、jobs 翻页、trace 拉取失败数）记入 `ack.ci` 并在工单可见；ack 的 `fingerprint='ci:<流水id>'`（新流水即重认领重归因），`ci_attributed` 落账。**在途保持与轮次上限（2026-11-17 ci-inflight-hold）**：非终态流水（终态白名单只认 success/failed：running/pending/canceled/未知字串/无流水的秒级窗口一律在途）进 inflight 集合——sweep 对其不关账不重认领（实测事故：执行器推送→流水 running→被当"已合并"误关账）；`ack.ci.rounds` 跨流水累计（sweep 携带），超 `maxRounds` → `needs_human` + `ci_escalated` + 删旧工单不出新工单（防越修越坏无限循环，实测 round1 13→round2 16）；opaque 时失败 job 的 trace 尾部 400 行落 `.ai/task-loop/traces/<id>/`（会话读文件不读凭据）。**本地轮次互斥**：`.ai/locks/task-loop.round` 排他锁（新轮跳过、>30min 孤儿接管、退出自清）——launchd 180s 心跳下轮次超过心跳时防并发写账
 - 失败分支：HTTP 非 2xx → 抛错，runner `exit 1` 并打印失败的 path；`/approvals` 404（老版本 GitLab）→ 降级为"有名单无时间"，此时 `approvalValid` 明确返回"无法判定审批时间"→ 按不通过处理（不猜）
@@ -226,6 +227,7 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | `HARNESS_ENV_FILE` | `$HOME/.harness/task-loop/task-loop.env` | 凭据文件路径（`run-round.sh` 会 export 它）。指到不存在的路径 = 该文件不生效，与"未接入"同判据 | 否 |
 | `$HOME/.harness/task-loop/run-round.sh` | 安装时生成（0700） | 定时器真正的执行体：交出凭据**路径** → `exec node`（不注入值，不 source） | 装定时器时生成 |
 | `GITLAB_USERNAME` / `--username` | 不配 | **不再需要**：默认用 token 调 `GET /user` 取。仅在拿不到 `/user` 时作逃生口；空值会让判定反向 | 否 |
+| `runtime.taskLoop.fixSuggestions` | `true`（2026-11-18） | 建议性评审评论是否进修复范围；false=只修阻断项（🔴/阻断/必须修 标记 + resolvable 线程），纯建议结论评论不触发 | 否 |
 | `runtime.taskLoop.skipDrafts` | `true`（2026-11-18） | Draft MR 不触发不认领（用户指令暂不列入修复执行腿）；置 false 恢复全部纳入 | 否 |
 | `runtime.taskLoop.pollSeconds` | `1800`（2026-11-17 定：与修复执行器 30 分钟节拍对齐；初版 7200→16 日 900→17 日 1800） | 轮询节拍（秒）。P1 接单延迟上限 30 分钟；源临时故障不落戳、下一 tick 立即重试（节拍只约束成功轮）。生效前提：定时器心跳 ≤ 节拍（默认 180s 满足） | 否 |
 | `runtime.feishu.repoHint` | 空 | 工单（pack）里剖面 B 的目标仓库指引——产品路由是部署事实，随空间配置走，不硬编码进脚手架 | 否 |
@@ -253,6 +255,7 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | CAS 双竞争 | 先者胜、后者 `taken` | 同 sha push 同 ref 是 no-op（必须内容唯一） |
 | 跨机僵尸 | **两个独立克隆**，B 无对象 → 仍判出 `zombie` 且带 `ageMs` | fixture 先断言"B 本地没有该对象"，否则测不到跨机路径 |
 | 触发五形态 | 无意见 / 打回 / 已批红跳过 / 陈批仍打回 / 自留言不算 | 批红时间与 push 时间的先后 |
+| fixSuggestions 开关（2026-11-18） | 建议项过滤（🔴/阻断/必须修 保留、🟡 剔除、resolvable/系统保留、原数组不动）；纯建议结论评论关闭时不触发、阻断两态都触发；端到端 false 态工单只剩阻断项+提示行 | 变异：过滤退化→2 红 |
 | Draft 过滤（2026-11-18） | Draft 的 CI 红/打回/结论评论均不触发；已认领后转 Draft → 关账(why=draft)+删 ack/工单；ready 后自动纳入；skipDrafts=false 恢复 | 变异：去过滤→红 |
 | 结论评论形态（2026-11-17） | push 后的 Request Changes 结论评论触发（signal=review_comment）/推送前的被覆盖不触发/本人不算/批红晚于结论评论才算最后的话；端到端 ack 只含活评审（R2），旧 R1 不进清单。**误报形态四连钉**：引用收尾（mid-line）、提问句、> 引用行、结论与 LGTM 并存——都不触发；九形态真值表全过 | !1916 R2 实测形态；变异：去信号→断言级红、活评论不过滤→1 红 |
 | 动词五形态（2026-11-16） | live 打回（普通评论+撤批+动词，零 resolvable）/ 批红晚于动词不算打回 / 动词早于 push 已覆盖 / 自发动词不算 / 他批后另人动词仍打回 | 动词与 push、动词与批红两组先后关系；fetchTriggers 粗筛同步放行（无信号 MR 仍省 API） |
