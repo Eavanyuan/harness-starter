@@ -1,0 +1,118 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "deploy-skill",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-18T09:46:03Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：retro/deploy-skill-经验蒸馏.md 即文档"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：用户指令即需求"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "经验分四类蒸馏：通用原则/可泛化模式/飞书特有/TDasset特有"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-deploy-skill.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/deploy-skill-经验蒸馏.md"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/deploy-skill-经验蒸馏.md"
+  },
+  "todos": [
+    {
+      "id": "DS1",
+      "title": "deployment skill + 47 坑清单 + 6 能力接口",
+      "status": "completed",
+      "files": [
+        ".skills/deployment/SKILL.md",
+        ".skills/deployment/references/pitfall-checklist.md",
+        ".skills/deployment/references/issue-tracker-interface.md",
+        "harness.config.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/DS1.log",
+        "command": "npm run -s check:skills"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "check:skills 5/5",
+        "feature_complete": "SKILL + 2 references + extraStacks 注册",
+        "quality_clean": "47 坑每条标注来源与严重度"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-deploy-skill",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-deploy-skill.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "stage": "done",
+    "last_check": "2026-11-18T09:48:30Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
+  }
+}

@@ -27,7 +27,8 @@
       "## 交付"
     ],
     "extraStacks": [
-      "harness"
+      "harness",
+      "deployment"
     ],
     "note": "skill 按 applies_to 的文件 glob 选择，不是按 stack 一对一：同一 stack 可以有多份（如 frontend 与 e2e 都服务 frontend）。命中多份则全部加载。extraStacks 是技术栈之外的受管区域（harness = 门禁与生成器自身），不算 stacks。"
   },
