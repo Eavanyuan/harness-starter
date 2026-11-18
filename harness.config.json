@@ -302,5 +302,13 @@
   ],
   "notes": {
     "tdasset_sidecar": "TDasset 旁挂（2026-11-14）：harness 文件不进 TDasset 仓（用户指令）；代码仓在 ../TDasset，命令经 cd 过去跑；test/testOne 必须双开 skipTests=false（TDasset 根 pom 与 tda-server 是两个独立跳过属性）。"
+  },
+  "architecture": {
+    "$comment": "架构 fitness functions 阈值（architect-check.mjs 消费）。黄牌=提醒 architect 关注；红牌=阻断合入。测试文件独立红线（天然长）。lastKeyCount 在周期健康检查时更新。",
+    "fileLineYellow": 2000,
+    "fileLineRed": 3000,
+    "testFileLineRed": 8000,
+    "configKeyGrowthYellow": 15,
+    "serviceToServiceMax": 5
   }
 }

@@ -40,7 +40,7 @@
 这是你唯一在任务目录之外的写入区，别把定稿长期留在 `.ai/tasks/**` 当临时稿。
 
 阶段门禁：
-- `adr`：所有多方案决策点有 ADR；架构/兼容/迁移类有人工决策记录
+- `adr`：所有多方案决策点有 ADR；架构/兼容/迁移类有人工决策记录；**change_tier=3 时必须调度 architect 子 agent 做架构影响审查**（不是自审——architect 有独立视角）
 - `fs_review`：🔴 阻断意见全部处置；RS→FS 覆盖率 100%（`npm run verify:state` 判）
 - `wbs`：每个叶子有可执行验收标准 + 风险级 + `spec_ref` 指回存在的 FS 小节
 - `impl`：实现 TODO 审计四项齐备且 verify 日志存在、exit_code=0、mtime 晚于源码；**推进到 review 前未完成的 TODO 必须先收尾或移出本任务**（写盘与 CI 不拦 pending——那是进行中的常态，只挡推进）

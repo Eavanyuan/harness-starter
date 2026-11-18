@@ -1,0 +1,133 @@
+# cmd: node scripts/architect-check.mjs
+# started: 2026-11-18T09:09:51Z
+# finished: 2026-11-18T09:09:56Z
+# exit_code: 0
+# commit: unknown
+# task: architect-agent
+# ---- output tail (last 200 lines) ----
+== F3 复杂度预算 ==
+  🔴 F3 | ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/datasource/DatasourceServiceMockTest.java | 8272 行 ≥ 测试红线 8000
+  🔴 F3 | ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/analysis/AnalysisBaseServiceTest.java | 10621 行 ≥ 测试红线 8000
+  🔴 F3 | ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/attribute/AttributeServiceUnitTest.java | 20149 行 ≥ 测试红线 8000
+  🔴 F3 | ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/element/ElementServiceUnitTest.java | 22101 行 ≥ 测试红线 8000
+  🔴 F3 | ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/dashboard/PanelServiceTest.java | 13881 行 ≥ 测试红线 8000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/config/TDAConfig.java | 2244 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/service/index/IndexResourceManager.java | 2051 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/service/expression/antlr/PathParser.java | 2275 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/ConnectionJobService.java | 4681 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/DatasourceCacheService.java | 2176 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/DatasourceService.java | 6911 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/AnalysisBaseService.java | 5384 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/AnalysisNewService.java | 3261 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/EventService.java | 6736 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/AttributeService.java | 10648 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/AttributeValueService.java | 4634 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/CheckAttributeService.java | 2338 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/license/LicenseService.java | 3716 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementTreeService.java | 2934 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ImportByStableMetaListenerJobService.java | 3463 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/InitializationByStableService.java | 2402 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementDeleteSubtaskWorker.java | 2038 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/InitializationService.java | 4120 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementService.java | 12879 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/template/AttributeTemplateService.java | 5273 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/template/ElementTemplateService.java | 6665 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/user/UserService.java | 2890 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/dashboard/KpiPanelQueryService.java | 2967 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/dashboard/PanelService.java | 6556 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sys/SystemService.java | 2976 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/audit/AuditSnapshotUtil.java | 2745 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportByCsvService.java | 2216 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportAndExportDataService.java | 7898 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportByMdService.java | 2160 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/SingleDataTransportService.java | 2559 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/vtable/VirtualTableService.java | 6792 行 ≥ 红线 3000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/ai/AiChatService.java | 5295 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sample/SampleConfigExportService.java | 2752 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sample/SampleService.java | 3739 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/kpi/KpiBuildWorker.java | 2733 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/backup/BackupService.java | 3389 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/git/VersionChangeService.java | 2217 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/5-manage/views/modelDetailForm.vue | 2175 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/3-events/views/batch-analysis/BatchAnalysisWorkbench.vue | 2246 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/frontend/src/views/3-events/views/event/components/eventTable.vue | 3598 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/frontend/src/views/7-ai/components/chart.vue | 2380 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/components/createAttributeForm.vue | 2033 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/analysis/components/AnalysisForm.vue | 2332 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/panel/panels.vue | 2684 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/panel/viewPanel.vue | 2606 行 ≥ 黄线 2000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/panel/kpi/KpiPanelView.vue | 2712 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/frontend/src/views/1-explorer/views/trend/AnalyzeWorkbench.vue | 5459 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/childElementList.vue | 2531 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/frontend/src/views/1-explorer/views/attributeList.vue | 3035 行 ≥ 红线 3000
+  🟡 F3 | ../TDasset/frontend/src/views/1-explorer/views/dashboard/viewDash.vue | 2123 行 ≥ 黄线 2000
+  🔴 F3 | ../TDasset/taos-ui/components/dataIn/components/commonTransformer/index.vue | 3543 行 ≥ 红线 3000
+  （黄线 2000，红线 3000）
+== F4 配置面 ==
+  配置键总数：200（config 100 + rules 100）
+== F1 模块边界 ==
+== F2 依赖方向 ==
+
+结果：🔴 28 | 🟡 28 | 🟢 0
+
+🔴 阻断项（需拆分/重构后才能合入）：
+  ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/datasource/DatasourceServiceMockTest.java: 8272 行 ≥ 测试红线 8000
+  ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/analysis/AnalysisBaseServiceTest.java: 10621 行 ≥ 测试红线 8000
+  ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/attribute/AttributeServiceUnitTest.java: 20149 行 ≥ 测试红线 8000
+  ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/element/ElementServiceUnitTest.java: 22101 行 ≥ 测试红线 8000
+  ../TDasset/tda-server/src/test/java/com/taosdata/asset/service/dashboard/PanelServiceTest.java: 13881 行 ≥ 测试红线 8000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/ConnectionJobService.java: 4681 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/DatasourceService.java: 6911 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/AnalysisBaseService.java: 5384 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/AnalysisNewService.java: 3261 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/analysis/EventService.java: 6736 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/AttributeService.java: 10648 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/AttributeValueService.java: 4634 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/license/LicenseService.java: 3716 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ImportByStableMetaListenerJobService.java: 3463 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/InitializationService.java: 4120 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementService.java: 12879 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/template/AttributeTemplateService.java: 5273 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/template/ElementTemplateService.java: 6665 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/dashboard/PanelService.java: 6556 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportAndExportDataService.java: 7898 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/vtable/VirtualTableService.java: 6792 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/ai/AiChatService.java: 5295 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sample/SampleService.java: 3739 行 ≥ 红线 3000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/backup/BackupService.java: 3389 行 ≥ 红线 3000
+  ../TDasset/frontend/src/views/3-events/views/event/components/eventTable.vue: 3598 行 ≥ 红线 3000
+  ../TDasset/frontend/src/views/1-explorer/views/trend/AnalyzeWorkbench.vue: 5459 行 ≥ 红线 3000
+  ../TDasset/frontend/src/views/1-explorer/views/attributeList.vue: 3035 行 ≥ 红线 3000
+  ../TDasset/taos-ui/components/dataIn/components/commonTransformer/index.vue: 3543 行 ≥ 红线 3000
+
+🟡 建议项（architect agent 周期检查时关注，不阻断）：
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/config/TDAConfig.java: 2244 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/service/index/IndexResourceManager.java: 2051 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/common/service/expression/antlr/PathParser.java: 2275 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/datasource/DatasourceCacheService.java: 2176 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/attribute/CheckAttributeService.java: 2338 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementTreeService.java: 2934 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/InitializationByStableService.java: 2402 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/element/ElementDeleteSubtaskWorker.java: 2038 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/user/UserService.java: 2890 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/dashboard/KpiPanelQueryService.java: 2967 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sys/SystemService.java: 2976 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/audit/AuditSnapshotUtil.java: 2745 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportByCsvService.java: 2216 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/ImportByMdService.java: 2160 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/importdata/SingleDataTransportService.java: 2559 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/sample/SampleConfigExportService.java: 2752 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/kpi/KpiBuildWorker.java: 2733 行 ≥ 黄线 2000
+  ../TDasset/tda-server/src/main/java/com/taosdata/asset/service/git/VersionChangeService.java: 2217 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/5-manage/views/modelDetailForm.vue: 2175 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/3-events/views/batch-analysis/BatchAnalysisWorkbench.vue: 2246 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/7-ai/components/chart.vue: 2380 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/components/createAttributeForm.vue: 2033 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/analysis/components/AnalysisForm.vue: 2332 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/panel/panels.vue: 2684 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/panel/viewPanel.vue: 2606 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/panel/kpi/KpiPanelView.vue: 2712 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/childElementList.vue: 2531 行 ≥ 黄线 2000
+  ../TDasset/frontend/src/views/1-explorer/views/dashboard/viewDash.vue: 2123 行 ≥ 黄线 2000
+
+  （报告模式：28 🔴 不阻断——存量债。PR/CI 侧用 --strict 拦新增违规）
