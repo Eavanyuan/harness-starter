@@ -2205,3 +2205,50 @@ echo
 [ "$skip" -eq 0 ] || printf "跳过：%d 项（原因见上，不计入通过/失败）\n" "$skip"
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1
+
+echo "== 5z. claims 断网 → 健康计数不清零（体检 v2 §1-1 回归钉：修复前 claim_error 轮 stamp=true 清零 streak）=="
+TLZ="$TMP/e2e5z"; git init -q --bare "$TLZ/r.git"
+git clone -q "$TLZ/r.git" "$TLZ/w" 2>/dev/null
+( cd "$TLZ/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, rmSync } from "node:fs";
+const [here, repo, ledger, rdir] = process.argv.slice(1);
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0]; const qs = q.url;
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 47, project_id: 1, target_branch: "main", title: "t", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/\/merge_requests\/47\/discussions$/.test(u)) return s.end("[]");
+  if (/\/merge_requests\/47$/.test(u)) return s.end(JSON.stringify({ iid: 47, target_branch: "main", head_pipeline: { id: 9301, status: "failed", web_url: "http://g/9301" } }));
+  if (u === "/api/v4/projects/1/pipelines/9301/jobs") return s.end(JSON.stringify([{ id: 36, name: "b", stage: "build", status: "failed", web_url: "http://j/36" }]));
+  if (/\/jobs\/36\/trace$/.test(u)) { s.setHeader("content-type", "text/plain"); return s.end("[ERROR] /w/a/src/A.java:[1,1] boom\n"); }
+  if (qs.startsWith("/api/v4/projects/1/pipelines?ref=")) return s.end(JSON.stringify([{ id: 9299, status: "success", sha: "b" }]));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  const code = await new Promise((r) => child.on("close", r));
+  return code;
+};
+// 正常轮（gitlab+claims 都好）
+const r1 = await run();
+// 删 claims 远端 → claim_error 轮（gitlab 正常）
+rmSync(rdir, { recursive: true, force: true });
+const r2 = await run();
+const r3 = await run(); // 再一轮断网
+srv.close();
+const h = JSON.parse(readFileSync(repo + "/.ai/task-loop/health.json", "utf8"));
+const ok = r1 === 0 && r2 === 1 && r3 === 1 && h.noSuccessStreak >= 2; // streak 增长不清零
+console.log(ok ? "ok" : "bad", r1, r2, r3, h.noSuccessStreak);
+process.exit(0);
+' "$HERE" "$TLZ/w" "$TMP/ledger5z" "$TLZ/r.git" > "$TMP/e2e5z.txt" 2>&1
+grep -q "^ok 0 1 1 [0-9]$" "$TMP/e2e5z.txt" && r=0 || { cat "$TMP/e2e5z.txt"; r=1; }
+check "claims 断网：exit 1 且 streak 递增不清零（修复前 stamp=true 清零致告警失明）" "0" "$r"

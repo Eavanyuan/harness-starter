@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p4-hotfix",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "41e6696",
+    "affected_ids": [
+      "scripts/task-loop.mjs（claimsNetworkFail 计数+stamp 判定）",
+      "test/task-loop.test.sh（5z 回归钉）",
+      "ARCH-2026-11-19-架构体检-v2.md（报告）",
+      "CR-2026-11-19-p3-hostless-补录.md"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T06:55:23Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "体检 v2 两条必须修：①健康告警对 claims 断网失明（stamp 只看 softFail 不看 blocked）②p3/hostless 追溯 CR"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-19T13:00:00Z",
+      "exited_at": "2026-11-19T13:05:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-19T13:05:00Z",
+      "exited_at": "2026-11-19T13:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：体检 v2 已裁决",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-19T13:05:00Z",
+      "exited_at": "2026-11-19T13:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单文件小改",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-19T13:05:00Z",
+      "exited_at": "2026-11-19T13:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-19T13:05:00Z",
+      "exited_at": "2026-11-19T13:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-19T13:20:00Z",
+      "exited_at": "2026-11-19T13:25:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "self-review + 体检 v2 审阅者验收（八件 8/10，两条已修）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-19T13:25:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-2026-11-19-p3-hostless-补录.md"
+  },
+  "todos": [
+    {
+      "id": "PH1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "体检 v2 两条必须修：①claimsNetworkFail 计数器（claim_error/release_failed 置位，stamp 与 softFail 同权判定——修复前 claim_error 轮 stamp=true 清零 streak 致告警失明）+ 5z 回归钉 ②p3/hostless 追溯 CR",
+      "files": [
+        "scripts/task-loop.mjs",
+        "test/task-loop.test.sh",
+        ".ai/review/CR-2026-11-19-p3-hostless-补录.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "task-loop 129 全绿（+5z 回归钉：claims 断网→streak≥2 不清零）",
+        "feature_complete": "体检 v2 §1-1 闭合：claims 断网正确计无成功轮；§1-2 闭合：追溯 CR 落档",
+        "quality_clean": "claimsNetworkFail 与 softFail 独立计数——业务 blocked（zombie/budget）不触发 stamp=false，只有网络类才触发"
+      },
+      "verify": {
+        "log_path": ".ai/verify/PH1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

@@ -170,6 +170,8 @@ function stampLastRun() {
 const ROUND_START = Date.now();
 const stats = { claimed: 0, noop: 0, skip: 0, gone: 0, stale: 0, pack: 0, escalated: 0 };
 let blocked = 0; // 🔴 CR：sweep 的释放失败分支早于原声明使用——TDZ 被嵌套 bug 掩护（上移消除）
+let claimsNetworkFail = false; // 体检 v2 §1-1：claims 网络失败（claim_error/release_failed）≠ 业务 blocked——
+                               // stamp 只看 softFail 会把它记成"成功轮"清零健康计数，告警对 claims 断网失明
 const softFail = []; // {source}：临时不可达（超时/断网/5xx）——跳过该源、不落戳、exit 1 下 tick 重试
 // ---- 循环健康自查（2026-11-19 p0-stability，架构体检 D2：334 次软失败只落本机日志，循环瞎了没人知道）----
 // 连续无成功轮 ≥ healthAlertTicks（默认 10 拍 ≈ 30 分钟心跳）→ 本地通知 + loop_degraded 落账（60 分钟冷却）。
@@ -518,6 +520,7 @@ if (!opt.dryRun) {
       // Draft MR：用户指令暂不列入修复执行腿——关账（与合并/批红同等待遇），ready 后自动重新纳入
       const rel = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
       if (rel.status === 'failed') {
+        claimsNetworkFail = true;
         recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'draft_close', error: rel.error });
         stats.skip += 1;
         blocked += 1;
@@ -556,6 +559,7 @@ if (!opt.dryRun) {
       // 释放失败 → 本地账不动（D11：删本地不删远端=主动制造不一致），下一轮重试。
       const rel = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
       if (rel.status === 'failed') {
+        claimsNetworkFail = true;
         recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'close', error: rel.error });
         stats.skip += 1;
         blocked += 1;
@@ -579,6 +583,7 @@ if (!opt.dryRun) {
       const why = a.fingerprint ? 'ack_stale' : 'ack_migrated';
       const relStale = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
       if (relStale.status === 'failed') {
+        claimsNetworkFail = true;
         recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'stale', error: relStale.error });
         stats.skip += 1; blocked += 1;
         console.log(`[task-loop] ${key} 重认领释放失败（远端不可达？）——本地账保留，下一轮重试`);
@@ -594,7 +599,7 @@ if (!opt.dryRun) {
 
 if (triggers.length === 0) {
   console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`);
-  finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length }); // blocked 计入（sweep 释放失败等）
+  finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length && !claimsNetworkFail }); // 体检 v2：claims 断网也计无成功轮
 }
 
 for (const t of triggers) {
@@ -644,6 +649,7 @@ for (const t of triggers) {
   try {
     c = claim({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id, ttlMs: rules.runtime?.budget?.claimTtlMs });
   } catch (e) {
+    claimsNetworkFail = true;
     recordEvent('task-loop', 'claim_error', { kind: t.kind, id: t.id, error: String(e?.message || e).slice(0, 160) });
     console.log(`[task-loop] ${t.kind}-${t.id} 认领失败（claims 远端不可达？）：${e?.message || e}——本轮跳过`);
     stats.skip += 1;
@@ -885,4 +891,4 @@ for (const t of triggers) {
 }
 // 正常收尾仍持有的认领不释放（任务没做完，锁要留着），但清空账目避免 exit 钩子二次处理
 held.clear();
-finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length });
+finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length && !claimsNetworkFail }); // 体检 v2：claims 断网也计无成功轮
