@@ -1,0 +1,169 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p2-cleanup",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "14a0f7f",
+    "affected_ids": [
+      "scripts/lib/attribution.mjs（删）",
+      "scripts/lib/baseline.mjs（删）",
+      "scripts/lib/ci-watch.mjs（删）",
+      "scripts/task-loop.mjs（traces 清理）",
+      "test/task-loop.test.sh（删段 7/9/baseline 部分＋traces 断言）",
+      "docs/.ai/review（agents 纠正）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T05:55:39Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "体检 P2 清理：删零消费 lib（三件）+ traces/ 关账清理 + agents Y7 判定用户纠正"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-19T09:00:00Z",
+      "exited_at": "2026-11-19T09:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-19T09:10:00Z",
+      "exited_at": "2026-11-19T09:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：体检 B 审计已裁决",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-19T09:10:00Z",
+      "exited_at": "2026-11-19T09:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：纯删除+一行 rmSync",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-19T09:10:00Z",
+      "exited_at": "2026-11-19T09:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：两 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-19T09:10:00Z",
+      "exited_at": "2026-11-19T10:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-19T10:00:00Z",
+      "exited_at": "2026-11-19T10:15:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（一轮 approve；🟡 口径已修正+ADR 注记登记留下批）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-19T10:15:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-2026-11-19-p2-cleanup.md"
+  },
+  "todos": [
+    {
+      "id": "P2D1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "删三死码 lib（attribution/baseline/ci-watch，生产零消费者——体检 B R1-R3 夏核）+ 对应测试段（段 7 三分流 42L、段 9 CI 盯梢 11L、段 6 baseline 部分 32L）",
+      "files": [
+        "scripts/lib/attribution.mjs",
+        "scripts/lib/baseline.mjs",
+        "scripts/lib/ci-watch.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 活 lib 全过",
+        "tests": "task-loop 132→128（净删 4 个检查点：段 7 三分流 1 + 段 9 盯梢 1 + baseline 端到端 2）（删 85 行测试、加 traces 断言后的净额）全绿",
+        "feature_complete": "体检 B R1-R3 落地：死码承载活语义的迷路源消除",
+        "quality_clean": "豁免三道闸的决定部件（decide/flappyFailures）在死码里删除——该机制从未在真实轮次走过，ADR-010 D5 需补演进注记（merge-base 双树→目标分支流水基线，见 ci-fail-trigger RS）——留下批"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P2D1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "P2T1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "traces/ 关账清理（真终态+Draft 两分支各加 rmSync recursive——体检 C3 的 408KB 泄漏）+ agents Y7 判定用户纠正（12 agent 保留全集）",
+      "files": [
+        "scripts/task-loop.mjs",
+        ".ai/review/ARCH-2026-11-19-架构体检.md",
+        ".ai/review/arch-audit-B-过度设计.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "task-loop 128 全绿（traces 断言保留在 5k phase 4 的关账检查中）",
+        "feature_complete": "C3 泄漏闭合：关账时 traces 同步清除；B Y7 判定作废",
+        "quality_clean": "代码正确性由 5k 端到端关账路径覆盖（!existsSync traces）+ 手动构造验证；traces 清理只在 sweep 分支（视角完整才清）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P2T1.log",
+        "command": "node --check scripts/task-loop.mjs"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

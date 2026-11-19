@@ -1122,7 +1122,7 @@ const held3 = r3.code === 0 && existsSync(repo + "/.ai/task-loop/ack-91.json") &
 phase = 4;
 const r4 = await run();
 srv.close();
-const closed = r4.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-91.json") && /关账 1/.test(r4.out);
+const closed = r4.code === 0 && !existsSync(repo + "/.ai/task-loop/ack-91.json") && !existsSync(repo + "/.ai/task-loop/traces/91") && /关账 1/.test(r4.out); // traces 同清
 console.log(ok1 ? "ok1" : "bad1", held3 ? "held-ok" : "held-bad", closed ? "closed" : "noclose", ok3 ? "ok3" : "bad3", r1.code, r2.code, r3.code, r4.code);
 ' "$HERE" "$TL5K/w" "$TMP/ledger5k" > "$TMP/e2e5k.txt" 2>&1
 grep -q "^ok1 held-ok closed ok3 0 0 0 0$" "$TMP/e2e5k.txt" && r=0 || { cat "$TMP/e2e5k.txt"; r=1; }
@@ -1847,7 +1847,7 @@ echo "== 5j. 节拍入库：pollSeconds 1800=30min（2026-11-17 与执行器节�
 grep -q '"pollSeconds": 1800' "$HERE/harness.rules.json"
 check "runtime.taskLoop.pollSeconds=1800 已入库（文档口径同步 FS §8）" "0" "$?"
 
-echo "== 6. T4a 归因：指纹归一化 + merge-base 基线实跑 + 集合差 =="
+echo "== 6. T4a 归因：指纹归一化 + 集合差 =="
 # 纯函数层：参数值变化不改变身份（同一失败两次运行、期望/实际互换、全角括号、ANSI 色码）
 node --input-type=module -e '
 import { failureFingerprint, extractFailures, setDiff } from "'"$HERE"'/scripts/lib/fingerprint.mjs";
@@ -1871,80 +1871,6 @@ const d = setDiff([{id:"s::A"},{id:"s::B"}], [{id:"s::A"},{id:"s::C"}]);
 process.exit(d.introduced.length===1 && d.inherited.length===1 && d.resolved.length===1 ? 0 : 1);'
 check "集合差三分：引入/继承/顺手修好" "0" "$?"
 
-# 端到端层：真仓库双树归因。基线（merge-base）有存量红 A；MR 分支 = 基线 + 引入红 B
-ENVT="$TMP/attr"; git init -q -b main "$ENVT" && cd "$ENVT" && git config user.email t@t && git config user.name t
-cat > suite.sh <<'SH'
-#!/usr/bin/env bash
-# 套件形态：按文件存在性输出不同失败（b-red 文件存在才输出 B）
-printf "  \033[31m✗\033[0m 存量红 A（期望 1，实际 %s）\n" "$RANDOM"
-[ -f b-red ] && printf "  \033[31m✗\033[0m 引入红 B (期望 0，实际 1)\n"
-printf "结果：\n"
-SH
-chmod +x suite.sh && git add -A && git commit -qm base
-git checkout -q -b mr && touch b-red && git add -A && git commit -qm introduce-b
-node --input-type=module -e '
-import { runBaseline } from "'"$HERE"'/scripts/lib/baseline.mjs";
-import { spawnSync } from "node:child_process";
-import { extractFailures, setDiff } from "'"$HERE"'/scripts/lib/fingerprint.mjs";
-const cwd = process.argv[1];
-// 基线：在 merge-base（=base 提交）实跑
-const base = runBaseline({ cwd, baseRef: "main", head: "mr", worktreeDir: cwd + "-wt",
-  suites: [{ name: "suite", command: ["bash", "suite.sh"] }] });
-const baseF = base.results.flatMap((r) => r.failures);
-// MR 侧：当前树（mr 分支）实跑同套件
-const r = spawnSync("bash", ["suite.sh"], { cwd, encoding: "utf8" });
-const mrF = extractFailures(r.stdout + r.stderr, { suite: "suite" });
-const d = setDiff(mrF, baseF);
-const ok = d.introduced.length === 1 && /引入红 B/.test(d.introduced[0].id)
-  && d.inherited.length === 1 && /存量红 A/.test(d.inherited[0].id);
-console.log("introduced:", d.introduced.map(x=>x.fingerprint).join(","), "| inherited:", d.inherited.map(x=>x.fingerprint).join(","));
-process.exit(ok ? 0 : 1);
-' "$ENVT" > "$TMP/attr-out.txt" 2>&1
-check "端到端归因：引入=B、继承=A（参数随机化下身份稳定）" "0" "$?"
-grep -q "introduced: 引入红 B | inherited: 存量红 A" "$TMP/attr-out.txt"; check "归因结论可读输出" "0" "$?"
-cd "$HERE"
-
-echo "== 7. T4b 三分流决策与豁免三道闸 =="
-node --input-type=module -e '
-import { decide, flippyFailures } from "'"$HERE"'/scripts/lib/attribution.mjs";
-// 分流1：有引入 → REWORK
-const r1 = decide({ introduced: [{ id: "s::B", fingerprint: "B" }], inherited: [] });
-// 分流2：继承未登记 → EXEMPT_REQUIRED
-const r2 = decide({ introduced: [], inherited: [{ id: "s::A", fingerprint: "A" }] });
-// 分流3：继承已豁免（指纹同+owner+未过期）→ PASS_TO_REVIEW
-const ok = decide({ introduced: [], inherited: [{ id: "s::A", fingerprint: "A" }] },
-  { exemptions: [{ fingerprintId: "s::A", owner: "lead", expiresAt: new Date(Date.now() + 86400e3).toISOString() }] });
-// 闸1：过期豁免失效
-const expired = decide({ introduced: [], inherited: [{ id: "s::A", fingerprint: "A" }] },
-  { exemptions: [{ fingerprintId: "s::A", owner: "lead", expiresAt: new Date(Date.now() - 1000).toISOString() }] });
-// 闸1：指纹不同不可豁免
-const diffFp = decide({ introduced: [], inherited: [{ id: "s::A2", fingerprint: "A2" }] },
-  { exemptions: [{ fingerprintId: "s::A", owner: "lead", expiresAt: new Date(Date.now() + 86400e3).toISOString() }] });
-// 闸3：豁免率超阈值（分母由调用方给：3 条豁免 / 2 条全绿 = 60%）
-const budget = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"},{id:"s::B",fingerprint:"B"},{id:"s::C",fingerprint:"C"}], greenCount: 2 },
-  { exemptions: [
-    { fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
-    { fingerprintId: "s::B", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
-    { fingerprintId: "s::C", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
-// 闸2：翻转检测
-const flip = flippyFailures([{id:"s::A"}], [{id:"s::B"}]);
-// 闸3 的反面：40 条全绿 + 3 条豁免 = 7%，不该被判成门禁退化
-const mixed = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"},{id:"s::B",fingerprint:"B"},{id:"s::C",fingerprint:"C"}], greenCount: 40 },
-  { exemptions: [
-    { fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
-    { fingerprintId: "s::B", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() },
-    { fingerprintId: "s::C", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
-// 分母缺失：不可判定就明说，不塞默认值（旧写法 total/(total+0) 恒等于 1，1 条豁免就报 100%）
-const unknown = decide({ introduced: [], inherited: [{id:"s::A",fingerprint:"A"}] },
-  { exemptions: [{ fingerprintId: "s::A", owner: "l", expiresAt: new Date(Date.now()+86400e3).toISOString() }] });
-const pass = r1.action==="REWORK" && r2.action==="EXEMPT_REQUIRED" && ok.action==="PASS_TO_REVIEW"
-  && expired.action==="EXEMPT_REQUIRED" && diffFp.action==="EXEMPT_REQUIRED"
-  && budget.action==="EXEMPTION_BUDGET_EXCEEDED" && flip.length===2
-  && mixed.action==="PASS_TO_REVIEW" && Math.abs(mixed.exemptionRate - 3/43) < 1e-9
-  && unknown.rateKnown === false && unknown.exemptionRate === null && unknown.action==="PASS_TO_REVIEW";
-console.log(pass ? "ALL-OK" : JSON.stringify({r1:r1.action,r2:r2.action,ok:ok.action,expired:expired.action,diffFp:diffFp.action,budget:budget.action,mixed:mixed.action,rate:mixed.exemptionRate,unknown:unknown.action,known:unknown.rateKnown}));
-process.exit(pass ? 0 : 1);'
-check "三分流 + 三道闸全形态（含 7% 不误报 / 分母缺失不猜）" "0" "$?"
 
 echo "== 8. T5 会话打包器与产物验收（fail-closed） =="
 SESS="$TMP/sess"; mkdir -p "$SESS"
@@ -1970,17 +1896,6 @@ const good = readSessionArtifacts(process.argv[1] + "/ok", { expected: ["todo.js
 const badJson = readSessionArtifacts(process.argv[1], { expected: [] });
 process.exit(okPack && okB && okN && !bad.ok && good.ok ? 0 : 1);' "$SESS" 2>/dev/null
 check "A/B/续轮打包 + 产物缺失 fail-closed" "0" "$?"
-
-echo "== 9. T5 CI 盯梢（零 LLM 轮询） =="
-node --input-type=module -e '
-import { watchPipeline } from "'"$HERE"'/scripts/lib/ci-watch.mjs";
-let n = 0;
-const states = [["running"], ["running"], ["success"]];
-const r1 = await watchPipeline({ listPipelines: async () => states[Math.min(n++, 2)].map((s) => ({ status: s, sha: "abc" })),
-  intervalMs: 1, sleep: async () => {} });
-const r2 = await watchPipeline({ listPipelines: async () => [{ status: "running" }], timeoutMs: 10, intervalMs: 5, sleep: async () => {} });
-process.exit(r1.status === "success" && r2.status === "timeout" ? 0 : 1);'
-check "终态返回 / 超时返回 timeout（不判红，交上层升级）" "0" "$?"
 
 echo "== 10. T5 定时器安装器（--print 渲染与接线闸） =="
 bash "$HERE/scripts/install-task-loop.sh" "$ROOT" --print > "$TMP/plist.txt" 2>&1

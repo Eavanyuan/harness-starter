@@ -1,0 +1,7 @@
+# cmd: node --check scripts/task-loop.mjs
+# started: 2026-11-19T06:11:18Z
+# finished: 2026-11-19T06:11:18Z
+# exit_code: 0
+# commit: unknown
+# task: p2-cleanup
+# ---- output tail (last 200 lines) ----

@@ -524,6 +524,7 @@ if (!opt.dryRun) {
       }
       rmSync(join(ackDir, f));
       rmSync(join(ackDir, `pack-${id}.md`), { force: true });
+      rmSync(join(ackDir, 'traces', String(id)), { recursive: true, force: true });
       recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: true, why: 'draft' });
       stats.gone += 1;
       console.log(`[task-loop] ${key} 已转 Draft——关账（暂不列入修复执行腿，ready 后自动纳入）`);
@@ -561,6 +562,7 @@ if (!opt.dryRun) {
       }
       rmSync(join(ackDir, f));
       rmSync(join(ackDir, `pack-${id}.md`), { force: true });
+      rmSync(join(ackDir, 'traces', String(id)), { recursive: true, force: true }); // 日志尾巴同清（体检 C3：408KB 泄漏）
       recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: true });
       stats.gone += 1;
       // 真终态关账（合并/关闭）才清轮次历史——Draft 关账在上面单独分支，历史保留（关账清零 KI 的解）
