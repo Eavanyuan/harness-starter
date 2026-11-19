@@ -263,6 +263,20 @@ if (headless.hooks !== false) {
   if (!wired) die(1, '目标仓库无 hook 接线（.zcode/config.json 或 .claude/settings.json）——headless 会话会绕过全部写入门禁，拒绝启动。先 build:hooks');
 }
 
+// ---- 执行器分叉（T5 headless-executor，ADR-22）----
+// executor 回答"谁把工单变成修复动作"：autoclaw=宿主替身轮询工单（本机缺省，现状零改动）；
+// cli=runner 自己 spawn 无头会话（事件驱动零通知——impl 进行中，配了就 fail-closed 拒跑，
+// 不静默回退：静默回退=配置写了不生效，与 doctor §4 空转键同罪）。
+const executor = headless.executor || { kind: 'autoclaw' };
+if (!['autoclaw', 'cli'].includes(executor.kind)) {
+  die(1, `runtime.headless.executor.kind 只能是 autoclaw|cli，收到 ${JSON.stringify(executor.kind)}（ADR-22 D1）`);
+}
+if (executor.kind === 'cli') {
+  const cmd = executor.cli?.cmd;
+  if (!cmd || !String(cmd).startsWith('/')) die(1, 'executor.cli.cmd 必须是绝对路径（坑 #50：launchd/沙箱 PATH 不含 /opt/homebrew/bin，裸命令名必然找不到）');
+  die(1, 'cli 执行器未实现（T5 impl 进行中，ADR-22 D4 影子准入前置）——本机用 kind=autoclaw（工单照常落盘，宿主替身处理）');
+}
+
 // ---- 触发轮询（剖面 A v1）：我名下的 open MR + 有他人未解决讨论 + 未被有效批红 = 打回待修 ----
 // 判定逻辑在 scripts/lib/gitlab-triggers.mjs（纯函数、可被测试直接喂假数据）。
 // 留在本文件里的上一版带 process.exit，测试 import 即执行——于是整段零覆盖：

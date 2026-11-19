@@ -43,6 +43,29 @@ node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" --profile a > "$TMP/out
 check "缺 GITLAB 配置 → exit 1" "1" "$?"
 grep -q "GITLAB_TOKEN" "$TMP/out3.txt"; check "点名缺什么" "0" "$?"
 
+echo "== 2b. 执行器分叉闸（T5/ADR-22：kind 非法/未实现的 cli 都拒跑，缺省=autoclaw 现状） =="
+# 非法 kind：fail-closed，不静默回退
+EX="$TMP/ex-bad"; mkdir -p "$EX/.zcode"; cp "$HERE/harness.rules.json" "$EX/"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"zcode"};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX/harness.rules.json"
+printf '{"hooks":{"enabled":true}}' > "$EX/.zcode/config.json"
+node "$HERE/scripts/task-loop.mjs" --once --root "$EX" > "$TMP/ex1.txt" 2>&1
+check "非法 kind → exit 1" "1" "$?"
+grep -q "autoclaw|cli" "$TMP/ex1.txt"; check "点名可用值" "0" "$?"
+# cli（未实现）：拒跑且给出去处
+EX2="$TMP/ex-cli"; mkdir -p "$EX2/.zcode"; cp "$HERE/harness.rules.json" "$EX2/"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"cli",cli:{cmd:"claude"}};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX2/harness.rules.json"
+printf '{"hooks":{"enabled":true}}' > "$EX2/.zcode/config.json"
+node "$HERE/scripts/task-loop.mjs" --once --root "$EX2" > "$TMP/ex2.txt" 2>&1
+check "相对路径 cmd → exit 1（坑 #50）" "1" "$?"
+grep -q "绝对路径" "$TMP/ex2.txt"; check "点明绝对路径要求" "0" "$?"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"cli",cli:{cmd:"/opt/homebrew/bin/claude"}};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX2/harness.rules.json"
+node "$HERE/scripts/task-loop.mjs" --once --root "$EX2" > "$TMP/ex3.txt" 2>&1
+check "合法但未实现 → exit 1 且给出去处" "1" "$?"
+grep -q "autoclaw" "$TMP/ex3.txt"; check "去处=autoclaw" "0" "$?"
+# 缺省（主 fixture 不配 executor，rules 已带 kind=autoclaw）：照常跑（接线闸已在本节之前重建）
+node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/ex4.txt" 2>&1
+check "kind=autoclaw 不被拦（现状路径，exit 0 正常轮）" "0" "$?"
+
 echo "== 3b. 一个源都没接 → 退出 0（不接不算故障），并逐条说明缺什么 =="
 # 配置里显式留空 projectKey 与 gitlab.url，模拟"还没接任何系统"的仓库
 NR="$TMP/nosource"; mkdir -p "$NR/.zcode"

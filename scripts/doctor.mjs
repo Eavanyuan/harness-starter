@@ -525,6 +525,25 @@ for (const [t, why] of missingTools) {
 }
 if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length} 个）`);
 
+// 6b. 执行器分叉（T5/ADR-22）：executor 节合法性 + autoclaw 模式的替身依赖提示
+{
+  const rules = json('harness.rules.json');
+  const h = rules.exists && rules.value?.runtime?.headless;
+  if (h) {
+    const ex = h.executor || { kind: 'autoclaw' };
+    if (!['autoclaw', 'cli'].includes(ex.kind)) {
+      err(`runtime.headless.executor.kind 非法：${JSON.stringify(ex.kind)}（只能 autoclaw|cli，ADR-22 D1）`);
+    } else if (ex.kind === 'cli') {
+      const cmd = ex.cli?.cmd;
+      if (!cmd || !String(cmd).startsWith('/')) err('executor.cli.cmd 必须绝对路径（坑 #50）');
+      else if (!existsSync(cmd)) err(`executor.cli.cmd 不存在：${cmd}`);
+      else warn('executor=cli：T5 impl 进行中（影子准入前不推远端）');
+    } else {
+      ok.push('executor=autoclaw（替身模式）：工单落盘后由宿主定时器（AutoClaw 会话）处理——宿主停了工单会积压，doctor 不校验宿主');
+    }
+  }
+}
+
 // 7. 性能预算（P1 卡点4，2026-11-19）：performance.* 配置 + 最近验证耗时对照。
 // 超线是 ⚠️ 不是 ❌——性能预算与 fitness functions 同律：先可见，再行动，不挡开发。
 {
@@ -564,6 +583,42 @@ if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length}
     } else {
       ok.push('performance 已配置；.ai/verify/ 不存在，预算对照待积累');
     }
+  }
+}
+
+// 8. 变量名吞字自检（2026-11-19）：macOS 自带 bash 3.2 会把紧贴变量名的多字节字符并入
+//    变量名，`$keep。` 在 set -u 下直接 unbound variable。同一个坑踩过两次，且两次都是
+//    "看起来在跑、其实已中断"：一次让 test/gate-regressions 崩在第 28 段（后 6 套从此没人跑），
+//    一次让 install-task-loop 在"发现旧明文凭据"这条最不该失败的分支上中途退出——
+//    文件已改名封存、轮换提示没打出来，人只会看到"装完了"。
+//    判据：.sh / .mjs 里 `$VAR` 后紧跟非 ASCII（注释行不算）。改 ${VAR} 即可。
+{
+  const hits = [];
+  const walkSrc = (dir) => {
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (e.name === 'node_modules' || e.name === '.git' || e.name === '.zwork') continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { walkSrc(p); continue; }
+      if (!/\.(sh|mjs)$/.test(e.name)) continue;
+      let text = '';
+      try { text = readFileSync(p, 'utf8'); } catch { continue; }
+      text.split('\n').forEach((line, i) => {
+        const t = line.trim();
+        if (t.startsWith('#') || t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return;
+        const m = line.match(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7F]/);
+        if (m) hits.push(`${p.slice(ROOT.length + 1)}:${i + 1} ${m[0]}`);
+      });
+    }
+  };
+  walkSrc(ROOT);
+  if (hits.length) {
+    err(`变量名后紧跟非 ASCII（bash 3.2 会并进变量名，set -u 下 unbound variable）：`
+      + `${hits.slice(0, 5).join(' / ')}${hits.length > 5 ? ` 等 ${hits.length} 处` : ''}`
+      + ' —— 改成 ${VAR} 包一层');
+  } else {
+    ok.push('源文件无「$VAR 紧跟非 ASCII」写法（bash 3.2 吞变量名）');
   }
 }
 

@@ -162,7 +162,11 @@
         "指定测试类：/opt/homebrew/bin/mvn -pl tda-server -am test -DskipTests=false -Dskip.tests=false -Dtest='<类名>' -Dsurefire.failIfNoSpecifiedTests=false（-am 连依赖模块；无匹配测试的模块靠末参数不炸）",
         "前端：pnpm 在 PATH；e2e（zh=ci.zh.local / en=ci.local）需起环境，跑不了在 round 报告写明",
         "降级语义：本地跑不了（依赖/环境/测试类不存在）→ round 报告写明「本地无法复现+原因」后才许按 CI 日志盲修；能复现却不绿不推"
-      ]
+      ],
+      "executor": {
+        "$comment": "T5 执行器分叉（ADR-22）：autoclaw=宿主替身轮询工单（本机缺省，用户指令 2026-11-19）；cli=runner spawn 无头会话（事件驱动零通知，impl 进行中）。切换三条件：cli 实现+影子轮达标+用户点头。",
+        "kind": "autoclaw"
+      }
     },
     "budget": {
       "$comment": "task-loop 预算（ADR D7：活动墙钟 + 轮次为硬限，等 CI/人审不计墙钟）。maxRounds 是**单任务**的修复轮次上限，不是一次 --once 能处理几个任务；claimTtlMs 是认领存活期，过期按 blocked 升级而不是自动抢占（ADR D2）。这三个数以前散在代码默认值里，runner 直接 budget.start() 时还没定义过 budget——写进配置，缺了就用默认值，但配置里看得见。",

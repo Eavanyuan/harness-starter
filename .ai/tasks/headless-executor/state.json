@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "headless-executor",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-19T07:35:51Z",
+    "flow_tier": "M",
+    "init_flow_tier": "M",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "rs",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "pass",
+      "note": "RS 落 docs/01-requirements/22-t5-headless-executor.md（4 个 US：可插拔/cli 零通知/约束A×D6 调和/影子准入）"
+    },
+    {
+      "stage": "adr",
+      "gate": "pass",
+      "note": "ADR-22 落 docs/03-decisions/ADR-22-执行器可插拔.md（D1-D5，用户指令定 D5=本机 autoclaw）"
+    },
+    {
+      "stage": "impl",
+      "gate": "partial",
+      "note": "第一增量完成：executor 配置层（分叉闸+doctor+测试 6 例）；cli spawn 路径待做（TODO T5-2）"
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/22-t5-headless-executor.md",
+    "adr": "docs/03-decisions/ADR-22-执行器可插拔.md"
+  },
+  "todos": [
+    {
+      "id": "T5-1",
+      "title": "executor 配置层：分叉闸（非法 kind/未实现 cli 拒跑）+ doctor 校验 + rules 缺省 autoclaw",
+      "status": "completed",
+      "files": [
+        "scripts/task-loop.mjs",
+        "scripts/doctor.mjs",
+        "harness.rules.json",
+        "test/task-loop.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/HE5.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 全过",
+        "tests": "task-loop 134/134（新增 2b 节 6 例：非法 kind/相对路径/未实现/autoclaw 现状）",
+        "feature_complete": "fail-closed 三闸 + doctor §6b + 缺省=现状",
+        "quality_clean": "doctor 提示 autoclaw 替身依赖宿主定时器"
+      }
+    },
+    {
+      "id": "T5-2",
+      "title": "cli 执行器实现：worktree + spawn 绝对路径 CLI + readSessionArtifacts 验收 + 预算接线",
+      "status": "pending",
+      "files": [],
+      "ooda_stage": "orient"
+    },
+    {
+      "id": "T5-3",
+      "title": "约束A×D6 调和实现：worktree 注入未跟踪 hook 配置，会话结束零 git 残留",
+      "status": "pending",
+      "files": [],
+      "ooda_stage": "orient"
+    },
+    {
+      "id": "T5-4",
+      "title": "影子准入：executor.cli.shadow（不推远端）+ shadowRoundsMin + 人工批准切换",
+      "status": "pending",
+      "files": [],
+      "ooda_stage": "orient"
+    },
+    {
+      "id": "T5-5",
+      "title": "T5-2/3/4 完成后：本机切 cli 影子轮验证（ADR-22 D5 三条件）",
+      "status": "pending",
+      "files": [],
+      "ooda_stage": "orient"
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
