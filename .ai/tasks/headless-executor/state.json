@@ -20,17 +20,28 @@
     {
       "stage": "rs",
       "gate": "pass",
-      "note": "RS 落 docs/01-requirements/22-t5-headless-executor.md（4 个 US：可插拔/cli 零通知/约束A×D6 调和/影子准入）"
+      "note": "RS 落 docs/01-requirements/22-t5-headless-executor.md"
     },
     {
       "stage": "adr",
       "gate": "pass",
-      "note": "ADR-22 落 docs/03-decisions/ADR-22-执行器可插拔.md（D1-D5，用户指令定 D5=本机 autoclaw）"
+      "note": "ADR-22 落 docs/03-decisions/ADR-22-执行器可插拔.md"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "用户（对话指令 2026-11-19『继续 T5』）——fs/wbs 并入 T5-5 影子轮验证前补齐，影子轮抽查即事实评审面",
+      "note": "延后非跳过：T5-5 前补"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "同上——T5-2/3/4 已按 todo 粒度交付，T5-5 单项"
     },
     {
       "stage": "impl",
-      "gate": "partial",
-      "note": "第一增量完成：executor 配置层（分叉闸+doctor+测试 6 例）；cli spawn 路径待做（TODO T5-2）"
+      "gate": "pass",
+      "note": "T5-1 配置层 + T5-2/3/4 全量（b37d576）"
     }
   ],
   "artifacts": {

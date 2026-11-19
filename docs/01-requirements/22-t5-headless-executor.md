@@ -74,3 +74,29 @@ task-loop 的监控端（launchd runner）已完整：检测触发 → CAS 认�
 - 不动 AutoClaw 替身的既有编排（它继续按 30 分钟轮询工单，作为 autoclaw 执行器的宿主实现）。
 - 不实现 AutoClaw 之外的"通知型"执行器（im 推送等）——只做 cli/autoclaw 两种。
 - 不改监控端节拍/认领/CAS（本任务只动执行侧）。
+
+## 5 非功能约束
+
+- 会话超时缺省 45 分钟（executor.cli.timeoutMs 可配），超时杀进程记失败轮——不留僵尸会话。
+- worktree 在目标仓**外部**兄弟目录（.tl-worktrees/），目标仓 `git status` 零污染；用后清理，失败/影子轮保留现场。
+- runner 侧零新依赖（node 内置 + git CLI）；spawn 用绝对路径，不依赖 PATH（坑 #50）。
+- 事件账本全量记录（cli_shadow_round/cli_pushed/cli_noop_round/cli_session_failed/cli_env_failed），可审计。
+
+## 6 范围外
+
+- 会话后处理 API（resolve 讨论/回评）——后续任务：runner 消费 acks.json/resolves.json。
+- zcode/codex 等 CLI 的参数适配——契约已定义（RS §执行器契约），各 CLI 自行配置。
+- autoclaw 替身的编排改造（保持现状轮询）。
+
+## 7 术语表
+
+- **工单（pack）**：`.ai/task-loop/pack-<id>.md`，宿主无关的会话输入协议。
+- **影子轮（shadow round）**：cli 会话产出修复但不推送，worktree 保留供人工抽查（D4）。
+- **空转轮（noop round）**：产物齐但 worktree 零提交——会话"装作干了"。
+- **现场保留**：失败轮不清理 worktree，供人查（不自动重试，预算轮次约束）。
+
+## 8 开放问题
+
+1. cli 会话产出的 acks/resolves 的 API 侧消费（何时接、复用 autoclaw 替身的路径还是 runner 直连）——T5-5 后定。
+2. 影子轮人工批准的操作形态（改配置 vs 命令）——T5-5 时定，倾向 doctor 提示 + 配置单点。
+3. TDasset worktree 里 mvn 全量测试的耗时（首测 ~6 分钟）对 45 分钟超时的余量——影子轮实测后校准 timeoutMs。
