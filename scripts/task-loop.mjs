@@ -274,7 +274,11 @@ if (!['autoclaw', 'cli'].includes(executor.kind)) {
 if (executor.kind === 'cli') {
   const cmd = executor.cli?.cmd;
   if (!cmd || !String(cmd).startsWith('/')) die(1, 'executor.cli.cmd 必须是绝对路径（坑 #50：launchd/沙箱 PATH 不含 /opt/homebrew/bin，裸命令名必然找不到）');
-  die(1, 'cli 执行器未实现（T5 impl 进行中，ADR-22 D4 影子准入前置）——本机用 kind=autoclaw（工单照常落盘，宿主替身处理）');
+  if (!existsSync(cmd)) die(1, `executor.cli.cmd 不存在：${cmd}`);
+  const rd = executor.cli?.repoDir;
+  if (!rd || !String(rd).startsWith('/')) die(1, 'executor.cli.repoDir 必须是绝对路径（目标仓库本地克隆，worktree 从这里建）');
+  if (!existsSync(rd)) die(1, `executor.cli.repoDir 不存在：${rd}`);
+  if (spawnSync('git', ['-C', rd, 'rev-parse', '--git-dir'], { encoding: 'utf8' }).status !== 0) die(1, `executor.cli.repoDir 不是 git 仓库：${rd}`);
 }
 
 // ---- 触发轮询（剖面 A v1）：我名下的 open MR + 有他人未解决讨论 + 未被有效批红 = 打回待修 ----
@@ -862,6 +866,28 @@ for (const t of triggers) {
           + '\n' + pack.prompt + '\n\n## 预期产物\n' + pack.artifacts.map((x) => `- ${x}`).join('\n') + '\n');
         stats.pack += 1;
         console.log(`[task-loop] 会话包已落盘：.ai/task-loop/pack-${t.id}.md（交互接手即读它）`);
+        // T5-2：cli 执行器认领即修（autoclaw 模式到此为止——宿主替身稍后取件）
+        if (executor.kind === 'cli' && !DRY) {
+          const { runCliExecutor } = await import('./lib/headless-executor.mjs');
+          const startRef = t.kind === 'mr' ? (t.mr.source_branch || t.mr.sha) : (executor.cli?.baseRef || 'main');
+          const packText = readFileSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), 'utf8');
+          try {
+            const res = runCliExecutor({
+              harnessRoot: root, repoDir: executor.cli.repoDir, id: String(t.id), startRef, packText,
+              executor: { ...executor, pushBranch: t.kind === 'mr' ? (t.mr.source_branch || `tl-${t.id}`) : `tl-${t.id}` },
+              expectedArtifacts: pack.artifacts,
+            });
+            if (res.ok && res.shadow) { stats.cliShadow = (stats.cliShadow || 0) + 1; recordEvent('task-loop', 'cli_shadow_round', { id: t.id, commits: res.commits, branch: res.branch }); }
+            else if (res.ok && res.pushed) { stats.cliPushed = (stats.cliPushed || 0) + 1; recordEvent('task-loop', 'cli_pushed', { id: t.id, commits: res.commits, pushBranch: res.pushBranch }); }
+            else if (res.ok && res.noop) { recordEvent('task-loop', 'cli_noop_round', { id: t.id }); console.log(`[task-loop] ${t.id} 会话产物齐但零提交——空转轮（worktree 保留）`); }
+            else if (!res.ok) { stats.cliFailed = (stats.cliFailed || 0) + 1; recordEvent('task-loop', 'cli_session_failed', { id: t.id, reason: res.reason }); console.error(`[task-loop] ${t.id} cli 会话失败：${res.reason}`); }
+          } catch (e) {
+            // D6/环境失败（worktree 建不了、hook 注入失败）——认领保留（下轮重试），不算修复轮次
+            stats.cliFailed = (stats.cliFailed || 0) + 1;
+            recordEvent('task-loop', 'cli_env_failed', { id: t.id, error: String(e.message || e) });
+            console.error(`[task-loop] ${t.id} cli 执行器环境失败（认领保留，下轮重试）：${e.message}`);
+          }
+        }
       } catch (e) {
         console.error(`[task-loop] 会话包生成失败（不影响认领）：${e?.message || e}`);
       }

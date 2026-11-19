@@ -15,7 +15,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "rs",
+  "stage": "impl",
   "stage_history": [
     {
       "stage": "rs",
@@ -62,28 +62,66 @@
     },
     {
       "id": "T5-2",
-      "title": "cli 执行器实现：worktree + spawn 绝对路径 CLI + readSessionArtifacts 验收 + 预算接线",
-      "status": "pending",
-      "files": [],
-      "ooda_stage": "orient"
+      "title": "cli 执行器：worktree（目标仓外部兄弟目录）+ spawn 绝对路径 CLI + readSessionArtifacts 验收 + 推送/清理",
+      "status": "completed",
+      "files": [
+        "scripts/lib/headless-executor.mjs",
+        "scripts/task-loop.mjs"
+      ],
+      "ooda_stage": "audit",
+      "verify": {
+        "log_path": ".ai/verify/T52.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "audit": {
+        "compile": "node --check 全过",
+        "tests": "task-loop 2c 节 9 例（影子不推/远端零分支/hook在场/绝对化/零git残留/零污染/产物缺失/非零退出/推送+清理）",
+        "feature_complete": "认领即修事件驱动",
+        "quality_clean": "失败保留现场不重试；空转轮可检测"
+      }
     },
     {
       "id": "T5-3",
-      "title": "约束A×D6 调和实现：worktree 注入未跟踪 hook 配置，会话结束零 git 残留",
-      "status": "pending",
-      "files": [],
-      "ooda_stage": "orient"
+      "title": "hook 注入：harness 根 settings.json 复制进 worktree，相对命令绝对化，未跟踪零 git 残留",
+      "status": "completed",
+      "files": [
+        "scripts/lib/headless-executor.mjs"
+      ],
+      "ooda_stage": "audit",
+      "verify": {
+        "log_path": ".ai/verify/T52.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "audit": {
+        "compile": "PASS",
+        "tests": "hook在场/命令绝对化/origin全历史零settings.json记录 三断言",
+        "feature_complete": "D6×约束A 调和落地",
+        "quality_clean": "注入失败抛错拒起"
+      }
     },
     {
       "id": "T5-4",
-      "title": "影子准入：executor.cli.shadow（不推远端）+ shadowRoundsMin + 人工批准切换",
-      "status": "pending",
-      "files": [],
-      "ooda_stage": "orient"
+      "title": "影子准入：shadow 缺省 true（只产不推），cli_shadow_round 事件，人工批准后 shadow=false 推送",
+      "status": "completed",
+      "files": [
+        "scripts/lib/headless-executor.mjs",
+        "scripts/doctor.mjs"
+      ],
+      "ooda_stage": "audit",
+      "verify": {
+        "log_path": ".ai/verify/T52.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "audit": {
+        "compile": "PASS",
+        "tests": "影子不推+远端无分支断言；doctor shadow=false 黄牌提醒",
+        "feature_complete": "D4 落地",
+        "quality_clean": "缺省安全（不配=影子）"
+      }
     },
     {
       "id": "T5-5",
-      "title": "T5-2/3/4 完成后：本机切 cli 影子轮验证（ADR-22 D5 三条件）",
+      "title": "T5-5 本机切 cli 影子轮验证：配置 kind=cli + claude 绝对路径 + TDasset repoDir，攒 ≥5 影子轮人工抽查后申请放开推送",
       "status": "pending",
       "files": [],
       "ooda_stage": "orient"

@@ -537,7 +537,13 @@ if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length}
       const cmd = ex.cli?.cmd;
       if (!cmd || !String(cmd).startsWith('/')) err('executor.cli.cmd 必须绝对路径（坑 #50）');
       else if (!existsSync(cmd)) err(`executor.cli.cmd 不存在：${cmd}`);
-      else warn('executor=cli：T5 impl 进行中（影子准入前不推远端）');
+      else {
+        const rd = ex.cli?.repoDir;
+        if (!rd || !String(rd).startsWith('/')) err('executor.cli.repoDir 必须绝对路径（目标仓本地克隆）');
+        else if (!existsSync(rd)) err(`executor.cli.repoDir 不存在：${rd}`);
+        else if (ex.cli.shadow !== false) ok.push('executor=cli（影子模式缺省开）：产出不推远端，影子轮达标+人工批准后才放开（ADR-22 D4）');
+        else warn('executor=cli 且 shadow=false：会话产物验收通过后直接推修复分支——确认影子轮已达标');
+      }
     } else {
       ok.push('executor=autoclaw（替身模式）：工单落盘后由宿主定时器（AutoClaw 会话）处理——宿主停了工单会积压，doctor 不校验宿主');
     }

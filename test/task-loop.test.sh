@@ -11,13 +11,43 @@ export HARNESS_LEDGER_DIR="$TMP/ledger"
 export HARNESS_ENV_FILE="$TMP/no-such-task-loop.env"
 
 pass=0; fail=0; skip=0
-check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$3" "$2"; fail=$((fail+1)); fi; }
+# 参数序是 (描述, 期望, 实际)。printf 必须印 期望=$2 / 实际=$3——
+# 上一版印反了（$3 印在"期望"位），于是所有红都读成反的：真值 exit=0、期望 1 的那条
+# 显示成"期望 0，实际 1"，排查时会往完全相反的方向找。
+check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$2" "$3"; fail=$((fail+1)); fi; }
+
+# 把 runtime.taskLoop.activeHours 钉成"相对现在"的一个窗口。
+# 为什么必须钉：runner 在窗外的行为是 exit 0 + 一行跳过提示——那是**正确**行为，
+# 但它让后面每一条判据都退化。容器/CI 的 TZ 是 UTC，本机是 +08：
+# 同一份代码在 UTC 上午跑必红、在 UTC 下午跑可能绿（实测 Linux 容器里 56 条红，
+# 全部由这一条引起）。判据依赖墙上时钟 = 按小时给两个答案。
+# 用法：pin_window <rules 路径> <起始相对分钟> <结束相对分钟>（相对"现在"，支持负数与跨午夜）
+pin_window() {
+  node -e '
+    const fs = require("fs");
+    const [p, ds, de] = process.argv.slice(1);
+    const r = JSON.parse(fs.readFileSync(p, "utf8"));
+    const d = new Date();
+    const now = d.getHours() * 60 + d.getMinutes();
+    const fmt = (x) => {
+      const w = ((x % 1440) + 1440) % 1440;
+      return String(Math.floor(w / 60)).padStart(2, "0") + ":" + String(w % 60).padStart(2, "0");
+    };
+    r.runtime.taskLoop.activeHours = { start: fmt(now + Number(ds)), end: fmt(now + Number(de)) };
+    fs.writeFileSync(p, JSON.stringify(r, null, 2));
+  ' "$1" "$2" "$3"
+}
 
 # fixture：裸仓库作 remote + 工作克隆（认领的目标仓库），rules 带 runtime.headless
 git init -q --bare "$TMP/remote.git"
 git clone -q "$TMP/remote.git" "$TMP/repo" 2>/dev/null
 cd "$TMP/repo" && git config user.email t@t && git config user.name t
 cp "$HERE/harness.rules.json" .
+# 时间窗钉成"现在前 1 小时 ~ 后 3 小时"：窗内含当前时刻，且留够整份套件跑完的余量
+# （±1 分钟的窗口实测在第 10 段左右就过期——那一段之后 runner 又开始"窗外退出 0"）。
+# 必须在 git add 之前改，让钉过的版本进 base 提交（否则工作区脏了，后面 CAS 用例会因为
+# "有未提交改动"给出与本地不同的结论）。
+pin_window "$TMP/repo/harness.rules.json" -60 180
 mkdir -p .zcode && printf '{"hooks":{"enabled":true,"PreToolUse":[]}}' > .zcode/config.json
 git add -A && git commit -qm base && git branch -q -M main && git push -q origin main
 ROOT="$TMP/repo"
@@ -35,6 +65,59 @@ node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/out2.txt" 2>&1
 check "无接线 → 拒启" "1" "$?"
 grep -q "绕过全部写入门禁" "$TMP/out2.txt"; check "拒绝理由点明风险" "0" "$?"
 printf '{"hooks":{"enabled":true}}' > "$ROOT/.zcode/config.json"
+
+echo "== 2c. cli 执行器（T5-2/3/4：worktree+hook 注入+产物验收+影子/推送） =="
+CLIFIX="$TMP/clifix"; mkdir -p "$CLIFIX"
+git init -q --bare "$CLIFIX/origin.git"
+git clone -q "$CLIFIX/origin.git" "$CLIFIX/repo"
+git -C "$CLIFIX/repo" config user.email t@t; git -C "$CLIFIX/repo" config user.name t
+printf 'base\n' > "$CLIFIX/repo/f.txt"; git -C "$CLIFIX/repo" add f.txt; git -C "$CLIFIX/repo" commit -qm base
+git -C "$CLIFIX/repo" push -q origin master 2>/dev/null || git -C "$CLIFIX/repo" push -q origin main
+BRANCH=$(git -C "$CLIFIX/repo" branch --show-current)
+cp /tmp/fake-cli.sh "$CLIFIX/fake-cli.sh"
+cat > "$CLIFIX/run-t5.mjs" <<'MJS'
+const here = process.argv[2], repoDir = process.argv[3], mode = process.argv[4], startRef = process.argv[5];
+const { runCliExecutor } = await import(here + "/scripts/lib/headless-executor.mjs");
+const shadow = process.argv[6] === "1";
+const r = runCliExecutor({
+  harnessRoot: here, repoDir, id: "t5test", startRef,
+  packText: "# pack test\nfix f.txt\n", expectedArtifacts: ["todo.json", "round-1.md"],
+  executor: { kind: "cli", cli: { cmd: "/bin/bash", args: [repoDir + "/../fake-cli.sh"], shadow, pushBranch: "tl-t5test" } },
+});
+console.log(JSON.stringify({ ok: r.ok, reason: r.reason || null, shadow: !!r.shadow, pushed: !!r.pushed, noop: !!r.noop }));
+MJS
+CLI() {
+  WTDIR="$CLIFIX/.tl-worktrees/repo-t5test"
+  T5_SESS_DIR="$HERE/.ai/task-loop/sess/t5test" T5_WT="$WTDIR" \
+  node "$CLIFIX/run-t5.mjs" "$HERE" "$CLIFIX/repo" "$1" "origin/$BRANCH" "$2" 2>/dev/null
+}
+
+# a) 影子轮（缺省）：产物齐+有提交，但不推
+OUT=$(FAKE_MODE=ok CLI ok 1); echo "$OUT" | grep -q '"ok":true,"reason":null,"shadow":true'; check "影子轮 ok 且不推" "0" "$?"
+git -C "$CLIFIX/origin.git" branch --list | grep -q tl-t5test && R=1 || R=0; check "远端无 tl 分支（影子未推）" "0" "$R"
+WTDIR="$CLIFIX/.tl-worktrees/repo-t5test"
+[ -f "$WTDIR/.claude/settings.json" ]; check "worktree 内 hook 配置在场（D6）" "0" "$?"
+grep -q "$(printf 'node ')$(cd "$HERE" && pwd)/hooks/" "$WTDIR/.claude/settings.json"; check "hook 命令已绝对化" "0" "$?"
+git -C "$CLIFIX/origin.git" log --all --oneline -- .claude/settings.json | grep -q . && R=1 || R=0; check "hook 配置零 git 残留（约束A）" "0" "$R"
+git -C "$CLIFIX/repo" status --porcelain | grep -q tl-worktrees && R=1 || R=0; check "目标仓 status 零污染（worktree 在外部）" "0" "$R"
+
+rm -rf "$HERE/.ai/task-loop/sess/t5test"
+
+# b) 产物缺失 → fail-closed 无效轮
+git -C "$CLIFIX/repo" worktree remove --force "$WTDIR" 2>/dev/null; git -C "$CLIFIX/repo" worktree prune
+OUT=$(FAKE_MODE=noart CLI noart 1); echo "$OUT" | grep -q '"ok":false'; check "产物缺失 → 无效轮" "0" "$?"
+
+# c) 会话非零退出 → 失败保现场
+git -C "$CLIFIX/repo" worktree remove --force "$WTDIR" 2>/dev/null; git -C "$CLIFIX/repo" worktree prune
+OUT=$(FAKE_MODE=boom CLI boom 1); echo "$OUT" | grep -q '"ok":false.*exit 3'; check "非零退出 → 失败（worktree 保留）" "0" "$?"
+
+rm -rf "$HERE/.ai/task-loop/sess/t5test"
+
+# d) 非影子：验收通过后推送修复分支，worktree 清理
+git -C "$CLIFIX/repo" worktree remove --force "$WTDIR" 2>/dev/null; git -C "$CLIFIX/repo" worktree prune
+OUT=$(FAKE_MODE=ok CLI ok 0); echo "$OUT" | grep -q '"pushed":true'; check "非影子 → 推送" "0" "$?"
+git -C "$CLIFIX/origin.git" rev-parse --verify refs/heads/tl-t5test >/dev/null 2>&1; check "远端有 tl-t5test" "0" "$?"
+[ ! -d "$WTDIR" ]; check "推送后 worktree 已清理" "0" "$?"
 
 echo "== 3. 剖面 A 显式指定但无凭据 → fail 显式 =="
 # 注意这里是**显式** --profile a：接入是扩展条件，不给 profile 且没接入时应退出 0（见 3b）。
@@ -60,8 +143,8 @@ check "相对路径 cmd → exit 1（坑 #50）" "1" "$?"
 grep -q "绝对路径" "$TMP/ex2.txt"; check "点明绝对路径要求" "0" "$?"
 node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"cli",cli:{cmd:"/opt/homebrew/bin/claude"}};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX2/harness.rules.json"
 node "$HERE/scripts/task-loop.mjs" --once --root "$EX2" > "$TMP/ex3.txt" 2>&1
-check "合法但未实现 → exit 1 且给出去处" "1" "$?"
-grep -q "autoclaw" "$TMP/ex3.txt"; check "去处=autoclaw" "0" "$?"
+check "cmd 合法但缺 repoDir → exit 1" "1" "$?"
+grep -q "repoDir" "$TMP/ex3.txt"; check "点名缺 repoDir" "0" "$?"
 # 缺省（主 fixture 不配 executor，rules 已带 kind=autoclaw）：照常跑（接线闸已在本节之前重建）
 node "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" > "$TMP/ex4.txt" 2>&1
 check "kind=autoclaw 不被拦（现状路径，exit 0 正常轮）" "0" "$?"
@@ -2275,3 +2358,15 @@ process.exit(0);
 ' "$HERE" "$TLZ/w" "$TMP/ledger5z" "$TLZ/r.git" > "$TMP/e2e5z.txt" 2>&1
 grep -q "^ok 0 1 1 [0-9]$" "$TMP/e2e5z.txt" && r=0 || { cat "$TMP/e2e5z.txt"; r=1; }
 check "claims 断网：exit 1 且 streak 递增不清零（修复前 stamp=true 清零致告警失明）" "0" "$r"
+
+echo "== 13. 工作时间窗外（runtime.taskLoop.activeHours）→ 毫秒级退出 =="
+# 放最后：这一步会把 rules 改脏，前面的 CAS / 凭据用例不该看到未提交改动。
+# 窗口取"现在 +2h ~ +3h"——无论当前几点都不含现在（跨午夜由 runner 的跨零点分支处理）。
+# 这条判据同时守住本套件的可移植性：它证明"窗外 exit 0"是**有意的**早退，
+# 而不是像之前那样，整份套件在 UTC 上午被这一条悄悄短路掉。
+pin_window "$TMP/repo/harness.rules.json" 120 180
+git -C "$TMP/repo" commit -qam "window-exclude" 2>/dev/null || true
+node "$HERE/scripts/task-loop.mjs" --once --root "$TMP/repo" > "$TMP/out13.txt" 2>&1
+check "窗外 → exit 0（跳过不是故障）" "0" "$?"
+grep -q "工作时间窗外" "$TMP/out13.txt" && r=0 || r=1
+check "说清是窗外的原因（不是静默跳过）" "0" "$r"
