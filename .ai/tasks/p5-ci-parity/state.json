@@ -1,0 +1,210 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p5-ci-parity",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "8540f14",
+    "affected_ids": [
+      ".github/workflows/quality-gate.yml（20 手写步骤 → 单步 npm run gate）",
+      "scripts/verify-run.sh（秒级相减 → 毫秒差，保留秒级兜底）",
+      "scripts/install-task-loop.sh（$keep。→ ${keep}，生产 bug）",
+      "test/gate-regressions.test.sh（单一清单判据 + 修复中段判定吞失败）",
+      "test/perf-checks.test.sh（四档毫秒判据，sleep 4→1）",
+      "test/feishu-sync.test.sh（硬编码绝对路径 → $HERE）",
+      "test/feishu-ws.test.sh / test/notify-broker.test.sh（$VAR 后跟全角标点）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T08:56:00Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "体检『CI 与本地两份清单』的自洽性缺陷修复：以删除为主（137→单步），不新增功能面；风险点在于 CI 是唯一执行面，改错等于没有门禁",
+    "no_doc_reason": "S 档缺陷修复：文档职责由 CR（.ai/review/CR-2026-11-19-p5-ci-parity.md，含 H1-H9 逐条与变异证据）与 retro 承担。无新需求故无 RS，无新设计故无 FS/WBS，无多方案决策点故无 ADR"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-p5-ci-parity.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/p5-ci-parity-收尾.md"
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-2026-11-19-p5-ci-parity.md",
+    "retro": "retro/p5-ci-parity-收尾.md"
+  },
+  "todos": [
+    {
+      "id": "P5C1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "CI 与本地合并为同一条命令（workflow 单步 npm run gate，保留需 event 上下文的高危扫描；补 fetch-depth:0 与 timeout-minutes:15）+ 回归钉：workflow 必须存在该单步、不得出现 run: npm run test/verify 分步调用（含变异自检）",
+      "files": [
+        ".github/workflows/quality-gate.yml",
+        "test/gate-regressions.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "YAML 由 GitHub Actions 侧解析（本地无 actionlint）；本批全量 gate 通过",
+        "tests": "gate-regressions 41 通过 0 失败（新增 3 条：单步存在 / 无分步套件 / 变异注入变红）",
+        "feature_complete": "CI 跑什么 = gate 的推论；加套件只改 package.json 一处，不存在第二份清单",
+        "quality_clean": "保留唯一例外（高危扫描需 event 上下文）并写明理由；同时修掉本文件的元 bug——中段 [ $fail -eq 0 ] 让前五节失败被后续覆盖"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P5C1.log",
+        "command": "bash test/gate-regressions.test.sh"
+      }
+    },
+    {
+      "id": "P5C2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "verify-run 计时精度：BENCH/BENCH_END 毫秒差（原两个 ISO 秒级时间戳相减 ±1000ms 抖动，足以跨过 1000/600/450 三档阈值）；perf-checks 四档判据 + sleep 4→1",
+      "files": [
+        "scripts/verify-run.sh",
+        "test/perf-checks.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 过；node --check 不适用（纯 shell）",
+        "tests": "perf-checks 7 项全过（四档：1000→无 / 4000→✅ / 600→🟡 / 450→🔴）",
+        "feature_complete": "同一段代码的读数不再跨档漂移；老日志无 BENCH 行时走秒级兜底，不误判",
+        "quality_clean": "只改耗时计算，失败判定仍只看 exit_code——精度问题不得影响通过/失败的判定"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P5C2.log",
+        "command": "bash test/perf-checks.test.sh"
+      }
+    },
+    {
+      "id": "P5C3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "测试脆弱点：install-task-loop 全角句号吞变量名（轮换提示静默丢失的生产 bug）+ 4 处 $VAR→${VAR} + feishu-sync 三处硬编码绝对路径",
+      "files": [
+        "scripts/install-task-loop.sh",
+        "test/feishu-sync.test.sh",
+        "test/feishu-ws.test.sh",
+        "test/notify-broker.test.sh",
+        "test/gate-regressions.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "bash -n 全过",
+        "tests": "task-loop 135 通过 0 失败（TZ 钉后，TZ=UTC 环境同样 135/0）；feishu-sync / feishu-ws / notify-broker 在 gate 内全绿",
+        "feature_complete": "生产 bug 已复现并修复：EXIT=1 + keep。: unbound variable，封存成功但提示丢失",
+        "quality_clean": "doctor 第 8 项判据（扫 $VAR 紧跟非 ASCII）已随 b37d576 进库，形态不再复发；硬编码路径在 CI 上只会 skip 不会红，改 $HERE 后真跑"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P5C3.log",
+        "command": "npm run -s test:task-loop"
+      }
+    },
+    {
+      "id": "P5C4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "doctor 性能预算分支崩溃（warn 是函数却写成 warn.push）——收尾时被自己刚写下的 371s 日志踩响：该分支从入库起从未执行过，因为最近 5 次验证都没超 300s 预算",
+      "files": [
+        "scripts/doctor.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "doctor 实跑 exit 0；变异验证：造一份 420s 日志后输出 `! 性能预算：…超预算 300s` 而非 TypeError（临时文件已清理，0 残留）",
+        "feature_complete": "超预算的提醒现在真能提醒——判据自己崩掉时人看到的是『doctor 挂了』而不是『超预算了』，两种红混成一种最费时间",
+        "quality_clean": "只改调用形态（warn.push→warn），不动阈值与语义；300s 预算本身是否该调属另一件事，记在 retro"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P5C4.log",
+        "command": "node scripts/doctor.mjs"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-p5-ci-parity",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-p5-ci-parity.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "scripts/doctor.mjs 的新判据与 test/task-loop.test.sh 的 TZ 钉不在本批 diff 中",
+      "why": "并发会话 b37d576 用 git add -A 把两处改动夹带进库",
+      "disposition": "内容已核实完整（doctor :596-627；task-loop TZ 钉在 :14-15 与 pin_window 显式传参），追溯以本 CR 为准——按 commit message 找不到"
+    }
+  ],
+  "known_issues": [],
+  "gate_result": {
+    "stage": "done",
+    "last_check": "2026-11-19T09:10:15Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
+  }
+}
