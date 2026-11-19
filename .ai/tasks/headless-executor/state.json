@@ -15,7 +15,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "review",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -42,11 +42,27 @@
       "stage": "impl",
       "gate": "pass",
       "note": "T5-1 配置层 + T5-2/3/4 全量（b37d576）"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-headless-executor.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/headless-executor-收尾.md"
     }
   ],
   "artifacts": {
     "rs": "docs/01-requirements/22-t5-headless-executor.md",
-    "adr": "docs/03-decisions/ADR-22-执行器可插拔.md"
+    "adr": "docs/03-decisions/ADR-22-执行器可插拔.md",
+    "retro": "retro/headless-executor-收尾.md"
   },
   "todos": [
     {
@@ -146,14 +162,36 @@
         "feature_complete": "模拟验收即达（用户定案）",
         "quality_clean": "T54 150/150"
       }
+    },
+    {
+      "id": "CLOSE-GATE-headless-executor",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-headless-executor.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-19T08:38:42Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }
