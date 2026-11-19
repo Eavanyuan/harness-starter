@@ -15,7 +15,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "impl",
+  "stage": "review",
   "stage_history": [
     {
       "stage": "rs",
@@ -132,10 +132,20 @@
     },
     {
       "id": "T5-5",
-      "title": "T5-5 本机切 cli 影子轮验证：配置 kind=cli + claude 绝对路径 + TDasset repoDir，攒 ≥5 影子轮人工抽查后申请放开推送",
-      "status": "pending",
+      "title": "本机切换验证——用户定案（2026-11-19）：不切本机配置，端到端模拟通过即验收（T54 §2d 全链路绿）；将来切换按 ADR-22 D5 三条件",
+      "status": "completed",
       "files": [],
-      "ooda_stage": "orient"
+      "ooda_stage": "audit",
+      "verify": {
+        "log_path": ".ai/verify/T54.log",
+        "command": "npm run -s test:task-loop（§2d 端到端模拟）"
+      },
+      "audit": {
+        "compile": "PASS（端到端含真 runner 进程）",
+        "tests": "§2d 4 例：全链路/影子分支1提交/未推送/hook在场",
+        "feature_complete": "模拟验收即达（用户定案）",
+        "quality_clean": "T54 150/150"
+      }
     }
   ],
   "blockers": [],

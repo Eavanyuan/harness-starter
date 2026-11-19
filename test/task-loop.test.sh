@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # task-loop T3 核心自测：kill switch / headless 接线闸 / CAS 认领（双竞争+僵尸）/ 预算 / 审批三条件。
 set -uo pipefail
+# 时区必须钉住，否则这份套件按钟点给两个答案。
+#
+# runner 的 runtime.taskLoop.activeHours 是"本地钟点"的窗（默认 09:30-21:00），它读的是
+# new Date()。CI（GitHub Actions / 容器）的 TZ 是 UTC：UTC 上午跑 → 在窗外 → runner 在
+# 窗口检查处 exit 0，后面**每一条**判据都退化成"exit 0 且没消息"；UTC 下午跑 → 全绿。
+# 实测同一份代码 TZ=UTC 下 50 条红、+08 下 0 条红。红不红取决于几点跑，比没有判据更坏。
+#
+# 钉法：把子进程的时钟挪到"本地 12:00"的固定偏移（POSIX TZ 串，macOS / Linux 都认），
+# 与真实时区、与规则文件里配的窗口都无关——12:00 恒在 09:30-21:00 内。
+# 凡是 env -i 起子进程的地方要显式带上 TZ，否则那道隔离会把时区一起抹掉。
+UHT=$(date -u +%H); TZN=$(( 12 - 10#$UHT ))
+if [ "$TZN" -ge 0 ]; then export TZ="XXX-$TZN"; else export TZ="XXX$(( -TZN ))"; fi
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -16,12 +28,11 @@ pass=0; fail=0; skip=0
 # 显示成"期望 0，实际 1"，排查时会往完全相反的方向找。
 check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=$((pass+1)); else printf "  \033[31m✗\033[0m %s (期望 %s，实际 %s)\n" "$1" "$2" "$3"; fail=$((fail+1)); fi; }
 
-# 把 runtime.taskLoop.activeHours 钉成"相对现在"的一个窗口。
-# 为什么必须钉：runner 在窗外的行为是 exit 0 + 一行跳过提示——那是**正确**行为，
-# 但它让后面每一条判据都退化。容器/CI 的 TZ 是 UTC，本机是 +08：
-# 同一份代码在 UTC 上午跑必红、在 UTC 下午跑可能绿（实测 Linux 容器里 56 条红，
-# 全部由这一条引起）。判据依赖墙上时钟 = 按小时给两个答案。
-# 用法：pin_window <rules 路径> <起始相对分钟> <结束相对分钟>（相对"现在"，支持负数与跨午夜）
+# 把 runtime.taskLoop.activeHours 改到"相对现在"的一个窗口（主 fixture 用，见下方调用）。
+# 为什么值得单独处理：runner 在窗外的行为是 exit 0 + 一行跳过提示——那是**正确**行为，
+# 但它让后面每一条判据都退化。真正把这件事钉死的是文件头的时区钉（本地恒为 12:00）；
+# 这里的窗口相对"现在"算，是为了不依赖规则文件里配的具体值。
+# 用法：pin_window <rules 路径> <起始相对分钟> <结束相对分钟>（支持负数与跨午夜）
 pin_window() {
   node -e '
     const fs = require("fs");
@@ -43,10 +54,8 @@ git init -q --bare "$TMP/remote.git"
 git clone -q "$TMP/remote.git" "$TMP/repo" 2>/dev/null
 cd "$TMP/repo" && git config user.email t@t && git config user.name t
 cp "$HERE/harness.rules.json" .
-# 时间窗钉成"现在前 1 小时 ~ 后 3 小时"：窗内含当前时刻，且留够整份套件跑完的余量
-# （±1 分钟的窗口实测在第 10 段左右就过期——那一段之后 runner 又开始"窗外退出 0"）。
-# 必须在 git add 之前改，让钉过的版本进 base 提交（否则工作区脏了，后面 CAS 用例会因为
-# "有未提交改动"给出与本地不同的结论）。
+# 次级保险：把主 fixture 的 activeHours 也挪到"12:00 前后"，这样即使将来有人把时区钉去掉、
+# 或运行时真在深夜跑，这套件的判据仍然会执行。窗口 = 本地 11:00-15:00，恒含 12:00。
 pin_window "$TMP/repo/harness.rules.json" -60 180
 mkdir -p .zcode && printf '{"hooks":{"enabled":true,"PreToolUse":[]}}' > .zcode/config.json
 git add -A && git commit -qm base && git branch -q -M main && git push -q origin main
@@ -118,6 +127,54 @@ git -C "$CLIFIX/repo" worktree remove --force "$WTDIR" 2>/dev/null; git -C "$CLI
 OUT=$(FAKE_MODE=ok CLI ok 0); echo "$OUT" | grep -q '"pushed":true'; check "非影子 → 推送" "0" "$?"
 git -C "$CLIFIX/origin.git" rev-parse --verify refs/heads/tl-t5test >/dev/null 2>&1; check "远端有 tl-t5test" "0" "$?"
 [ ! -d "$WTDIR" ]; check "推送后 worktree 已清理" "0" "$?"
+
+echo "== 2d. cli 执行器端到端（真 runner：触发→认领→工单→cli 会话→影子轮） =="
+TL5C="$TMP/e2e5c"; git init -q --bare "$TL5C/r.git"
+git clone -q "$TL5C/r.git" "$TL5C/w" 2>/dev/null
+( cd "$TL5C/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && mkdir -p .claude && cp "$HERE/.claude/settings.json" .claude/ \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+cp /tmp/fake-cli.sh "$TL5C/fake-cli.sh"
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const { writeFileSync, existsSync } = await import("node:fs");
+const { dirname: pdirname, basename: pbasename } = await import("node:path");
+const j = JSON.parse(readFileSync(repo + "/harness.rules.json", "utf8"));
+j.runtime.headless.executor = { kind: "cli", cli: { cmd: "/bin/bash", args: [repo + "/../fake-cli.sh"], shadow: true, repoDir: repo } };
+writeFileSync(repo + "/harness.rules.json", JSON.stringify(j, null, 2));
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0];
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 97, project_id: 1, source_branch: "main", target_branch: "main", title: "cli e2e", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(u)) return s.end(JSON.stringify([{ id: "d1", notes: [
+    { id: 21, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "阻断：🔴 越权未修", created_at: "2026-11-19T05:00:00Z" },
+    { id: 22, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-19T05:02:00Z" },
+  ] }]));
+  if (/repository\/commits/.test(u)) return s.end(JSON.stringify({ committed_date: "2026-11-19T01:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger,
+         T5_SESS_DIR: repo + "/.ai/task-loop/sess/97", T5_WT: pdirname(repo) + "/.tl-worktrees/" + pbasename(repo) + "-97" },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const sessOk = existsSync(repo + "/.ai/task-loop/sess/97/todo.json") && existsSync(repo + "/.ai/task-loop/sess/97/round-1.md");
+const packOk = existsSync(repo + "/.ai/task-loop/pack-97.md");
+console.log(JSON.stringify({ code, sessOk, packOk, shadow: /影子轮/.test(out) }));
+' "$HERE" "$TL5C/w" "$TMP/ledger5c" > "$TMP/e2e5c.txt" 2>&1
+E=$(tail -1 "$TMP/e2e5c.txt")
+echo "$E" | grep -q '"code":0,"sessOk":true,"packOk":true,"shadow":true'; check "端到端：runner 触发→认领→工单→cli 会话跑通→影子轮" "0" "$?"
+CNT=$(git -C "$TL5C/w" rev-list --count main..tl-97 2>/dev/null || echo 0); check "影子分支 tl-97 有会话提交（1）" "1" "$CNT"
+git -C "$TL5C/r.git" branch --list | grep -q tl-97 && R=1 || R=0; check "影子轮未推送（origin 无 tl-97）" "0" "$R"
+[ -f "$TL5C/.tl-worktrees/w-97/.claude/settings.json" ]; check "端到端 worktree 内 hook 在场" "0" "$?"
 
 echo "== 3. 剖面 A 显式指定但无凭据 → fail 显式 =="
 # 注意这里是**显式** --profile a：接入是扩展条件，不给 profile 且没接入时应退出 0（见 3b）。
@@ -2076,7 +2133,7 @@ check "wrapper 不 source 凭据文件（行中一行式也算）" "1" "$?"
 grep -q 'HARNESS_ENV_FILE=' "$D/run-round.sh"; check "wrapper 只交出凭据文件路径（由 runner 解析）" "0" "$?"
 # HOME 必须显式给假目录：node 的 os.homedir() 在 HOME 缺失时回落 passwd 里的真实家目录，
 # 于是会读到本机真实的 feishu-oauth.json 并对生产飞书发请求——测试不该有外部副作用。
-OUT="$(env -i HOME="$TMP/h2" PATH=/usr/bin:/bin /bin/bash "$D/run-round.sh" 2>&1 | head -3)"
+OUT="$(env -i HOME="$TMP/h2" PATH=/usr/bin:/bin TZ="$TZ" /bin/bash "$D/run-round.sh" 2>&1 | head -3)"
 # 地址指向不可达端口：连不上（临时故障）不再 die，但"剖面 A 临时不可达"同样证明
 # GITLAB_URL/TOKEN 被读进来了（没读到会走"未接入"分支退出 0，不提剖面 A）。
 case "$OUT" in *"剖面 A"*) check "wrapper 注入凭据并进入 runner" "0" "0" ;; *) check "wrapper 注入凭据并进入 runner" "0" "1: $OUT" ;; esac
@@ -2195,7 +2252,7 @@ echo "== 10j. runner 自己读 HARNESS_ENV_FILE：不靠 shell 注入也能拿�
 NODE_BIN="$(command -v node)"
 GOODC="$TMP/good.env"
 printf 'GITLAB_URL=http://127.0.0.1:1\nGITLAB_TOKEN=glpat-from-file\n' > "$GOODC"; chmod 600 "$GOODC"
-run_clean_env() { env -i HOME="$TMP/h6" PATH=/usr/bin:/bin HARNESS_ENV_FILE="$GOODC" \
+run_clean_env() { env -i HOME="$TMP/h6" PATH=/usr/bin:/bin TZ="$TZ" HARNESS_ENV_FILE="$GOODC" \
   HARNESS_LEDGER_DIR="$TMP/l6" "$NODE_BIN" "$HERE/scripts/task-loop.mjs" --once --root "$ROOT" 2>&1 | head -6; }
 OUT="$(run_clean_env)"
 # 地址指向不可达端口：连不上（临时故障）不再 die，但只要提到"剖面 A"就证明 url/token 被读进来了
