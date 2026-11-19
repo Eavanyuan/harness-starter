@@ -19,9 +19,10 @@
  */
 import { existsSync, mkdirSync, writeFileSync, readFileSync, statSync, rmSync, readdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { hostname } from 'node:os';
 import { loadRules } from './lib/review-rules.mjs';
-import { claim, release } from './lib/claim.mjs';
+import { claim, release, releaseEx } from './lib/claim.mjs';
 import { createBudget } from './lib/task-loop-core.mjs';
 import { fetchTriggers, fetchCurrentUser, triggerFingerprint } from './lib/gitlab-triggers.mjs';
 import { recordEvent } from '../hooks/lib/ledger.mjs';
@@ -46,7 +47,16 @@ const root = resolve(opt.root || process.cwd());
 // die 双通道（2026-11-16）：plist 把 stderr 分流到 task-loop.err，只写 stderr 时 .out 里只剩
 // "凭据已载入"然后无声退出（实测：剖面 A 超时连转 9 小时，.out 一片安静）。stdout 同步一行，
 // 让 .out 永远能回答"这轮死在哪"。终端里会看到同文两行，代价可接受。
-function die(code, msg) { const line = `[task-loop] ${msg}`; console.error(line); console.log(line); process.exit(code); }
+function die(code, msg) {
+  const line = `[task-loop] ${msg}`;
+  console.error(line); console.log(line);
+  // 🔴 CR#4：除用法错（64）外的死亡都计入健康（token 过期/剖面 B 硬死每拍 die——不记分则
+  // loop_degraded 永不触发，D2 换个死法复活）
+  // 🔴 CR 二审：早期 die（坏凭据文件 :68 / loadRules :109）先于 taskLoopCfg 初始化——
+  // markHealth 读它会 TDZ 把干净 die 变崩溃。try 包裹 + markHealth 内部 ticks 兜底 10。
+  if (code !== 64) { try { markHealth(false, `die ${code}: ${String(msg).slice(0, 80)}`); } catch { /* 启动极早期无配置可依——跳过记分，不改变退出语义 */ } }
+  process.exit(code);
+}
 if (!opt.once && !opt.report) die(64, 'v1 只支持 --once / --report（常驻轮询经 deploy/task-loop 定时器触发）');
 const PROFILES = ['auto', 'a', 'b', 'both'];
 if (!PROFILES.includes(opt.profile)) die(64, `--profile 只认 ${PROFILES.join(' / ')}（当前 "${opt.profile}"）`);
@@ -159,7 +169,45 @@ function stampLastRun() {
 // 围栏行永远走 stdout，无论本轮成败都能对账（触发/认领/关账计数 + 耗时 + exit 码）。
 const ROUND_START = Date.now();
 const stats = { claimed: 0, noop: 0, skip: 0, gone: 0, stale: 0, pack: 0, escalated: 0 };
+let blocked = 0; // 🔴 CR：sweep 的释放失败分支早于原声明使用——TDZ 被嵌套 bug 掩护（上移消除）
 const softFail = []; // {source}：临时不可达（超时/断网/5xx）——跳过该源、不落戳、exit 1 下 tick 重试
+// ---- 循环健康自查（2026-11-19 p0-stability，架构体检 D2：334 次软失败只落本机日志，循环瞎了没人知道）----
+// 连续无成功轮 ≥ healthAlertTicks（默认 10 拍 ≈ 30 分钟心跳）→ 本地通知 + loop_degraded 落账（60 分钟冷却）。
+// 成功轮（落戳）重置。健康文件与 ack 同目录（.ai/task-loop/health.json）。
+function markHealth(ok, why) {
+  const dir = join(root, '.ai', 'task-loop');
+  const hp = join(dir, 'health.json');
+  let h = {};
+  try { h = JSON.parse(readFileSync(hp, 'utf8')); } catch { /* 首轮或损坏：从零开始 */ }
+  const now = Date.now();
+  if (ok) { h = { lastSuccessAt: now, noSuccessStreak: 0 }; }
+  else {
+    h.noSuccessStreak = (h.noSuccessStreak || 0) + 1;
+    let ticks = 10;
+  try { const v = Number(taskLoopCfg?.healthAlertTicks); ticks = v > 0 ? v : 10; } catch { /* 配置未初始化——默认 10 */ }
+    if (h.noSuccessStreak >= ticks && (!h.alertedAt || now - h.alertedAt > 60 * 60_000)) {
+      h.alertedAt = now;
+      recordEvent('task-loop', 'loop_degraded', { streak: h.noSuccessStreak, ticks, why: String(why || '').slice(0, 120) });
+      console.log(`[task-loop] ⚠ 循环退化：连续 ${h.noSuccessStreak} 轮无成功（${why || '多源失败'}）——查看 ~/.harness/task-loop/task-loop.out`);
+      try {
+        spawnSync('osascript', ['-e', `display notification "task-loop 连续 ${h.noSuccessStreak} 轮无成功轮——循环可能已瞎，查看 task-loop.out" with title "task-loop 退化"`], { stdio: 'ignore', timeout: 5000 });
+      } catch { /* 通知是尽力而为 */ }
+    }
+  }
+  try { mkdirSync(dir, { recursive: true }); writeFileSync(hp, JSON.stringify(h, null, 2)); } catch { /* 健康文件写不进不阻断轮次 */ }
+}
+
+// ---- 跨账目轮次历史（2026-11-19 p0-stability，架构体检 D10/B Y4：关账清零轮次让 maxRounds 失效——1847 实跑 7 轮>3）----
+// rounds 独立于 ack 生命周期：每次 CI 归因递增；只有真终态关账（合并/关闭，非 Draft）才清——
+// Draft 往返/误关账重开都不断档，越修越坏的截停不再被绕过。
+function readRoundsHistory() {
+  try { return JSON.parse(readFileSync(join(root, '.ai', 'task-loop', 'rounds-history.json'), 'utf8')) || {}; } catch { return {}; }
+}
+function writeRoundsHistory(h) {
+  try { mkdirSync(join(root, '.ai', 'task-loop'), { recursive: true }); writeFileSync(join(root, '.ai', 'task-loop', 'rounds-history.json'), JSON.stringify(h, null, 2)); } catch { /* 历史写不进只影响上限判定 */ }
+}
+const roundsHistory = readRoundsHistory();
+
 function finish({ code, stamp }) {
   const parts = [`触发 ${triggers.length}`, `认领 ${stats.claimed}`, `待复核 ${stats.noop}`, `跳过 ${stats.skip}`, `关账 ${stats.gone}`, `内容更新 ${stats.stale}`];
   if (stats.pack) parts.push(`会话包 ${stats.pack}`);
@@ -167,6 +215,7 @@ function finish({ code, stamp }) {
   if (stats.escalated) parts.push(`升级 ${stats.escalated}`);
   if (stats.hold) parts.push(`等评审 ${stats.hold}`);
   console.log(`[task-loop] 轮次结束：${parts.join(' / ')}｜耗时 ${((Date.now() - ROUND_START) / 1000).toFixed(1)}s｜exit ${code}${stamp ? '' : '（不落节流戳，下一 tick 立即重试）'}`);
+  markHealth(!!stamp, stamp ? '' : '软失败轮（源故障不落戳）');
   if (stamp) stampLastRun();
   process.exit(code);
 }
@@ -227,9 +276,21 @@ function releaseAll(why) {
   }
   held.clear();
 }
+// SIGTERM/SIGINT（2026-11-19 p0-stability，架构体检 D：实测 Node 的 exit 钩子在信号下不执行——
+// 锁清理与认领释放不能押在 process.on('exit') 上）。定时器超时/会话被杀都走这里：
+// 释放本轮持有的认领（中断=未完成，不留 24h 悬挂）+ 清轮次锁，然后 exit(1)。
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    if (typeof markHealth === 'function') { try { markHealth(false, sig); } catch { /* 记分不阻断清理 */ } }
+    try { releaseAll(sig); } catch { /* 清理路径不抛 */ }
+    if (roundLockOwned) { try { rmSync(roundLockPath, { force: true }); } catch { /* 只有持有者删锁 */ } }
+    process.exit(1);
+  });
+}
 for (const sig of ['uncaughtException', 'unhandledRejection']) {
   process.on(sig, (e) => {
     releaseAll(sig);
+    if (typeof markHealth === 'function') markHealth(false, `${sig}: ${e?.message || e}`);
     console.error(`[task-loop] ${sig}：${e?.message || e}——已释放持有的认领（不留孤儿引用）`);
     process.exit(1);
   });
@@ -323,7 +384,7 @@ if (wantGitlab) {
     // 凭据/配置类硬故障（401/403/404…）才整轮 die（接入坏了必须有人看见）。
     const txt = `${e?.message || e} ${e?.cause?.code || ''} ${e?.cause?.message || ''}`;
     const temporary = /timeout|aborted|fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNABORTED|HTTP 429|HTTP 5\d\d/i.test(txt);
-    if (!temporary) die(1, `剖面 A 触发轮询失败：${e?.message || e}`);
+    if (!temporary) die(1, `剖面 A 触发轮询失败：${e?.message || e}`); // 记分由 die 统一承担（CR 二审 🟡#3′：双记致阈值减半）
     recordEvent('task-loop', 'source_soft_fail', { source: 'gitlab', error: String(e?.message || e).slice(0, 160) });
     console.log(`[task-loop] 剖面 A 临时不可达（${e?.message || e}）——本轮跳过该源，其余源继续`);
     softFail.push({ source: 'gitlab' });
@@ -453,10 +514,17 @@ if (!opt.dryRun) {
     const cur = active.get(key);
     if (!cur && gitlabDrafts.has(key)) {
       // Draft MR：用户指令暂不列入修复执行腿——关账（与合并/批红同等待遇），ready 后自动重新纳入
-      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      const rel = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      if (rel.status === 'failed') {
+        recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'draft_close', error: rel.error });
+        stats.skip += 1;
+        blocked += 1;
+        console.log(`[task-loop] ${key} Draft 关账释放失败（远端不可达？）——本地账保留，下一轮重试`);
+        continue;
+      }
       rmSync(join(ackDir, f));
       rmSync(join(ackDir, `pack-${id}.md`), { force: true });
-      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: okRel, why: 'draft' });
+      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: true, why: 'draft' });
       stats.gone += 1;
       console.log(`[task-loop] ${key} 已转 Draft——关账（暂不列入修复执行腿，ready 后自动纳入）`);
       continue;
@@ -481,12 +549,23 @@ if (!opt.dryRun) {
       continue;
     }
     if (!cur) {
-      // 触发消失：merged / approved / closed → 释放认领 + 删 ack（含工单）(关账)
-      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      // 触发消失：merged / approved / closed → 释放认领 + 删 ack（含工单）(关账)。
+      // 释放失败 → 本地账不动（D11：删本地不删远端=主动制造不一致），下一轮重试。
+      const rel = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      if (rel.status === 'failed') {
+        recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'close', error: rel.error });
+        stats.skip += 1;
+        blocked += 1;
+        console.log(`[task-loop] ${key} 关账释放失败（远端不可达？）——本地账保留，下一轮重试`);
+        continue;
+      }
       rmSync(join(ackDir, f));
       rmSync(join(ackDir, `pack-${id}.md`), { force: true });
-      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: okRel });
+      recordEvent('task-loop', 'trigger_gone', { kind: 'mr', id, released: true });
       stats.gone += 1;
+      // 真终态关账（合并/关闭）才清轮次历史——Draft 关账在上面单独分支，历史保留（关账清零 KI 的解）
+      delete roundsHistory[String(id)];
+      writeRoundsHistory(roundsHistory);
       console.log(`[task-loop] ${key} 不再触发（已合并/已批红/已关闭）——释放认领并清理 ack 与工单（关账）`);
     } else if (!a.fingerprint || a.fingerprint !== triggerFingerprint(cur)) {
       // 内容有更新（或旧格式 ack 无指纹、无法比对）：重置 ack，本轮 claim 循环会重新认领重写。
@@ -494,9 +573,15 @@ if (!opt.dryRun) {
       // 轮次携带：连续第 N 轮修复（跨流水累计），新 ack 会用它判预算外升级。
       if (a.fingerprint?.startsWith('ci:')) carryRounds.set(String(id), (a.ci?.rounds ?? 1) + 1);
       const why = a.fingerprint ? 'ack_stale' : 'ack_migrated';
-      const okRel = release({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      const relStale = releaseEx({ cwd: root, remote: REMOTE, kind: 'mr', id });
+      if (relStale.status === 'failed') {
+        recordEvent('task-loop', 'release_failed', { kind: 'mr', id, where: 'stale', error: relStale.error });
+        stats.skip += 1; blocked += 1;
+        console.log(`[task-loop] ${key} 重认领释放失败（远端不可达？）——本地账保留，下一轮重试`);
+        continue;
+      }
       rmSync(join(ackDir, f));
-      recordEvent('task-loop', why, { kind: 'mr', id, released: okRel });
+      recordEvent('task-loop', why, { kind: 'mr', id, released: relStale.status !== 'failed' });
       stats.stale += 1;
       console.log(`[task-loop] ${key} ${a.fingerprint ? '待修内容有更新' : '旧格式 ack 迁移（一次性重认领）'}——重置 ack，本轮重新认领`);
     }
@@ -505,10 +590,9 @@ if (!opt.dryRun) {
 
 if (triggers.length === 0) {
   console.log(`[task-loop] ${ranSources} 无待办触发，本轮结束`);
-  finish({ code: softFail.length ? 1 : 0, stamp: !softFail.length });
+  finish({ code: blocked > 0 || softFail.length ? 1 : 0, stamp: !softFail.length }); // blocked 计入（sweep 释放失败等）
 }
 
-let blocked = 0;
 for (const t of triggers) {
   recordEvent('task-loop', 'trigger_found', {
     kind: t.kind, id: t.id, unresolved: t.unresolved.length,
@@ -550,7 +634,24 @@ for (const t of triggers) {
     }
   }
 
-  const c = claim({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id, ttlMs: rules.runtime?.budget?.claimTtlMs });
+  // 认领的网络异常按"远端不可达"分类（架构体检 D1：claims 走 GitHub 单点，裸异常会掀翻整轮
+  // 且进不了软失败分类）。本轮跳过该触发；释放路径由 releaseEx 三态保护本地账目。
+  let c;
+  try {
+    c = claim({ cwd: root, remote: REMOTE, kind: t.kind, id: t.id, ttlMs: rules.runtime?.budget?.claimTtlMs });
+  } catch (e) {
+    recordEvent('task-loop', 'claim_error', { kind: t.kind, id: t.id, error: String(e?.message || e).slice(0, 160) });
+    console.log(`[task-loop] ${t.kind}-${t.id} 认领失败（claims 远端不可达？）：${e?.message || e}——本轮跳过`);
+    stats.skip += 1;
+    blocked += 1;
+    continue;
+  }
+  // 孤儿认领观测（D10）：远端有认领但本地无账——本机账目丢失或他机持有；只观测不抢占（多机正确性），
+  // 防止"幽灵认领静默 24h"完全不可见。
+  if (!c.claimed && c.reason === 'taken' && !existsSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`))) {
+    recordEvent('task-loop', 'orphan_claim', { kind: t.kind, id: t.id, ageMs: c.ageMs ?? null });
+    console.log(`[task-loop] ${t.kind}-${t.id} 远端已被认领但本地无账（他机持有或本地账丢失）——观测不抢占，TTL 兜底`);
+  }
   if (!c.claimed) {
     stats.skip += 1;
     if (c.reason === 'zombie') {
@@ -639,7 +740,12 @@ for (const t of triggers) {
       } catch (e) {
         console.error(`[task-loop] ${t.id} 基线流水拉取失败（按无法取基线处理）：${e?.message || e}`);
       }
-      const rounds = carryRounds.get(String(t.id)) ?? 1; // 跨流水累计轮次（sweep 携带）；首轮=1
+      // 轮次 = max(ack 携带, 历史累计+1)：历史独立于 ack 生命周期，Draft 往返/误关账重开不断档
+      const histKey = String(t.id);
+      const carried = carryRounds.get(histKey) ?? 1;
+      const rounds = Math.max(carried, ((roundsHistory[histKey]?.rounds) ?? 0) + 1);
+      roundsHistory[histKey] = { rounds, updatedAt: new Date().toISOString() };
+      // 落盘延后到归因完成（ack 写盘后统一写）——中断轮不虚增历史（CR 🟡#4）
       ciAttr = attributeCi({ mine: ciFetch.failures, baseline });
       // CR 🔴#1：提取为空有两种成因（trace 拉不到 / 日志形态不被识别——Gradle 实测零识别），
       // 都不是"全部继承"。failedJobs>0 而 failures 空 = **无法归因**：job 本身就是活，落
@@ -672,6 +778,7 @@ for (const t of triggers) {
         writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: pendingForHuman, state: 'needs_human', ...(fingerprint ? { fingerprint } : {}), ci: ciInfo, budget: budget.snapshot() }, null, 2));
         budget.spendRound(); budget.pause();
         held.delete(`${t.kind}-${t.id}`); // 有意持有（等人工），不计入异常释放清单
+        if (t.signal === 'ci_pipeline') writeRoundsHistory(roundsHistory);
         console.log(`[task-loop] ${t.kind}-${t.id} 已修 ${rounds - 1} 轮仍红（第 ${rounds} 次归因）——停止自动修复升级给人：ack state=needs_human，无新工单；人工处置后推新流水或关 MR 即自动关账`);
         continue;
       }
@@ -698,6 +805,7 @@ for (const t of triggers) {
     writeFileSync(join(root, '.ai', 'task-loop', `ack-${t.id}.json`), JSON.stringify({ trigger: `${t.kind}-${t.id}`, pending: ack, state: noop ? (ciInfo ? 'inherited_only' : 'awaiting_rereview') : 'working', ...(fingerprint ? { fingerprint } : {}), ...(ciInfo ? { ci: ciInfo } : {}), budget: budget.snapshot() }, null, 2));
     budget.spendRound();
     budget.pause();
+    if (t.signal === 'ci_pipeline') writeRoundsHistory(roundsHistory); // 归因完成才记历史（中断轮不虚高）
     // 会话包落盘（2026-11-16）：认领即出工单——交互会话接手 = 读 pack-<id>.md 开工，不必翻 ack JSON。
     // headless 自动执行仍留 T5（影子周准入）；这里先把"等人来发现"变成"等读一份现成工单"。
     if (!noop) {

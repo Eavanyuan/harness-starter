@@ -1,0 +1,215 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p0-stability",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "a471a41",
+    "affected_ids": [
+      "RS-task-loop US-1（P0 四条验收行）",
+      "FS-任务循环执行器 §4.4/§8/§9",
+      "scripts/lib/claim.mjs（releaseEx 三态）",
+      "scripts/task-loop.mjs（claim 异常分类/孤儿观测/SIGTERM/健康告警/轮次历史）",
+      "harness.rules.json（healthAlertTicks）",
+      "test/task-loop.test.sh（5u/5v/5w/5x）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T02:36:27Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "架构体检 P0 稳定性止血四件（D1/D2/D10/D11）：不改信号形状，全部是故障路径的兜底与可观测性"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-19T02:30:00Z",
+      "exited_at": "2026-11-19T02:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-19T02:40:00Z",
+      "exited_at": "2026-11-19T02:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：体检报告已裁决优先级，四件各有单一修法",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-19T02:40:00Z",
+      "exited_at": "2026-11-19T02:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：FS §4.4/§8/§9 同批",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-19T02:40:00Z",
+      "exited_at": "2026-11-19T02:40:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：四 todo 一批",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-19T02:40:00Z",
+      "exited_at": "2026-11-19T04:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-19T04:30:00Z",
+      "exited_at": "2026-11-19T05:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（三轮：一审 🔴4+🟡4；二审 🔴1′（早期 die TDZ）+🟡2′；三审 dispose 全过——见 CR 文件三审节）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-19T06:10:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-task-loop.md（US-1 P0 四行）",
+    "fs": "docs/02-features/task-loop/FS-任务循环执行器.md（§4.4/§8/§9）",
+    "review": ".ai/review/CR-2026-11-19-p0-stability.md"
+  },
+  "todos": [
+    {
+      "id": "PS1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "claim 网络异常按源分类（claim_error 不掀轮）+ releaseEx 三态（释放失败不动本地账，关账/重认领下一轮重试）+ 孤儿认领观测（orphan_claim 不抢占）",
+      "files": [
+        "scripts/lib/claim.mjs",
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 双件过",
+        "tests": "5u（孤儿+claim 异常）+ 5u-bis（释放失败七件断言：ack 保留+release_failed+blocked→exit1+无 TDZ；嵌套/TDZ 双变异各 1 红）+ 早期 die 实测（坏凭据文件→记分落账无崩溃）；132 全绿",
+        "feature_complete": "体检 D1（claims 走 GitHub 单点裸异常掀轮）与 D11（release 失败仍删本地 ack）闭合",
+        "quality_clean": "两轮 CR 八件全修：嵌套去包、blocked 上移、alreadyGone 收紧两态（文档同步）、die 统一记分（try 防早期 TDZ+ticks 兜底）、stale releaseEx 化、锁持有权、历史延后落盘、零触发早退计 blocked"
+      },
+      "verify": {
+        "log_path": ".ai/verify/PS1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "PS2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "SIGTERM/SIGINT 显式处理器：释放本轮认领 + 清轮次锁 + exit(1)——不押 Node exit 钩子（实测信号下不执行）",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5v（挂起 /user 1.5s 后 SIGTERM：快速退出≠timeout、exit≠0、锁已清）",
+        "feature_complete": "体检 D（定时器超时/会话被杀的清理路径）闭合",
+        "quality_clean": "清理路径不抛（try/catch 包裹）；与 exit 钩子双保险（幂等）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/PS2.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "PS3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "循环健康自查：health.json 连续无成功轮计数，≥healthAlertTicks（默认 10，可配）→ loop_degraded + macOS 本地通知（60 分钟冷却）；成功轮重置",
+      "files": [
+        "scripts/task-loop.mjs",
+        "harness.rules.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过；JSON 可解析",
+        "tests": "5w（阈值 2：两轮软失败→streak=2+alertedAt+loop_degraded 事件；恢复轮→streak=0）",
+        "feature_complete": "体检 D2（334 次软失败无告警）闭合——循环瞎了现在会喊",
+        "quality_clean": "通知尽力而为（osascript 超时 5s 不阻断）；健康文件写失败不阻断轮次；die(64) 用法错不计入"
+      },
+      "verify": {
+        "log_path": ".ai/verify/PS3.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    },
+    {
+      "id": "PS4",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "轮次历史独立化：rounds-history.json 每次 CI 归因取 max(ack 携带, 历史+1)；Draft 关账保留、真终态（合并/关闭）才清——maxRounds 不再被关账清零绕过",
+      "files": [
+        "scripts/task-loop.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "5x（fail rounds=1 → Draft 关账历史在 → ready+红 rounds=2 非 1 → 空列表真终态历史清）",
+        "feature_complete": "体检 D10/B Y4（1847 实跑 7 轮>3 的绕过路径）闭合",
+        "quality_complete": "历史写失败只影响上限判定不阻断轮次",
+        "quality_clean": "历史条目带 updatedAt 便于人工核查"
+      },
+      "verify": {
+        "log_path": ".ai/verify/PS4.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

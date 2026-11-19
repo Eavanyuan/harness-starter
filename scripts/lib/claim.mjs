@@ -75,12 +75,30 @@ export function claim({ cwd, remote, kind, id, ttlMs = 24 * 3600_000, now = Date
   }
 }
 
-/** 释放认领（任务终态后清理；失败不抛——残留由 TTL 兜底）。 */
-export function release({ cwd, remote, kind, id }) {
+/**
+ * 释放认领（任务终态后清理）。两态返回（2026-11-19 p0-stability，二审收紧）：
+ *   deleted —— 引用已删除（git 2.50 实测：删不存在的 ref 是 warning+exit 0，走此路径——TTL 清单场景自然关账）
+ *   failed  —— 失败（网络不可达或服务端拒绝；**本地账目不得清理**——删了就是本地/远端不一致，D11 的病灶）
+ * 失败不抛——残留由 TTL 兜底；调用方按状态决定是否重试下一轮。
+ */
+export function releaseEx({ cwd, remote, kind, id }) {
+  const ref = claimRef(kind, id);
   try {
-    git(cwd, ['push', remote, `:${claimRef(kind, id)}`]);
-    return true;
-  } catch {
-    return false;
+    git(cwd, ['push', remote, `:${ref}`]);
+    return { status: 'deleted' };
+  } catch (e) {
+    // alreadyGone 判据（CR 🔴#3）：git 客户端**本地判据**（warning 形态：删除不存在的 ref 不报错——
+    // 因此真正走不到这里的 alreadyGone 只有 git 帮我们识别的形态）。服务端透传文本（pre-receive
+    // 拒绝、receive.denyDeletes 等 remote: 行）一律按 failed 处理——实测 'may not be deleted' 这类
+    // 服务端文案里 ref 仍在远端，误判 alreadyGone 会删本地账制造 D11 同形态不一致。
+    const err = String(e.stderr || e.message || e);
+    return failed_safe(e, err);
   }
+}
+
+function failed_safe(e, err) { return { status: 'failed', error: String(e?.stderr || err).slice(0, 160) }; }
+
+/** 布尔兼容包装：deleted 算释放到位；failed 之外全真（不存在 ref 的删除走 warning+exit0→deleted）。 */
+export function release({ cwd, remote, kind, id }) {
+  return releaseEx({ cwd, remote, kind, id }).status !== 'failed';
 }

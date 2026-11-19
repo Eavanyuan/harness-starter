@@ -23,6 +23,10 @@
 - Given 达到停点 Then 判定条件为"本 MR 引入的失败 = 0 且 approved_by 非空且 approver ≠ author 且审批晚于最后一次 push"，缺一不算完成
 - Given 接入的某个源临时不可达（超时/断网/5xx/429，2026-11-16 变更 task-loop-close）When 轮询失败 Then 跳过该源继续跑其余源（不 die 不致盲），不落节流戳下一 tick 立即重试；硬故障（401/403）仍整轮 die 且报错同步 stdout；成轮必印一行围栏摘要（硬故障 die=未成轮不印，由 die 双通道保证不无声）
 - Given 已认领的 MR 被合并/批红/关闭 When 触发集里不再有它（且本轮 GitLab 轮询成功未收窄）Then 自动关账：释放认领 + 删 ack 与工单 + `trigger_gone` 落账；待修内容变化（fingerprint）→ 重置重认领（软失败/`--mr` 过滤轮不动账——本轮看不见 ≠ 消失）；纯动词零待修 → `awaiting_rereview`（claim_noop）且认领即落会话工单 `pack-<id>.md`
+- Given claims 远端不可达（2026-11-19 p0-stability）Then 认领失败按源分类落账（claim_error）、本轮跳过不掀整轮；关账/重认领的释放失败（release failed）→ 本地账保留下一轮重试（删本地不删远端=制造不一致）；远端有认领本地无账 → orphan_claim 观测不抢占
+- Given SIGTERM/SIGINT Then 显式释放本轮认领+清轮次锁后退出（不押 Node exit 钩子——实测信号下不执行）
+- Given 连续 `healthAlertTicks` 拍（默认 10）无成功轮 Then loop_degraded 落账 + 本地通知（60 分钟冷却）；成功轮重置
+- Given 轮次历史 Then 独立于 ack 生命周期：Draft 关账保留、只有合并/关闭才清——maxRounds 截停不再被关账清零绕过（1847 实跑 7 轮的教训）
 - Given 已认领账目（不限 CI 形态）其流水转 success 且 MR 仍 opened（2026-11-18 ci-green-hold）Then **不关账**（幂等，不重复落账）：转 `awaiting_review` 保持监视（工单撤销、轮次保留）；期间评审新意见 → 自动重认领转评审工单续修；只有合并/关闭（离开 opened 列表）才关账——CI 过关与评审待修是两条独立轨道
 - Given `runtime.taskLoop.fixSuggestions=false`（2026-11-18 fix-suggestions）When 触发判定与工单生成 Then 只含阻断项（🔴/阻断/必须修 标记的评论 + resolvable 打回线程），纯建议的结论评论不触发；默认 true 保持"建议性评论也修"（2026-11-16 行为）
 - Given 我的 MR 为 Draft（work_in_progress，2026-11-18 draft-skip）When 轮询 Then 不触发不认领（CI 红/评审意见为预期噪声）；已认领后转 Draft Then 自动关账（why=draft），ready 后自动纳入；`runtime.taskLoop.skipDrafts=false` 可整体恢复

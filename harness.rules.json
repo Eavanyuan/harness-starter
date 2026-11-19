@@ -196,6 +196,8 @@
       "skipDrafts": true,
       "$comment2": "fixSuggestions（2026-11-18）：true=建议性评审评论也进修复范围（2026-11-16 以来的默认行为）；false=只修阻断项（🔴/阻断/必须修 标记的评论 + resolvable 打回线程），纯建议的结论评论不再触发。改配置即生效。",
       "fixSuggestions": true,
+      "$comment3": "healthAlertTicks（2026-11-19 p0-stability）：连续无成功轮的告警阈值（心跳拍数，默认 10≈30 分钟）。触发=loop_degraded 落账 + macOS 本地通知（60 分钟冷却）。健康文件 .ai/task-loop/health.json。",
+      "healthAlertTicks": 10,
       "activeHours": {
         "start": "09:30",
         "end": "21:00"
