@@ -81,7 +81,13 @@
         "src/**"
       ],
       "checklist": "scripts/reviews/cr.md",
-      "machine_checks": [],
+      "machine_checks": [
+        {
+          "id": "perf_anti_patterns",
+          "severity": "yellow",
+          "$comment": "P0 卡点1：性能反模式静态扫描（N+1/循环内IO/嵌套循环/无界collect）——零模型调用，CR 时免费跑"
+        }
+      ],
       "model_tier": "deep",
       "max_findings": 10,
       "approval_role": "code_owner"

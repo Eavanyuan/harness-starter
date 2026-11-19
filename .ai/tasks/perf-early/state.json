@@ -1,0 +1,153 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "perf-early",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-19T01:39:47Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：retro 即文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：需求即用户指令（P0+P1 四卡点）"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：无多方案决策点（方案在上轮讨论定稿）"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/perf-early-性能卡点.md"
+  },
+  "todos": [
+    {
+      "id": "PE1",
+      "title": "P0-卡点1+2：perf_anti_patterns 机器判据 + verify-run 耗时基线四档比对",
+      "status": "completed",
+      "files": [
+        "scripts/lib/review-checks.mjs",
+        "scripts/verify-run.sh",
+        "harness.rules.json",
+        "test/perf-checks.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/PE1.log",
+        "command": "npm run -s test:perf-checks"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check / bash -n 全过",
+        "tests": "perf-checks 7/7",
+        "feature_complete": "四类反模式+四档基线档位",
+        "quality_clean": "测试文件豁免；负例零误报"
+      }
+    },
+    {
+      "id": "PE2",
+      "title": "P1-卡点3+4：architect-check F5 耗时趋势 + doctor 性能预算体检",
+      "status": "completed",
+      "files": [
+        "scripts/architect-check.mjs",
+        "scripts/doctor.mjs",
+        "harness.config.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/PE2.log",
+        "command": "test:verify-run && test:gate-regressions && test:doctor-gates"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 全过",
+        "tests": "F5 首跑即抓到真实信号（验证均值 41s→64s +54%）",
+        "feature_complete": "F5 趋势+doctor 预算对照",
+        "quality_clean": "样本<8 不说话；读失败不阻断"
+      }
+    },
+    {
+      "id": "PE3",
+      "title": "回归：hooks/ai-review/architect 全链 + 存量 bug 修复（--root 越界 off-by-one）",
+      "status": "completed",
+      "files": [
+        "scripts/architect-check.mjs",
+        "package.json"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/PE3.log",
+        "command": "test:hooks && test:ai-review && test:architect"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "36+36+28 全过",
+        "feature_complete": "off-by-one 修复 + test:architect 补进 gate",
+        "quality_clean": "根因：test 从未进 gate 聚合——已补"
+      }
+    },
+    {
+      "id": "PE4",
+      "title": "状态链校验",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/PE4.log",
+        "command": "npm run -s verify:state"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "verify:state PASS",
+        "feature_complete": "N/A",
+        "quality_clean": "N/A"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-perf-early",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "pending",
+      "files": [],
+      "verify": null,
+      "ooda_stage": "act",
+      "audit": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

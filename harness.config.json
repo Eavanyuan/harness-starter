@@ -311,5 +311,11 @@
     "testFileLineRed": 8000,
     "configKeyGrowthYellow": 15,
     "serviceToServiceMax": 5
+  },
+  "performance": {
+    "$comment": "性能预算（P1 卡点4）：超线是提醒不是阻断（与 fitness functions 同律——先可见再行动）。testSuiteMaxMs/gateMaxMs 由 doctor 与 architect-check F5 消费；buildMaxMs 留给 CI 侧。",
+    "testSuiteMaxMs": 300000,
+    "gateMaxMs": 600000,
+    "buildMaxMs": 180000
   }
 }

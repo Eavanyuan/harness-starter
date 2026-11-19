@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = process.argv.includes('--root')
-  ? resolve(process.argv[2 + process.argv.indexOf('--root')])
+  ? resolve(process.argv[process.argv.indexOf('--root') + 1])
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const JSON_MODE = process.argv.includes('--json');
 const STRICT = process.argv.includes('--strict');
@@ -132,6 +132,57 @@ for (const proj of projects) {
       } catch { /* 读不了的跳过 */ }
     }
   } catch { /* rg 无匹配退出码 1，正常 */ }
+}
+
+// ---- F5: verify-run 耗时趋势（P1 卡点 3，2026-11-19）----
+// 从 .ai/verify/*.log 的 started/finished 头提取每次验证耗时，
+// 最近 5 次均值 vs 更早 5 次均值：增长 > 30% → 🟡（性能/复杂度腐化信号）。
+out('== F5 验证耗时趋势 ==');
+try {
+  const verifyDir = join(ROOT, '.ai/verify');
+  if (existsSync(verifyDir)) {
+    const logs = readdirSync(verifyDir)
+      .filter(f => f.endsWith('.log'))
+      .map(f => {
+        const p = join(verifyDir, f);
+        try {
+          const text = readFileSync(p, 'utf8');
+          const s = text.match(/^# started: (.+)$/m);
+          const e = text.match(/^# finished: (.+)$/m);
+          if (!s || !e) return null;
+          const dur = new Date(e[1]) - new Date(s[1]);
+          const mtime = statSync(p).mtimeMs;
+          return Number.isFinite(dur) && dur >= 0 ? { file: f, dur, mtime } : null;
+        } catch { return null; }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.mtime - b.mtime);
+    // 排除基建类日志（close-gate 等固定开销），只看任务验证日志——不，全算：
+    // 趋势要的是整体信号。样本 ≥ 8（前后各 4）才说话。
+    if (logs.length >= 8) {
+      const recent = logs.slice(-5);
+      const earlier = logs.slice(-10, -5);
+      const avg = arr => arr.reduce((x, r) => x + r.dur, 0) / arr.length;
+      const recentAvg = Math.round(avg(recent));
+      const earlierAvg = Math.round(avg(earlier));
+      if (earlierAvg > 0) {
+        const growth = Math.round((recentAvg / earlierAvg - 1) * 100);
+        if (growth >= 30) {
+          flag('yellow', 'F5', '.ai/verify/', `最近 5 次验证均值 ${recentAvg}ms 较前 5 次均值 ${earlierAvg}ms 增长 ${growth}%（>30%——验证链变慢，性能/复杂度腐化信号）`);
+        } else if (growth <= -30) {
+          out(`  🟢 验证耗时改善 ${-growth}%（${earlierAvg}ms → ${recentAvg}ms）`);
+        } else {
+          out(`  验证耗时稳定（${earlierAvg}ms → ${recentAvg}ms，${growth >= 0 ? '+' : ''}${growth}%）`);
+        }
+      }
+    } else {
+      out(`  样本 ${logs.length} < 8，趋势待积累`);
+    }
+  } else {
+    out('  无 .ai/verify/ 目录，跳过');
+  }
+} catch (e) {
+  out(`  F5 读取失败：${e.message}（不阻断）`);
 }
 
 // ---- 汇总 ----

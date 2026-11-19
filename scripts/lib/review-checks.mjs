@@ -85,11 +85,42 @@ function adrRefsExist(check, root, files) {
   return out;
 }
 
+/**
+ * 性能反模式扫描（P0 卡点 1，2026-11-19）：对变更的源码文件 grep 常见性能陷阱。
+ *
+ * 为什么在机器层而不是 AI 层：N+1、循环内 IO、无界集合这些模式用正则就能抓——
+ * 零模型调用、确定性结论。AI 审查管语义/逻辑层；性能反模式是写法层，机器更便宜更可靠。
+ * severity 默认 yellow（候选非判决——命中可能是合理用法，由 CR/人审裁决）。
+ */
+function perfAntiPatterns(check, root, files) {
+  const out = [];
+  const patterns = check.patterns || [
+    { id: 'perf_n_plus_1',    re: /for\s*\(.*\)\s*\{[\s\S]{0,200}?(\.findById|\.selectById|\.getOne|\.query\w*\(|\.fetch\()/, desc: '循环内逐条查询（N+1）' },
+    { id: 'perf_sync_io',     re: /for\s*\(.*\)\s*\{[\s\S]{0,200}?(\.get\(|HttpClient|RestTemplate|WebClient|\.exchange\()/, desc: '循环内同步 HTTP 调用' },
+    { id: 'perf_nested_loop', re: /for\s*\(.*\)\s*\{\s*for\s*\(.*\)\s*\{/, desc: '嵌套循环（检查是否有 O(n²) 可优化）' },
+    { id: 'perf_unbounded',   re: /\.stream\(\)\.collect\(Collectors\.toList\(\)\)(?!\.subList|\.limit)/, desc: '无界 collect（大集合无 limit）' },
+  ];
+  const srcFiles = files.filter((f) => /\.(java|ts|js|vue|py|go)$/.test(f) && !f.includes('test/'));
+  for (const file of srcFiles) {
+    const text = readText(root, file);
+    if (text == null) continue;
+    for (const { id, re, desc } of patterns) {
+      const m = text.match(re);
+      if (m) {
+        const line = text.slice(0, m.index).split('\n').length;
+        out.push(finding(check.severity || 'yellow', `${check.id}:${id}`, file, `L${line} ${desc}`));
+      }
+    }
+  }
+  return out;
+}
+
 const REGISTRY = {
   rs_required_sections: requiredSections,
   fs_required_sections: requiredSections,
   rs_acceptance_testable: rsAcceptanceTestable,
   adr_refs_exist: adrRefsExist,
+  perf_anti_patterns: perfAntiPatterns,
 };
 
 /** 跑一组机器判据。check.severity 非法或 id 未注册 → 抛 CheckError（fail-closed）。 */

@@ -525,6 +525,48 @@ for (const [t, why] of missingTools) {
 }
 if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length} 个）`);
 
+// 7. 性能预算（P1 卡点4，2026-11-19）：performance.* 配置 + 最近验证耗时对照。
+// 超线是 ⚠️ 不是 ❌——性能预算与 fitness functions 同律：先可见，再行动，不挡开发。
+{
+  const perf = config.performance || null;
+  if (!perf) {
+    ok.push('performance 未配置（可选——配置后 doctor 会对照最近验证耗时）');
+  } else {
+    // 配置键必须有人消费（§4 同律）：三个键都在 architect-check F5 / verify-run 被读
+    const verifyDir = join(ROOT, '.ai/verify');
+    if (existsSync(verifyDir)) {
+      const durations = [];
+      for (const f of readdirSync(verifyDir)) {
+        if (!f.endsWith('.log')) continue;
+        try {
+          const t = readFileSync(join(verifyDir, f), 'utf8');
+          const s2 = t.match(/^# started: (.+)$/m);
+          const e2 = t.match(/^# finished: (.+)$/m);
+          if (s2 && e2) {
+            const d = new Date(e2[1]) - new Date(s2[1]);
+            if (Number.isFinite(d) && d >= 0) durations.push({ f, d, m: statSync(join(verifyDir, f)).mtimeMs });
+          }
+        } catch { /* 单文件坏不挡整体 */ }
+      }
+      durations.sort((a, b) => a.m - b.m);
+      const latest = durations.slice(-5);
+      if (latest.length === 0) {
+        ok.push('performance 已配置；.ai/verify/ 还无可解析日志，预算对照待积累');
+      } else {
+        const worst = Math.max(...latest.map(x => x.d));
+        const budget = perf.testSuiteMaxMs || Infinity;
+        if (worst > budget) {
+          warn.push(`性能预算：最近 ${latest.length} 次验证最慢 ${Math.round(worst / 1000)}s 超预算 ${Math.round(budget / 1000)}s（harness.config.json performance.testSuiteMaxMs）——趋势见 architect-check F5`);
+        } else {
+          ok.push(`性能预算内：最近 ${latest.length} 次验证最慢 ${Math.round(worst / 1000)}s ≤ 预算 ${Math.round(budget / 1000)}s`);
+        }
+      }
+    } else {
+      ok.push('performance 已配置；.ai/verify/ 不存在，预算对照待积累');
+    }
+  }
+}
+
 // 输出
 console.log('[doctor] 配置体检\n');
 if (templateMode) {

@@ -1,0 +1,20 @@
+# cmd: npm run -s test:perf-checks
+# started: 2026-11-19T01:39:52Z
+# finished: 2026-11-19T01:40:09Z
+# exit_code: 0
+# commit: unknown
+# task: perf-early
+# ---- output tail (last 200 lines) ----
+== 1. perf_anti_patterns：正例（应命中 4 类各 ≥1）==
+  [32m✓[0m 四类反模式全命中
+== 2. perf_anti_patterns：负例（干净代码零命中）==
+  [32m✓[0m 干净代码零命中
+== 3. perf_anti_patterns：测试文件豁免（test/ 路径不扫）==
+  [32m✓[0m test/ 路径不扫
+== 4. verify-run 耗时基线：首跑记录 → 四档比对 ==
+  [32m✓[0m 基线5000ms + sleep4.0s → 无
+  [32m✓[0m 基线10000ms + sleep4.0s → ✅
+  [32m✓[0m 基线2600ms + sleep4.0s → 🟡
+  [32m✓[0m 基线1800ms + sleep4.0s → 🔴
+
+[32mperf-checks 全部通过（7 项）[0m

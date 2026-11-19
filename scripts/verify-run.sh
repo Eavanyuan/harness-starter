@@ -187,13 +187,41 @@ done < <(
   tail -n 200 "$OUT"
 } >"$LOG"
 
+# ---- 性能基线比对（P0 卡点 2，2026-11-19）----
+# started/finished 已在日志头，此处算耗时并与 .ai/perf/baseline.json 比对。
+# 超基线 50% → 🟡 警告；超 100% → 🔴 提醒 architect；低于基线 50% → 提示更新基线（性能改善）。
+PERF_DIR=".ai/perf"
+PERF_BASELINE="${PERF_DIR}/baseline.json"
+DURATION_MS=$(node -e "console.log(Math.max(0, new Date(process.argv[1]) - new Date(process.argv[2])))" "$END" "$START" 2>/dev/null || echo 0)
+
+if [ "$DURATION_MS" -gt 0 ] && [ -f "$PERF_BASELINE" ]; then
+  BASELINE_MS=$(node -e "
+    const b = JSON.parse(require('fs').readFileSync('$PERF_BASELINE','utf8'));
+    const key = '$ID';
+    console.log(b[key] ?? b['*'] ?? 0);
+  " 2>/dev/null || echo 0)
+  if [ "$BASELINE_MS" -gt 0 ]; then
+    RATIO=$(( DURATION_MS * 100 / BASELINE_MS ))
+    if [ "$RATIO" -ge 200 ]; then
+      echo "[perf] 🔴 ${ID} 耗时 ${DURATION_MS}ms = 基线 ${BASELINE_MS}ms 的 ${RATIO}%（超一倍）—— architect 应关注" >&2
+    elif [ "$RATIO" -ge 150 ]; then
+      echo "[perf] 🟡 ${ID} 耗时 ${DURATION_MS}ms = 基线 ${BASELINE_MS}ms 的 ${RATIO}%（超五成）" >&2
+    elif [ "$RATIO" -le 50 ]; then
+      echo "[perf] ✅ ${ID} 耗时 ${DURATION_MS}ms（基线 ${BASELINE_MS}ms 的 ${RATIO}%——显著改善，考虑更新基线）" >&2
+    fi
+  fi
+fi
+# 自动记录基线（首次运行写入；已存在则不覆盖——避免慢机器逐次抬高基线）
+mkdir -p "$PERF_DIR"
+if [ "$DURATION_MS" -gt 0 ] && [ ! -f "$PERF_BASELINE" ]; then
+  printf '{ "%s": %s }%s' "$ID" "$DURATION_MS" '' > "$PERF_BASELINE" 2>/dev/null
+  echo "[perf] 基线已记录：${ID} = ${DURATION_MS}ms（后续运行将与此比对）" >&2
+fi
+
 if [ "$CODE" -eq 0 ]; then
   echo "[verify] PASS  ${LOG}"
 else
   echo "[verify] FAIL(exit=${CODE})  ${LOG}" >&2
-  # 管道吞码是实测两次的事故（verify-run | tail && git commit 把红 gate 照样提交）：
-  # 本脚本退出码是红的，但接了 | tail 之类管道后 $? 变成管道尾的 0。提醒一句，
-  # 比指望人人记得 set -o pipefail 可靠。
   echo "[verify] 提示：若本命令接了管道（| tail 等），外层请 set -o pipefail，否则这个红会被管道尾吃掉" >&2
 fi
 exit "$CODE"
