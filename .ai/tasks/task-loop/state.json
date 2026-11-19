@@ -220,7 +220,6 @@
       "text": "失败指纹归一化(✗剥参+文案并轨+step:*) + merge-base 基线实跑 + 集合差",
       "files": [
         "scripts/lib/fingerprint.mjs",
-        "scripts/lib/baseline.mjs",
         "test/task-loop.test.sh"
       ],
       "required_skills": [
@@ -244,7 +243,6 @@
       "ooda_stage": "audit",
       "text": "CI 三分流决策 + 豁免三道闸 + MR 附证",
       "files": [
-        "scripts/lib/attribution.mjs",
         "test/task-loop.test.sh"
       ],
       "required_skills": [
@@ -269,7 +267,6 @@
       "text": "剖面 A 影子周(零写入可证+触发/漏触发双列,N≥30) → 单任务 → 小批；P1 准入=K1 runner",
       "files": [
         "scripts/lib/session-pack.mjs",
-        "scripts/lib/ci-watch.mjs",
         "scripts/install-task-loop.sh",
         "scripts/task-loop.mjs",
         "deploy/task-loop/launchd.plist.template",
@@ -452,6 +449,13 @@
       "owner": "task-loop",
       "status": "closed",
       "resolution": "fixed：T8 已消除 source 风险（KEY=VALUE 解析），剩余只到换 token 不到执行命令"
+    },
+    {
+      "id": "KI-CLEANUP",
+      "text": "2026-11-19 P2 清理：todos ['T4a', 'T4b', 'T5'] 的 files 引用了已删除的 lib（attribution/baseline/ci-watch）——引用已移除，产物为 git 历史可查",
+      "owner": "p2-cleanup",
+      "status": "closed",
+      "resolution": "fixed：文件由 p2-cleanup 删除（体检 B R1-R3 零消费夏核）"
     }
   ],
   "gate_result": {
