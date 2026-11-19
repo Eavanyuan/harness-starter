@@ -80,3 +80,4 @@
 | 47 | read 工具会脱敏 URL 中的 token 字面量——用 read 输出做 apply_patch 锚文本时会静默不匹配，用 sed/od 核对磁盘真实字节 | 🟡 | TDasset 教训 |
 | 48 | 测试脚本写了但没接进 gate 聚合 = 从不运行——architect-check 的 --root 越界（argv[2+indexOf] off-by-one）存在数月，test:architect 因不在 gate 里从未被跑到。新增测试必须同批接进 gate | 🔴 | perf-early 实测 |
 | 49 | 时间戳秒级分辨率有 ±1s 抖动——基于耗时的测试用例必须在抖动区间内仍确定归档（先算 [min,max] 时长区间再选基线），否则偶发红 | 🟡 | perf-early 实测 |
+| 50 | agent 沙箱 PATH ≠ 用户 shell PATH——mvn 装在 /opt/homebrew/bin 但沙箱看不到，agent 判"无 mvn"降级盲修。环境事实必须写进执行器 prompt（绝对路径），不能假设 PATH 继承 | 🔴 | mvn 误判实测 |
