@@ -112,3 +112,22 @@ console.log("all-ok");
 ' > "$TMPD/p1retro.txt" 2>&1
 grep -q "^all-ok$" "$TMPD/p1retro.txt" && r=0 || { cat "$TMPD/p1retro.txt"; r=1; }
 check "retro 豁免三形态（A1 三连咬根治）" "0" "$r"
+
+echo "== verify-rotate：CLOSE-GATE 日志截断（>keepDays→头部+尾部保留）/ dry-run 不写 / falsy 0 陷阱 =="
+VR="$TMPD/vr"; mkdir -p "$VR/.ai/verify"
+printf '# cmd: npm run gate\n# exit_code: 0\n# task: test\n# ---- output ----\n%s\n结果：10 通过\n' "$(head -c 8000 /dev/zero | tr '\0' 'x')" > "$VR/.ai/verify/CLOSE-GATE-test.log"
+touch -t "$(date -v-30M +%Y%m%d%H%M.%S 2>/dev/null || date -d '30 minutes ago' +%Y%m%d%H%M.%S)" "$VR/.ai/verify/CLOSE-GATE-test.log"
+# dry-run 不写
+BEFORE=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
+(cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --dry-run --keep-days 0 >/dev/null)
+AFTER=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
+[ "$BEFORE" = "$AFTER" ]; check "dry-run 不写入（$BEFORE=$AFTER）" "0" "$?"
+# 实际截断：头部+尾部保留，中间省略
+(cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --keep-days 0 >/dev/null)
+TRUNCATED=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
+[ "$TRUNCATED" -lt "$BEFORE" ]; check "截断后体积缩小（$BEFORE→$TRUNCATED）" "0" "$?"
+grep -q "# exit_code: 0" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "头部元数据保留" "0" "$?"
+grep -q "结果：10 通过" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "尾部结果行保留" "0" "$?"
+grep -q "<!-- rotated" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "轮转标记存在" "0" "$?"
+# 幂等：已轮转的不再截
+(cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --keep-days 0 2>&1 | grep -q "0 份.*截断"); check "已轮转的跳过（幂等）" "0" "$?"

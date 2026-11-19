@@ -1,0 +1,161 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p3-verify-rotation",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "aa9737c",
+    "affected_ids": [
+      "scripts/verify-rotate.mjs（新）",
+      "scripts/lib/cli/close.mjs（使用建议注释）",
+      "package.json（verify:rotate）",
+      "test/gate-regressions.test.sh（轮转六断言）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T06:26:21Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "体检 P3 ①+②：证据日志轮转（运维卫生）+ close 工作流文档化（效率提升）——不是删功能而是加工具"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-19T11:00:00Z",
+      "exited_at": "2026-11-19T11:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-19T11:10:00Z",
+      "exited_at": "2026-11-19T11:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：摘要截断 vs 删除——选截断（证据链不断）",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-19T11:10:00Z",
+      "exited_at": "2026-11-19T11:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：新脚本非 FS 变更",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-19T11:10:00Z",
+      "exited_at": "2026-11-19T11:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：两 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-19T11:10:00Z",
+      "exited_at": "2026-11-19T11:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-19T11:40:00Z",
+      "exited_at": "2026-11-19T11:45:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "self-review（纯新增脚本+文档注释；六个断言覆盖核心行为）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-19T11:50:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {},
+  "todos": [
+    {
+      "id": "P3R1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "verify-rotate.mjs：CLOSE-GATE 日志 >7 天截断为头部+尾部（行截 200 字防单行膨胀；<4KB 跳过；幂等标记；dry-run 支持）+ npm run verify:rotate 入 package.json",
+      "files": [
+        "scripts/verify-rotate.mjs",
+        "package.json"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "gate-regressions 六断言全绿（dry-run 不写/截断缩小/头尾保留/标记存在/幂等跳过）+ falsy-0 陷阱当场修 + TDZ 修 + 单行膨胀修（三 bug 都是被测试抓住的）",
+        "feature_complete": "体检 B Y6 落地：日志不再只增不减",
+        "quality_clean": "保守策略（只截 CLOSE-GATE，不动 todo 日志）；证据链不断（头部元数据+exit_code 保留）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P3R1.log",
+        "command": "bash test/gate-regressions.test.sh"
+      }
+    },
+    {
+      "id": "P3C1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "close 命令使用建议文档化（推荐工作流六步+省掉的步骤清单）——流程税的效率面：用工具自动化仪式而不是删仪式",
+      "files": [
+        "scripts/lib/cli/close.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "gate 全绿（注释变更不影响行为）",
+        "feature_complete": "体检流程税 47:1 的效率面：close 已有的自动化能力（retro 生成/gate 自举/state 翻转）被文档化暴露",
+        "quality_clean": "不自动化 git commit（身份与文件清单是策略决策）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P3C1.log",
+        "command": "node --check scripts/lib/cli/close.mjs"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

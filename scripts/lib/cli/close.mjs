@@ -154,3 +154,16 @@ export function cmdClose(target, slug, opts = {}) {
   console.log(`[close] 记得把证据日志与 retro 随代码提交入库（CI 口径只认 git 里的事实）。`);
   return 0;
 }
+
+// ---- 使用建议（2026-11-19 p3-verify-rotation，体检"流程税 47:1"的效率面） ----
+// 推荐工作流（替代手工两批提交）：
+//   1. bash scripts/init-harness.sh <slug> S --type <type> ...
+//   2. 写代码 + 测试 + 文档
+//   3. 对每个 todo 跑 verify-run 取证
+//   4. git add <文件清单> && git commit  （第一批：代码+测试+文档+state(impl)+日志）
+//   5. node scripts/harness-cli.mjs close <项目> <slug>  （自动：gate→翻 done→retro）
+//   6. git add .ai/tasks/<slug>/ .ai/verify/CLOSE-GATE-*.log retro/ && git commit  （第二批：close 产物）
+//
+// close 省掉的手工步骤：gate TODO 自举（先跑日志再写 state 的鸡蛋问题）、
+// stage 翻转链（ci→retro→done）、retro 文件命名与生成、gate_result 填写。
+// 剩余手工：git add/commit（git 身份与文件清单是策略决策，不自动化）。

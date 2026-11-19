@@ -69,7 +69,8 @@
     "test:feishu-ask": "bash test/feishu-ask.test.sh",
     "architect": "node scripts/architect-check.mjs",
     "test:architect": "node scripts/architect-check.mjs --root .",
-    "test:perf-checks": "bash test/perf-checks.test.sh"
+    "test:perf-checks": "bash test/perf-checks.test.sh",
+    "verify:rotate": "node scripts/verify-rotate.mjs"
   },
   "engines": {
     "node": ">=18"

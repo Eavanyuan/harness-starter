@@ -1,0 +1,7 @@
+# cmd: node --check scripts/lib/cli/close.mjs
+# started: 2026-11-19T06:30:07Z
+# finished: 2026-11-19T06:30:07Z
+# exit_code: 0
+# commit: unknown
+# task: p3-verify-rotation
+# ---- output tail (last 200 lines) ----
