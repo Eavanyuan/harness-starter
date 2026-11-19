@@ -1,0 +1,206 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p6-gate-honesty",
+    "task_type": "change",
+    "related_task": "p5-ci-parity",
+    "remote_id": null,
+    "baseline": "11e07de",
+    "affected_ids": [
+      "hooks/write-allowlist.txt（13 条补授权日字段，格式说明重写）",
+      "scripts/doctor.mjs（新增第 9 项：放行条有效期 ≤ 30 天）",
+      "scripts/architect-check.mjs（默认跳过仓库外 project，新增 --include-external）",
+      "scripts/gate-parallel.mjs（新增：34 段有界并发执行器）",
+      "test/gate-parallel.test.sh（新增：7 条执行器判据）",
+      "test/writes.test.sh（放行条改走副本，不再改写真文件）",
+      "hooks/guard_write.mjs（allowlistPath：HARNESS_ALLOWLIST 覆盖）",
+      "package.json（gate 指向并行执行器；原串行链降级为 gate:serial）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T10:40:00Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "三项都是『判据在执行面失真』：放行条可无限续期（时效判据）、architect 审外部仓库（对象判据）、gate 串行 383s 导致没人等全量（执行面）。C 改的是门禁自己的执行器，风险最高，故配独立自测并逐套件核对断言数",
+    "no_doc_reason": "S 档缺陷修复：职责由 CR（.ai/review/CR-2026-11-19-p6-gate-honesty.md，含三项动机与变异证据）与 retro 承担。无新需求故无 RS，无新设计故无 FS/WBS，无方案分叉故无 ADR"
+  },
+  "stage": "done",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-p6-gate-honesty.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/p6-gate-honesty-收尾.md"
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-2026-11-19-p6-gate-honesty.md",
+    "retro": "retro/p6-gate-honesty-收尾.md"
+  },
+  "todos": [
+    {
+      "id": "P6C1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "放行条有效期封顶：每条加授权日字段（第 4 段），doctor 第 9 项判据『到期日 − 授权日 ≤ 30 天』。存量 13 条按 git 首次入库日补登记（最长 26 天，上线即绿）；第二次续期必然突破窗口 → 红",
+      "files": [
+        "hooks/write-allowlist.txt",
+        "scripts/doctor.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check scripts/doctor.mjs 过",
+        "tests": "doctor 实跑 exit 0，第 9 项输出 ✓；变异验证：把 ledger.mjs 到期日改到 2026-12-31（59 天）→ 报错并精确指出 :24 与 59 天，还原后 md5 一致",
+        "feature_complete": "判据拦的是下一次续期：7642f87 把 11-02 的条从 11-13 续到 11-25（23 天，仍在窗内），再续就超 30 天",
+        "quality_clean": "不读 git log（浅克隆会假绿），窗口长度是文件自带事实；缺第 4 段按 0 天窗口算，存量不影响"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P6C1.log",
+        "command": "node scripts/doctor.mjs"
+      }
+    },
+    {
+      "id": "P6C2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "architect 不再审外部仓库：projects[].dir 在仓库外时默认跳过，加 --include-external 才扫。顺带澄清 --root 是『根』不是『白名单』",
+      "files": [
+        "scripts/architect-check.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "默认 28.4s → 0.04s，32 🔴 全部消失；跳过提示写明 backend(../TDasset), frontend(../TDasset)",
+        "feature_complete": "能力保留：--include-external 仍可体检外部仓库。安全前提已核：config 无 stacks 键、97 条 todo 的 stack 全为 harness、check-skills 只是少遍历两个 stack",
+        "quality_clean": "跳过必须可见——静默跳过与通过长得一样，本批的第一原则就是『跳过和通过不能共用一种绿』"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P6C2.log",
+        "command": "node scripts/architect-check.mjs"
+      }
+    },
+    {
+      "id": "P6C3",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "gate 有界并发执行器：34 段按 CPU 自适应并发（上限 6），时间敏感段（perf-checks）独占串行；任一段非 0 即 exit 1 并逐段留日志。串行链保留为 gate:serial",
+      "files": [
+        "scripts/gate-parallel.mjs",
+        "test/gate-parallel.test.sh",
+        "package.json",
+        "hooks/guard_write.mjs",
+        "test/writes.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过；bash -n 过",
+        "tests": "gate-parallel 自测 7/7：全成功 0 / 中间段失败 1 / 首段失败 1 / 多段失败各报一块 / 失败段日志可见 / perf-checks 归串行 / 空清单 exit 2",
+        "feature_complete": "全量 383s → 112s（3.4×），35 段全绿；断言数逐套件核对一致：hooks 91、harness-cli 251、evidence 70、task-loop 150，串行与并行完全相同",
+        "quality_clean": "并发正确性不依赖『碰巧只有一个测试写放行条』——test:writes 改走 HARNESS_ALLOWLIST 副本，真文件内容与 mtime 均不动（此前每跑一次就把 DOCGATE 证据判过期）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P6C3.log",
+        "command": "bash test/gate-parallel.test.sh"
+      }
+    },
+    {
+      "id": "P6C4",
+      "title": "CR 与 retro 记录（三项动机、变异证据、复跑方式）",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "记录三项修复的动机与边界：A 为何不数续期次数（浅克隆假绿）、B 的 --root 语义混淆、C 为何必须独立验执行器聚合。同时写明没做的三件（F5 混装池、no_doc_reason 假出口、verify.mjs 拆分）与理由",
+      "files": [
+        ".ai/review/CR-2026-11-19-p6-gate-honesty.md",
+        "retro/p6-gate-honesty-收尾.md"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "Markdown，无需编译",
+        "tests": "文中每条读数均来自本次实跑（doctor/architect/gate 输出），复跑命令见 CR §5",
+        "feature_complete": "三项各自有『不这么做会怎样』的说明；没做的三件写明理由是范围而非遗忘",
+        "quality_clean": "所有数字可复现：383s→112s、28.4s→0.04s、32🔴→0🔴、91/251/70/150 逐套件一致"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P6C3.log",
+        "command": "（文档型 todo，证据复用 P6C3；读数见 CR §5 复跑方式）"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-p6-gate-honesty",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-p6-gate-honesty.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "stage": "done",
+    "last_check": "2026-11-19T11:00:27Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
+  }
+}
