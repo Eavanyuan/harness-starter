@@ -127,6 +127,28 @@ if (process.env.HARNESS_TIMER === '1') {
 }
 // 节流戳语义（复审B澄清）：任何成功轮次（定时器或手动）都刷新——手动跑完定时器
 // 不必立刻重跑同一轮；「手动不受节拍限制」指进入不受限，不是跑完不留痕。
+// ---- 工作时间窗（2026-11-19）：activeHours 配置驱动，心跳醒来到毫秒级退出 ----
+// 格式：runtime.taskLoop.activeHours = { "start": "09:30", "end": "21:00" }
+// start/end 含当天（09:30 可跑，21:00 不可跑）；跨午夜（end < start）支持夜班场景。
+// 不配 = 全天可跑（缺省行为不变）。定时器 180s 心跳照常触发，但时间窗外 task-loop
+// 在此毫秒级退出——不连 MCP、不查 GitLab、不刷节流戳，成本可忽略。
+const activeHours = taskLoopCfg.activeHours || null;
+if (activeHours && activeHours.start && activeHours.end) {
+  const now = new Date();
+  const curMin = now.getHours() * 60 + now.getMinutes();
+  const [sh, sm] = String(activeHours.start).split(':').map(Number);
+  const [eh, em] = String(activeHours.end).split(':').map(Number);
+  const startMin = (sh || 0) * 60 + (sm || 0);
+  const endMin = (eh || 0) * 60 + (em || 0);
+  const inWindow = startMin <= endMin
+    ? (curMin >= startMin && curMin < endMin)       // 常规：09:30 ≤ now < 21:00
+    : (curMin >= startMin || curMin < endMin);      // 跨午夜：22:00-06:00
+  if (!inWindow) {
+    console.log(`[task-loop] 工作时间窗外（${activeHours.start}-${activeHours.end}，当前 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}）——本轮跳过`);
+    process.exit(0);
+  }
+}
+
 function stampLastRun() {
   mkdirSync(join(root, '.ai', 'locks'), { recursive: true });
   writeFileSync(lastRunStamp, `${new Date().toISOString()} pollSeconds=${pollSeconds}\n`);

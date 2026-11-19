@@ -189,7 +189,11 @@
       "pollSeconds": 1800,
       "skipDrafts": true,
       "$comment2": "fixSuggestions（2026-11-18）：true=建议性评审评论也进修复范围（2026-11-16 以来的默认行为）；false=只修阻断项（🔴/阻断/必须修 标记的评论 + resolvable 打回线程），纯建议的结论评论不再触发。改配置即生效。",
-      "fixSuggestions": true
+      "fixSuggestions": true,
+      "activeHours": {
+        "start": "09:30",
+        "end": "21:00"
+      }
     }
   },
   "notify": {
