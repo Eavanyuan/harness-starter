@@ -12,10 +12,13 @@
  * 退出码：0 全绿；1 有红（F3 红牌级超限）；2 基础设施故障。
  * 黄牌不判红——它们是"architect agent 需要关注"的信号，不是阻断。
  *
- * 用法：node scripts/architect-check.mjs [--root <仓库>] [--json]
+ * 用法：node scripts/architect-check.mjs [--root <仓库>] [--json] [--strict] [--include-external]
+ *
+ * --include-external：连 harness.config.json 里指向仓库外的 projects 一起扫。
+ *   默认跳过——外部仓库的存量债会污染本仓库的红黄统计（详见 project 域注释）。
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve, relative, dirname } from 'node:path';
+import { join, resolve, relative, dirname, isAbsolute } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +27,8 @@ const ROOT = process.argv.includes('--root')
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const JSON_MODE = process.argv.includes('--json');
 const STRICT = process.argv.includes('--strict');
+// 外部 project（dir 以 .. 开头）默认不扫：它们的存量债不该由本仓库门禁背书。
+const INCLUDE_EXTERNAL = process.argv.includes('--include-external');
 
 function die(msg, code = 2) { console.error(`[architect] ${msg}`); process.exit(code); }
 function out(line) { if (!JSON_MODE) console.log(line); }
@@ -47,9 +52,31 @@ function flag(severity, dimension, file, detail) {
   out(`  ${mark} ${dimension} | ${file} | ${detail}`);
 }
 
+// ---- project 域：本仓库 vs 外部仓库 ----
+// `projects[].dir` 允许指向仓库外（如 ../TDasset），本意是"顺带体检另一个仓库"。
+// 但默认不该跑：它把外部仓库的存量债算进本仓库的红黄统计，本地一条也修不了，
+// 而 --strict 只拦新增 → 存量永远红、永远免除。实测代价 58.4s / 全量 15.2%。
+// 语义澄清：--root 是"根"不是"白名单"——带 --root . 也不会自动排除外部 project，
+// 所以 test:architect 表面限定了范围、实际照样全扫，这是名字在骗人。
+const isOutside = (dir) => {
+  const rel = relative(ROOT, resolve(ROOT, dir));
+  return rel.startsWith('..') || isAbsolute(rel);
+};
+const allProjects = Array.isArray(config.projects) ? config.projects : [];
+const projects = INCLUDE_EXTERNAL
+  ? allProjects
+  : allProjects.filter((p) => !isOutside(p.dir || p.id || '.'));
+
 // ---- F3: 单文件行数（跨全部 projects 源码） ----
 out('== F3 复杂度预算 ==');
-const projects = Array.isArray(config.projects) ? config.projects : [];
+if (!INCLUDE_EXTERNAL && allProjects.length > projects.length) {
+  // 用 id(dir) 而不是纯 dir：backend 与 frontend 可能指向同一个外部仓库，
+  // 只打 dir 会出现 "../TDasset, ../TDasset"，看不出跳过了几个 project。
+  const skipped = allProjects
+    .filter((p) => isOutside(p.dir || p.id || '.'))
+    .map((p) => (p.id && p.dir ? `${p.id}(${p.dir})` : p.dir || p.id));
+  out(`  ⏭ 跳过 ${skipped.length} 个仓库外 project：${skipped.join(', ')}（外部仓库的存量债不归本仓库门禁管；需要时加 --include-external）`);
+}
 for (const proj of projects) {
   const srcDir = join(ROOT, proj.dir || proj.id || '.');
   if (!existsSync(srcDir)) continue;

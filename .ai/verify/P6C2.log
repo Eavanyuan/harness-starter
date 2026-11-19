@@ -1,0 +1,21 @@
+# cmd: node scripts/architect-check.mjs
+# started: 2026-11-19T10:50:16Z
+# finished: 2026-11-19T10:50:17Z
+# exit_code: 0
+# commit: unknown
+# task: p6-gate-honesty
+# ---- output tail (last 200 lines) ----
+== F3 复杂度预算 ==
+  ⏭ 跳过 2 个仓库外 project：backend(../TDasset), frontend(../TDasset)（外部仓库的存量债不归本仓库门禁管；需要时加 --include-external）
+  （黄线 2000，红线 3000）
+== F4 配置面 ==
+  配置键总数：211（config 104 + rules 107）
+== F1 模块边界 ==
+== F2 依赖方向 ==
+== F5 验证耗时趋势 ==
+  🟡 F5 | .ai/verify/ | 最近 5 次验证均值 90200ms 较前 5 次均值 33000ms 增长 173%（>30%——验证链变慢，性能/复杂度腐化信号）
+
+结果：🔴 0 | 🟡 1 | 🟢 0
+
+🟡 建议项（architect agent 周期检查时关注，不阻断）：
+  .ai/verify/: 最近 5 次验证均值 90200ms 较前 5 次均值 33000ms 增长 173%（>30%——验证链变慢，性能/复杂度腐化信号）

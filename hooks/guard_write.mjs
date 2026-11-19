@@ -60,8 +60,21 @@ function loadConfig() {
 
 /** `**` 与 `*` 的区别在 lib/glob.mjs 里统一维护——门禁与 CI 不能各有一份 glob。 */
 
+/** 放行条路径：允许指向副本（HARNESS_ALLOWLIST）。
+ *
+ * 为什么需要出口：本文件是**可写状态**，不是只读配置。测试要验证"默认拒绝"就必须
+ * 清空它——串行时 test/writes 靠 `cp -p` 备份 + trap 还原硬扛，代价是两个：
+ *   1) 还原时 mtime 跳到"刚刚"，把声明了 hooks/write-allowlist.txt 的 verify 证据
+ *      判成过期（实测 DOCGATE-V1 反复变"过时"）；
+ *   2) 并行下"临时清空真文件"的窗口会被其它段看见，正确性依赖"碰巧只有一个写者"。
+ * 指向副本后这两条同时消失：真文件既不被改内容，也不被改时间戳。
+ */
+function allowlistPath() {
+  return process.env.HARNESS_ALLOWLIST || join(ROOT, 'hooks/write-allowlist.txt');
+}
+
 function activeAllowlist() {
-  const p = join(ROOT, 'hooks/write-allowlist.txt');
+  const p = allowlistPath();
   if (!existsSync(p)) return [];
   const today = new Date().toISOString().slice(0, 10);
   return readFileSync(p, 'utf8')

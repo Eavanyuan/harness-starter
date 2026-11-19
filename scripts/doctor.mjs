@@ -633,6 +633,44 @@ if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length}
   }
 }
 
+// 9. 放行条有效期上限（2026-11-19）：write-allowlist.txt 每条的有效期（到期日 − 授权日）
+//    不得超过 30 天。为什么不数"续期了几次"：文件不记历史，读 git log 在浅克隆里会假绿
+//    （CI 就是浅克隆）；而窗口长度是文件自带的事实，伪造不了。
+//    机制要害：7642f87 把 11-02 登记的条从 11-13 续到 11-25，提交信息就写"旧条目续期"。
+//    允许续期一次的机制 = 允许永久续期。把窗口封在 30 天，第一次续期仍在窗内（合法），
+//    第二次续期必然越界 → 红。存量 13 条最长 26 天（guard_state 10-30→11-25），
+//    所以这条上线即全绿：它拦的是下一次续期，不是现在。
+{
+  const p = join(ROOT, 'hooks/write-allowlist.txt');
+  const MAX_DAYS = 30;
+  const offenders = [];
+  const dayOf = (s) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '').trim());
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null;
+  };
+  if (existsSync(p)) {
+    readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) return;
+      const parts = t.split('|').map((s) => s.trim());
+      if (parts.length < 3) return;
+      const until = dayOf(parts[2]);
+      if (until === null) return;
+      // 第 4 段 = 授权日。缺省时按 0 天窗口算（历史条目未登记，不算违规，
+      // 但 doctor 会提示补登记，否则这条判据对它们永远无效）。
+      const granted = dayOf(parts[3]) ?? until;
+      const span = until - granted;
+      if (span > MAX_DAYS) offenders.push(`${parts[0]}（${parts[3]} → ${parts[2]}，${span} 天，:${i + 1}）`);
+    });
+  }
+  if (offenders.length) {
+    err(`write-allowlist 放行条有效期超过 ${MAX_DAYS} 天：${offenders.join(' / ')}`
+      + ' —— 续期只是在推迟判定。要么判定存废删行，要么把改动转成正式契约（ADR/代码注释），不要延长到期日');
+  } else {
+    ok.push(`write-allowlist 放行条有效期均 ≤ ${MAX_DAYS} 天（再续一次就突破窗口 → 红）`);
+  }
+}
+
 // 输出
 console.log('[doctor] 配置体检\n');
 if (templateMode) {

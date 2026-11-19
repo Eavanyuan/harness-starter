@@ -1,0 +1,23 @@
+# cmd: bash test/gate-parallel.test.sh
+# started: 2026-11-19T10:50:21Z
+# finished: 2026-11-19T10:50:22Z
+# exit_code: 0
+# commit: unknown
+# task: p6-gate-honesty
+# ---- output tail (last 200 lines) ----
+== 1. 全成功 → exit 0 ==
+  [32m✓[0m 三段全过 exit 0
+== 2. 中间段失败 → exit 1（并发聚合的核心判据）==
+  [32m✓[0m 中间段失败 exit 1（末段是成功的）
+== 3. 首段失败、末段成功 → exit 1 ==
+  [32m✓[0m 首段失败 exit 1
+== 4. 多段失败 → 每个都报出来（不只报第一个）==
+  [32m✓[0m 两段失败各有一条报错块
+== 5. 失败可归因：该段输出留在尾部日志里 ==
+  [32m✓[0m 失败段的自有输出被打印出来
+== 6. 时间敏感段（perf-checks）不被塞进并发池 ==
+  [32m✓[0m perf-checks 归入串行队列（2 并发 + 1 串行）
+== 7. 空清单 → exit 2（配置缺失不能当绿）==
+  [32m✓[0m 段清单为空 exit 2
+
+结果：7 通过，0 失败

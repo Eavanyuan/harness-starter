@@ -8,14 +8,17 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
-ALLOWLIST="$HERE/hooks/write-allowlist.txt"
-BACKUP="$(mktemp)"
-# -p 两个方向都要：测试会往放行条里增删行，恢复时若只还原内容，mtime 会跳到"刚刚"。
-# 而证据链的新鲜度正是按 mtime 判的——于是每跑一次本测试，就把声明了
-# hooks/write-allowlist.txt 的那份 verify 证据作废一次（实测 DOCGATE-V1 反复变"过时"，
-# 根因是测试动了被取证对象的时间戳，不是证据本身有问题）。
-cp -p "$ALLOWLIST" "$BACKUP"
-trap 'cp -p "$BACKUP" "$ALLOWLIST"; rm -f "$BACKUP"; rm -rf "$TMP"' EXIT
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# 放行条走**副本**，不碰真文件——内容和 mtime 都不动。
+# 早先的写法是就地改写 + cp -p 备份 + trap 还原，代价有两个：还原后 mtime 跳到
+# "刚刚"，把声明了 hooks/write-allowlist.txt 的 verify 证据判成过期（实测 DOCGATE-V1
+# 反复变"过时"）；以及并行跑 gate 时，"临时清空真文件"的窗口会被别的段看见。
+# 指向副本后两个问题同时消失，本测试也从"全局状态的唯一写者"变成完全隔离。
+ALLOWLIST="$TMP/write-allowlist.txt"
+cp -p "$HERE/hooks/write-allowlist.txt" "$ALLOWLIST"
+export HARNESS_ALLOWLIST="$ALLOWLIST"
 
 # 自授权行的计数必须在覆盖 allowlist 之前取：`hooks/write-allowlist.txt | …` 这一行
 # 让放行条给自己发通行证——加一行就能改任何受保护区，之后所有 writeGuards 都不设防。
@@ -31,7 +34,6 @@ cat > "$ALLOWLIST" <<'EOF'
 # 格式：<路径 glob> | <为什么必须改> | <YYYY-MM-DD>
 EOF
 
-TMP="$(mktemp -d)"
 # ledger 隔离：guard_write 每次拒绝都会落账，而 ledger 默认落 REPO_ROOT/.ai/ledger
 # （HARNESS_ROOT 不影响它）。不隔离的话，跑一次自测就往真实账本灌几十条探测，
 # 账本作为"误拦率基线"就废了（TDC 项目装完第一天的现场）。
