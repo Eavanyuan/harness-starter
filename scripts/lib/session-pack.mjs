@@ -23,8 +23,20 @@ const PROTOCOL_COMMON = `
 3. 只输出协议要求的结论到文件；不要在 stdout 写长篇解释。
 `;
 
+/**
+ * 环境事实节（hostless-env-notes 2026-11-19）：runtime.headless.envNotes → 每份工单。
+ *
+ * 为什么进配置而不是写死在工单模板/宿主 prompt：构建环境是**机器属性**（mvn 在哪、
+ * 跳测试用什么属性名），换机器部署时跟着 harness.rules.json 走——写死在模板里换机器就丢，
+ * 写死在宿主（如 AutoClaw 定时任务）prompt 里更是宿主绑定（坑 #50 的根因）。
+ * 不配 = 节不渲染（向后兼容，空仓/新机器零配置不根错）。
+ */
+const envNotesSection = (notes) => (Array.isArray(notes) && notes.length
+  ? `\n## 本机构建/复现环境事实（runtime.headless.envNotes——本地复现优先，跑不了要明说后才许盲修）\n${notes.map((n) => `- ${n}`).join('\n')}\n`
+  : '');
+
 /** 剖面 A 的 R1（确认+首轮修复合一）。comments: GitLab discussions 展开后的待处理评论。 */
-export function buildR1ProfileA({ mr, comments, changedFiles = [], headless }) {
+export function buildR1ProfileA({ mr, comments, changedFiles = [], headless, envNotes = [] }) {
   const cmts = comments.map((c) => `- [${c.discussion_id}/${c.note_id}] @${c.author}：${c.body}`).join('\n');
   return {
     prompt: `你是 MR 打回修复执行者。MR !${mr.iid}「${mr.title}」被评审打回，共 ${comments.length} 条未解决意见。
@@ -34,7 +46,7 @@ ${cmts}
 
 ## 本次变更涉及的文件（上下文锚，按需读取）
 ${changedFiles.map((f) => `- ${f}`).join('\n') || '-（无）'}
-
+${envNotesSection(envNotes)}
 ${PROTOCOL_COMMON.replace('<N>', '1')}
 4. 修复完成后运行项目验证命令（见 worktree 内 AGENTS.md 的 verify 约定），证据留日志；
 5. acks 逐条对应打回意见；resolve 只勾你确已修复的。`,
@@ -43,7 +55,7 @@ ${PROTOCOL_COMMON.replace('<N>', '1')}
 }
 
 /** 剖面 A 的续轮（R2/R3）：失败指纹 + 前轮日志随包——同根因连续两轮即必须换法。 */
-export function buildRnProfileA({ mr, comments, round, prevJournals, failureFingerprints = [] }) {
+export function buildRnProfileA({ mr, comments, round, prevJournals, failureFingerprints = [], envNotes = [] }) {
   const journals = prevJournals.map((j, i) => `### 第 ${i + 1} 轮日志\n${j}`).join('\n\n');
   const fps = failureFingerprints.map((f) => `- ${f}`).join('\n');
   return {
@@ -54,14 +66,14 @@ ${fps || '-（无）'}
 
 ## 历轮日志（你唯一的记忆——同根因连续两轮未解，本轮必须换方法，不许更用力重复）
 ${journals || '-（无）'}
-
+${envNotesSection(envNotes)}
 ${PROTOCOL_COMMON.replace('<N>', String(round))}`,
     artifacts: ['todo.json', 'round-' + round + '.md'],
   };
 }
 
 /** 剖面 B 的 R1（复现+首轮修复合一）。bug：MQL 取回的缺陷单字段。 */
-export function buildR1ProfileB({ bug, repo, baseRef = 'main' }) {
+export function buildR1ProfileB({ bug, repo, baseRef = 'main', envNotes = [] }) {
   return {
     prompt: `你是 bug 热修执行者。飞书缺陷单 ${bug.work_item_id}「${bug.name}」（严重级 ${bug.severity || '?'}）已认领。
 
@@ -72,7 +84,7 @@ ${bug.extra || ''}
 ## 目标仓库与基线
 - 仓库：${repo}（worktree 已从 ${baseRef} 切好）
 - 追溯：任务已按 --type bugfix --related feishu:${bug.work_item_id} 建档（remote_id 双向锚）
-
+${envNotesSection(envNotes)}
 ${PROTOCOL_COMMON.replace('<N>', '1')}
 4. **复现闸先行**：先写一个红测试复现问题并跑到红（这是修复的前提，也是回归测试的底子）；
    尝试多种合理复现路径后仍复现不了 → todo.json 写明尝试过的路径，ack 阶段直接停（不要硬修）；
@@ -85,7 +97,7 @@ ${PROTOCOL_COMMON.replace('<N>', '1')}
  * CI 失败修复工单（ci-fail-trigger，2026-11-17）：MR 的流水红 → 引入清单 + 基线同款 + 日志摘录。
  * failures/attribute 形状见 scripts/lib/ci-failures.mjs（fingerprint 稳定身份、excerpt 原文行）。
  */
-export function buildR1ProfileCI({ mr, introduced, inherited = [], baselineStatus = 'unknown', failedJobs = [], excerpts = [], opaque = false, viewNote = null }) {
+export function buildR1ProfileCI({ mr, introduced, inherited = [], baselineStatus = 'unknown', failedJobs = [], excerpts = [], opaque = false, viewNote = null, envNotes = [] }) {
   const intro = introduced.map((f) => `- [${f.kind}] ${f.fingerprint}${f.file ? `（${f.file}${f.line ? ':' + f.line : ''}）` : ''}`).join('\n');
   const inher = inherited.map((f) => `- ${f.fingerprint}`).join('\n');
   const jobs = failedJobs.map((j) => `- ${j.stage}/${j.name} ${j.webUrl || ''}`).join('\n');
@@ -105,7 +117,7 @@ ${viewNote && (viewNote.failedJobTotal > viewNote.failedJobs || viewNote.jobsPag
 
 ## 日志摘录（失败行原文，定位锚）
 ${exc || '-（无）'}
-
+${envNotesSection(envNotes)}
 ${PROTOCOL_COMMON.replace('<N>', '1')}
 4. 先在本地复现编译/测试失败（用日志中的命令或项目构建脚本），证据留日志；
 5. 修复引入清单里的每一项；基线同款失败不要修（单独开单，不进本 MR）。`,

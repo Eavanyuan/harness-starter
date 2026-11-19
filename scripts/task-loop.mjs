@@ -252,6 +252,8 @@ if (!acquireRoundLock()) {
 
 const headless = rules.runtime?.headless;
 if (!headless?.cli || !Array.isArray(headless.args)) die(1, 'runtime.headless 剖面缺失（cli/args 必填，见 harness.rules.json）');
+// 环境事实（hostless-env-notes）：机器属性随 rules 走，工单统一携带——不写死模板/宿主 prompt
+const headlessEnvNotes = Array.isArray(headless.envNotes) ? headless.envNotes : [];
 if (headless.hooks !== false) {
   const wired = ['.zcode/config.json', '.claude/settings.json'].some((p) => {
     try { const c = JSON.parse(readFileSync(join(root, p), 'utf8')); return !!(c.hooks?.enabled !== false && (c.hooks || c.hooks !== undefined)); } catch { return false; }
@@ -823,15 +825,15 @@ for (const t of triggers) {
             jobsPageTruncated: !!ciFetch?.jobsPageTruncated,
             traceFailures: ciFetch?.traceFailures ?? 0,
           };
-          pack = buildR1ProfileCI({ mr: t.mr, introduced: ciAttr.introduced, inherited: ciAttr.inherited, baselineStatus: ciAttr.baselineStatus, failedJobs: ciFetch?.failedJobs || [], excerpts, opaque: !!ciInfo?.opaque, viewNote });
+          pack = buildR1ProfileCI({ mr: t.mr, introduced: ciAttr.introduced, inherited: ciAttr.inherited, baselineStatus: ciAttr.baselineStatus, failedJobs: ciFetch?.failedJobs || [], excerpts, opaque: !!ciInfo?.opaque, viewNote, envNotes: headlessEnvNotes });
         } else if (t.kind === 'mr') {
           const commentsForPack = [
             ...t.unresolved.flatMap((d) => d.notes.filter((n) => n.resolvable && !n.resolved).map((n) => ({ discussion_id: d.id, note_id: n.id, author: n.author?.username || '?', body: n.body }))),
             ...(t.comments || []).map((x) => ({ discussion_id: x.id, note_id: x.note, author: x.author, body: x.body })),
           ];
-          pack = buildR1ProfileA({ mr: t.mr, comments: commentsForPack, changedFiles: [], headless });
+          pack = buildR1ProfileA({ mr: t.mr, comments: commentsForPack, changedFiles: [], headless, envNotes: headlessEnvNotes });
         } else {
-          pack = buildR1ProfileB({ bug: t.bug || { work_item_id: t.id, name: `（MQL 未取到标题，见单 ${t.id}）` }, repo: feishuCfg.repoHint || '（未配置 runtime.feishu.repoHint——按单据产品线确定目标仓库）', baseRef: 'main' });
+          pack = buildR1ProfileB({ bug: t.bug || { work_item_id: t.id, name: `（MQL 未取到标题，见单 ${t.id}）` }, repo: feishuCfg.repoHint || '（未配置 runtime.feishu.repoHint——按单据产品线确定目标仓库）', baseRef: 'main', envNotes: headlessEnvNotes });
         }
         writeFileSync(join(root, '.ai', 'task-loop', `pack-${t.id}.md`), `# 会话包 ${t.kind}-${t.id}（${new Date().toISOString()} 自动打包）\n\n`
           + '> 接手方式：交互会话读本文按 prompt 开工，产物按协议写回本目录。开工前若 .ai/tasks/ 里还没有对应档案，\n'

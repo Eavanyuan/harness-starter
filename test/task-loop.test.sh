@@ -1875,7 +1875,7 @@ check "集合差三分：引入/继承/顺手修好" "0" "$?"
 echo "== 8. T5 会话打包器与产物验收（fail-closed） =="
 SESS="$TMP/sess"; mkdir -p "$SESS"
 node --input-type=module -e '
-import { buildR1ProfileA, buildR1ProfileB, buildRnProfileA, readSessionArtifacts } from "'"$HERE"'/scripts/lib/session-pack.mjs";
+import { buildR1ProfileA, buildR1ProfileB, buildR1ProfileCI, buildRnProfileA, readSessionArtifacts } from "'"$HERE"'/scripts/lib/session-pack.mjs";
 import { writeFileSync, mkdirSync } from "node:fs";
 // A 的 R1：评论原文/协议/产物清单齐
 const r1 = buildR1ProfileA({ mr: { iid: 7, title: "演示" }, changedFiles: ["src/a.js"],
@@ -1887,6 +1887,16 @@ const okB = b1.prompt.includes("7161559257") && b1.prompt.includes("复现闸");
 // 续轮：失败指纹与历轮日志随包、换法指令在
 const rn = buildRnProfileA({ mr: { iid: 7 }, round: 2, prevJournals: ["试了字母序，失败"], failureFingerprints: ["legend::排序断言"] });
 const okN = rn.prompt.includes("试了字母序") && rn.prompt.includes("legend::排序断言") && rn.prompt.includes("换方法");
+// envNotes（hostless-env-notes）：配置了渲染进工单、没配不渲染（向后兼容）——机器属性随 rules 走
+const en = ["mvn 用绝对路径 /opt/homebrew/bin/mvn"];
+const withNotes = buildR1ProfileCI({ mr: { iid: 9, title: "t" }, introduced: [], envNotes: en });
+const withoutNotes = buildR1ProfileCI({ mr: { iid: 9, title: "t" }, introduced: [] });
+const rB = buildR1ProfileB({ bug: { work_item_id: "1", name: "b" }, repo: "r", envNotes: en });
+const rA = buildR1ProfileA({ mr: { iid: 9, title: "t" }, comments: [], envNotes: en });
+const okEnv = withNotes.prompt.includes("/opt/homebrew/bin/mvn")
+  && rB.prompt.includes("/opt/homebrew/bin/mvn")
+  && rA.prompt.includes("/opt/homebrew/bin/mvn")
+  && !withoutNotes.prompt.includes("envNotes——");
 // 产物验收：缺件 fail-closed
 const bad = readSessionArtifacts(process.argv[1], { expected: ["todo.json", "acks.json"] });
 mkdirSync(process.argv[1] + "/ok", { recursive: true });
@@ -1894,7 +1904,7 @@ writeFileSync(process.argv[1] + "/ok/todo.json", "[]");
 writeFileSync(process.argv[1] + "/ok/acks.json", "[]");
 const good = readSessionArtifacts(process.argv[1] + "/ok", { expected: ["todo.json", "acks.json"] });
 const badJson = readSessionArtifacts(process.argv[1], { expected: [] });
-process.exit(okPack && okB && okN && !bad.ok && good.ok ? 0 : 1);' "$SESS" 2>/dev/null
+process.exit(okPack && okB && okN && okEnv && !bad.ok && good.ok ? 0 : 1);' "$SESS" 2>/dev/null
 check "A/B/续轮打包 + 产物缺失 fail-closed" "0" "$?"
 
 echo "== 10. T5 定时器安装器（--print 渲染与接线闸） =="

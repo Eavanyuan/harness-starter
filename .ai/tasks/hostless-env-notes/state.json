@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "hostless-env-notes",
+    "task_type": "change",
+    "related_task": "ci-fail-trigger",
+    "remote_id": null,
+    "baseline": "929939d",
+    "affected_ids": [
+      "ci-fail-trigger（pack 生成）",
+      "task-loop（headless 剖面）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T06:24:02Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档：retro 即文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：需求即用户指令（环境事实去宿主绑定）"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：无多方案决策点（配置单源是既定原则坑 #50）"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/hostless-env-notes-环境事实去宿主绑定.md"
+  },
+  "todos": [
+    {
+      "id": "HE1",
+      "title": "session-pack 四剖面渲染 envNotes + task-loop 传参 + 测试扩展",
+      "status": "completed",
+      "files": [
+        "scripts/lib/session-pack.mjs",
+        "scripts/task-loop.mjs",
+        "harness.rules.json",
+        "test/task-loop.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/HE1.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 全过",
+        "tests": "task-loop 128/128（含新 envNotes 正反例）",
+        "feature_complete": "A/B/CI/Rn 四剖面渲染；未配置不渲染（向后兼容）",
+        "quality_clean": "AutoClaw prompt 去重（rev5 指向配置）；坑 #50 补解法"
+      }
+    },
+    {
+      "id": "HE2",
+      "title": "契约与 doctor 回归",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/HE2.log",
+        "command": "npm run -s test:task-loop-contract && npm run -s doctor"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS",
+        "tests": "contract + doctor 全过",
+        "feature_complete": "N/A",
+        "quality_clean": "N/A"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
