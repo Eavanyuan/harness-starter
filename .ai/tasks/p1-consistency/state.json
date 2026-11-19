@@ -1,0 +1,168 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "p1-consistency",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "3f28e82",
+    "affected_ids": [
+      "hooks/lib/verify.mjs（checkRetroLanding 豁免+checkStageExit 身份校验）",
+      "FS（§retro 豁免口径同步——文档行由 verify 变更自带）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-19T04:40:26Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "两条门禁判定修正：retro 豁免对齐 ci-verify 已有口径；提交身份从散文规则升为机器可判"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-19T07:00:00Z",
+      "exited_at": "2026-11-19T07:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-19T07:10:00Z",
+      "exited_at": "2026-11-19T07:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：体检 A1/A2 单一走向",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-19T07:10:00Z",
+      "exited_at": "2026-11-19T07:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：verify.mjs 判定注释自含",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-19T07:10:00Z",
+      "exited_at": "2026-11-19T07:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：两 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-19T07:10:00Z",
+      "exited_at": "2026-11-19T08:00:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-19T08:00:00Z",
+      "exited_at": "2026-11-19T08:20:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "code-reviewer（两轮：一审 🔴撞名+H1 → 改名 P1PC1/P1PC2+补 gate-regressions 测试）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-19T08:20:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-2026-11-19-p1-consistency.md"
+  },
+  "todos": [
+    {
+      "id": "P1PC1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "retro 豁免对齐：checkRetroLanding 补认 deferred+waived_by（与 ci-verify / checkStageExit 对 adr/fs_review/wbs 的既有口径一致）——三连咬根治",
+      "files": [
+        "hooks/lib/verify.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "gate 全绿 + gate-regressions 套件 retro 豁免三形态（P1PC1/P1PC2 唯一命名——一审 🔴1 撞名后改名）",
+        "feature_complete": "体检 A1 闭合：同一份 state 不再一边过一边拦",
+        "quality_clean": "豁免条件与 :647 的 hasWaiver 同构（gate=deferred + waived_by 非空）——不新造口径"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P1PC1.log",
+        "command": "npm run gate"
+      }
+    },
+    {
+      "id": "P1PC2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "提交身份 hook 化：checkStageExit 对 ≥2026-11-19 的任务校验最后提交作者邮箱=yyuan@taosdata.com（AGENTS.md 规则 9 机器可判化）",
+      "files": [
+        "hooks/lib/verify.mjs"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过（execFileSync 已在顶部 import，同步调用）",
+        "tests": "gate 全绿（存量任务不受影响）",
+        "feature_complete": "体检 A2 闭合：zwork@local 提交将在此后任务被 CI 拦截",
+        "quality_clean": "判不了不硬判（无 git 或读取失败 catch 跳过）；只对新任务生效不追溯"
+      },
+      "verify": {
+        "log_path": ".ai/verify/P1PC2.log",
+        "command": "npm run gate"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [
+    {
+      "id": "KI-1",
+      "text": "时间戳口径（体检 A3）：stage_history 时间是手填计划值非墙钟——未做代码改动，沿用\"声明不校验\"的现状（CI 只查存在性不查可信度，改为机器写需 init-harness 与 harness-cli 同批）",
+      "owner": "p1-consistency",
+      "status": "closed",
+      "resolution": "acknowledged：明示为计划值而非事实时间；机器化与 P3 流程税压缩同批"
+    }
+  ],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

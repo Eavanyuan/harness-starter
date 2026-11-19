@@ -903,10 +903,18 @@ export function checkRetroLanding(state, repo, fromDate = '2026-11-11') {
       return []; // retro/ 读不了 → 判不了就不硬判（fail-open，与账本同口径）
     }
   }
+  // retro 豁免（2026-11-19 p1-consistency，架构体检 A1 三连咬的根治）：
+  // checkStageExit 对 adr/fs_review/wbs 的 deferred+waived_by 已认（:647），retro 补齐同口径——
+  // stage_history 里有 retro 条目且 gate=deferred + waived_by 非空 = 有人签字的正当裁剪，不放行等于
+  // 逼人补文件再也不走豁免（本会话三个任务三连补，第四个开始 close 即落文件，但存量豁免仍需认）。
+  const retroHist = (state.stage_history || []).find((e) => e && e.stage === 'retro');
+  if (retroHist && retroHist.gate === 'deferred' && typeof retroHist.waived_by === 'string' && retroHist.waived_by.trim()) {
+    return [];
+  }
   return [{
     id: '(task)',
     rule: 'retro',
-    reason: `stage=done 但找不到 retro 落盘（artifacts.retro 未声明，retro/ 下也没有 ${slug || '<slug>'}* 命名的文件）。命名约定：retro/<slug>*.md，或把实际路径写进 artifacts.retro`,
+    reason: `stage=done 但找不到 retro 落盘（artifacts.retro 未声明，retro/ 下也没有 ${slug || '<slug>'}* 命名的文件）。命名约定：retro/<slug>*.md，或把实际路径写进 artifacts.retro，或在 stage_history.retro 写 deferred+waived_by 豁免`,
   }];
 }
 
@@ -988,6 +996,22 @@ export function checkStageExit(state, repo = null) {
       });
     }
   }
+  // 提交身份（2026-11-19 p1-consistency，架构体检 A2：规则 9 散文 vs 实际 zwork 提交继续新增）：
+  // agent 代提交一律显式 GIT_AUTHOR_*/GIT_COMMITTER_* 为本人——机器可判，不靠加载 AGENTS.md 的散文。
+  // 只对本批（P1_CONSISTENCY_FROM）之后创建的任务生效，存量不追溯。
+  if (repo && createdOnOrAfter(meta, '2026-11-19')) {
+    try {
+      const log = execFileSync('git', ['-C', repo, 'log', '--format=%ae', '-1', '--', '.ai/tasks/' + String(meta.task || '')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+      if (log && log !== 'yyuan@taosdata.com') {
+        failures.push({
+          id: '(task)',
+          rule: 'exit',
+          reason: `任务最后提交作者 ${log} ≠ 本人 yyuan@taosdata.com——agent 代提交必须显式 GIT_AUTHOR_*/GIT_COMMITTER_*（AGENTS.md 规则 9，本规则机器可判）`,
+        });
+      }
+    } catch { /* 无 git 或读取失败不硬判（判不了就不判） */ }
+  }
+
   return failures;
 }
 

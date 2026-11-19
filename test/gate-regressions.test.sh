@@ -91,3 +91,24 @@ check "scan-ok 具名理由豁免关键词命中" 0 "$?"
 echo
 echo "结果：$pass 通过，$fail 失败"
 [ "$fail" -eq 0 ]
+
+echo "== retro 豁免（2026-11-19 p1-consistency）：deferred+waived_by 放行 / 无豁免拦 / 有文件放行 =="
+node --input-type=module -e '
+import { checkRetroLanding } from "'"$HERE"'/hooks/lib/verify.mjs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+const repo = "'$TMPD'/p1-retro";
+rmSync(repo, { recursive: true, force: true });
+mkdirSync(join(repo, "retro"), { recursive: true });
+const mk = (hist) => ({ meta: { task: "t", created_at: "2026-11-19" }, stage: "done", artifacts: {}, stage_history: hist });
+const r1 = checkRetroLanding(mk([{ stage: "retro", gate: "deferred", waived_by: "S 档" }]), repo);
+console.log(r1.length === 0 ? "PASS-waived" : "FAIL-waived");
+const r2 = checkRetroLanding(mk([]), repo);
+console.log(r2.length > 0 ? "PASS-blocked" : "FAIL-blocked");
+writeFileSync(join(repo, "retro", "t-2026.md"), "# t");
+const r3 = checkRetroLanding(mk([]), repo);
+console.log(r3.length === 0 ? "PASS-file" : "FAIL-file");
+console.log("all-ok");
+' > "$TMPD/p1retro.txt" 2>&1
+grep -q "^all-ok$" "$TMPD/p1retro.txt" && r=0 || { cat "$TMPD/p1retro.txt"; r=1; }
+check "retro 豁免三形态（A1 三连咬根治）" "0" "$r"
