@@ -8,125 +8,24 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
+    # 默认超时是 6 小时。链路上有端到端用例（假 GitLab / 假飞书服务、轮询等待），
+    # 一旦某个等待条件写错就会挂满 6 小时才失败——那是最难查的一类红。
+    # 全量实测 52s，给 15 分钟是 17 倍余量。
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
+          # 高危扫描要 diff base…HEAD，ci-verify 要读提交时间判"账实是否同一件事"。
+          # 浅克隆下这两件事都会静默退化成"跳过"，跳过和通过长得一样。
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 配置体检放在最前：占位值没改、hook 没接线、配置键没人读——这些失败长得不像红灯，
-      # 长得像"一切正常但门禁不生效"。留在本地手动跑，等于要求人记得跑。
-      - name: 配置体检（占位值 / hook 接线 / 空转配置键）
-        run: node scripts/doctor.mjs
-
-      # 先确认门禁本身没坏，再让门禁去判别人。
-      - name: 门禁自测（state 写入门禁 / 高危命令 / 敏感文件）
-        run: bash test/hooks.test.sh
-
-      # 回归：干净检出 + 合规证据必须通过。CI 上判 mtime 会误杀合规 PR。
-      - name: 门禁自测（证据链 CI 口径）
-        run: bash test/evidence.test.sh
-
-      # verify-run 是证据链的入口：它决定 .ai/verify/*.log 的头部写什么、测试计数怎么聚合。
-      # 此前它只在本地的 `npm run gate` 里跑，CI 从来没跑过——所以它用 `find -newer` 判
-      # "本次新生成的报告"这个跨平台缺陷才能活到今天：busybox 的 -newer 只比到**秒**，
-      # 同一秒内生成的 surefire 报告被判"不新"→ 测试计数静默变 0、`# tests` 行整条消失、
-      # audit.tests 对不上账。判据只在"人记得敲"的时候存在，等于没有。
-      - name: 证据生成（exit_code / 测试计数 / 跨次不重复 / 同路径重写）
-        run: bash test/verify-run.test.sh
-
-      # 回归：hook 必须真的接在两个 CLI 上，不是"看起来注册了"。
-      - name: 门禁自测（hook 接线）
-        run: bash test/wiring.test.sh
-
-      - name: 门禁自测（写入边界）
-        run: bash test/writes.test.sh
-
-      - name: 产物契约自测
-        run: bash test/agents.test.sh
-
-      - name: skill 结构校验
-        run: node scripts/check-skills.mjs
-
-      - name: skill 校验器自测
-        run: bash test/skills.test.sh
-
-      # 这两个测试原来只在本地 `npm run gate` 里跑，CI 一直是绿的——
-      # 因为 CI 根本没跑它们，不是因为它们通过了。判据只在"人记得敲"的时候存在，
-      # 等于没有：completeness 判的是文档完备性，ledger 判的是拦截账本，
-      # 都是"坏了也不会立刻有人发现"的那类。两个合计约 10s，代价可接受。
-      - name: 文档完备性（占位符残留 / 章节空 / 追溯断裂）
-        run: bash test/completeness.test.sh
-
-      - name: 拦截账本（误拦率的数据来源）
-        run: bash test/ledger.test.sh
-
-      # 审核自动化的三组。此前它们只在本地 `bash test/*.test.sh` 里跑过：
-      # 不注册 = 这 800 多行代码的任何改动都没有门禁看得见，坏了也只能靠人恰好想起。
-      - name: 审核路由（变更文件 → 该跑哪些审核）
-        run: bash test/review-router.test.sh
-
-      - name: AI 审核（L0 判据 / 模式B / fail-closed / token 计量）
-        run: bash test/ai-review.test.sh
-
-      - name: 通知与回投（卡片 / webhook 鉴权 / 决策落账）
-        run: bash test/notify-broker.test.sh
-
-      # 内网场景的唯一入站通道。它坏掉的样子特别安静：卡片照发、人也照点，
-      # 只是点完什么都没发生——所以必须有一条会红的判据盯着帧编解码与去重/重投。
-      - name: 飞书长连接（换端点 / 握手 / 分片 / 去重 / 失败重投）
-        run: bash test/feishu-ws.test.sh
-
-      # 飞书项目身份层。没有空间管理权限的人走 mcpKey（插件身份）永远取不到数据，
-      # 只能改走 OAuth（用户身份）——所以这条路径必须可测，否则"登录"本身又是一处盲区。
-      # 假服务器覆盖 device 全流程与刷新，离线可跑，CI 不触网。
-      - name: 飞书项目 OAuth（device 全流程 / 刷新 / 0600 落盘 / fail-closed）
-        run: bash test/feishu-oauth.test.sh
-
-      # 剖面 B 的触发源。这条链路的错有四种，只有第一种会报错：
-      # 表名单段（服务端 semantic error）、owner 当负责人（那是"创建者"）、
-      # severity 字段不存在、状态写成中文"待处理"（枚举里只有 New/Processing/...）。
-      # 后三种是静默的——查询通了但结果为空，或者有结果却被判 P3 全丢，报表上一片正常。
-      # fixture 抓自真实空间，离线可跑，CI 不触网。
-      - name: 飞书缺陷轮询（MQL 形状 / 真实响应解析 / 严重级归一 / fail-closed）
-        run: bash test/feishu-bug-source.test.sh
-
-      # task-loop 的两个套件此前哪都不在：连本地 `npm run gate` 都没进。
-      # 后果是实测过的——runner 在"真检测到触发"这条路上 100% 崩（budget 从未被创建），
-      # 而 gate 全绿只说明它**周围**的东西没坏。判据必须穿过被测的那条路，不是覆盖它旁边。
-      - name: task-loop 触发 / 认领 / 预算 / 释放（含假 GitLab 端到端）
-        run: bash test/task-loop.test.sh
-
-      # 账本说 stage=fs_review、代码已到 T6，门禁照绿——因为没人校验"账上写的和仓库里有的
-      # 是不是同一件事"。这条契约把那个偏差变成会红的判据。
-      - name: task-loop 账实一致契约（产物声明 / stage 与 todo / WBS 编号）
-        run: bash test/task-loop-contract.test.sh
-
-      - name: MCP 数据档探测（三档 health，离线可跑）
-        run: bash test/doctor-gates.test.sh
-
-      # 追溯门禁（--related feishu:<id> / remote_id 双向锚）与任务生命周期此前只在本地跑：
-      # 它们坏了不会立刻有人发现，正是"判据只在人记得敲的时候才存在"的那一类。
-      - name: 初始化与追溯锚（外部单号建档 / remote_id 一致性）
-        run: bash test/init.test.sh
-
-      - name: harness CLI（任务生命周期 / 阶段推进 / 门禁自检）
-        run: bash test/harness-cli.test.sh
-
-      - name: Agent 定义与生成物一致
-        run: node scripts/build-agents.mjs --check
-
-      - name: hook 接线与 manifest 一致
-        run: node scripts/build-hooks.mjs --check
-
-      # CI 口径：只认 git 里可复现的事实（日志入库、exit_code=0、声明文件存在）。
-      # 新鲜度是本地 hook 的事 —— git 不保存 mtime，在这里判只会误杀。
-      - name: 状态与证据链校验
-        run: node scripts/ci-verify.mjs
-
+      # 唯一一条不属于 `npm run gate` 的判据：它要 event 上下文（base 分支 / before 提交），
+      # 那是 CI 才有的东西，本地无从复现。放最前——1 秒出结果，拦的是安全事故不是回归。
+      #
       # hook 只拦 agent 走的那条路，人手动 commit 是直通的，这里兜住。
       # 只扫脚本类文件的**新增行**：文档里写 "rm -rf" 是在讲解规则，不是要执行它。
       - name: 高危命令扫描
@@ -180,3 +79,21 @@ jobs:
             exit 1
           fi
           echo "未发现高危命令"
+
+      # 全量门禁：CI 与本地跑**同一条命令**，清单只有 package.json 里的 gate 这一份。
+      #
+      # 以前这里是 20 个手写步骤，本地 `npm run gate` 是另一份 34 段清单，两份都不知道
+      # 对方漏了什么。代价实测过：六个套件只存在于本地清单（glob / gate-regressions /
+      # stale / retro / feishu-sync / feishu-ask），其中 gate-regressions 一直红着——
+      # 崩溃点在双引号里写了 `$VAR）`，全角括号被 bash 3.2 吞进变量名。于是形成闭环：
+      # 本地红 → 全量要 6 分钟没人等 → CI 全绿 → 提交信息写 "gate green"。
+      # 判据不是没了，是执行面断在本地，且断口被 CI 的绿灯盖住。
+      #
+      # 合成一步之后，"CI 跑哪些"不再是决策，而是 gate 的推论：加一个套件只需要改
+      # package.json，不用记得同时改两处。
+      #
+      # 耗时不是代价：34 段在 ubuntu-latest 上实测 52s，比原来只跑 20 套件的 56s 还快
+      # ——省下的纯等待（perf-checks 的四次 sleep 4s，已降到 1s）比新增 14 套件更贵。
+      # 单个步骤失败看不出是哪一段时，看日志里 `> harness-starter@1.1.0 test:xxx` 这一行。
+      - name: 全量门禁（npm run gate）
+        run: npm run gate

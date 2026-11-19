@@ -19,7 +19,7 @@ export HARNESS_LEDGER_DIR="$TMP/ledger"
 # 看起来像长连接收不回来，其实只是镜像没装（同 notify-broker 的 33 条假红）。
 for tool in curl node; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "缺少 $tool：本套件用它探 healthz/发 webhook，先装（alpine: apk add curl）" >&2
+    echo "缺少 ${tool}：本套件用它探 healthz/发 webhook，先装（alpine: apk add curl）" >&2
     exit 1
   }
 done

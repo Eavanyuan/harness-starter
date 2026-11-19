@@ -112,9 +112,10 @@ if [ -f "$LOG" ] && [ ${#claimers[@]} -gt 0 ]; then
 fi
 OUT="$(mktemp)"
 BENCH="$(mktemp)"   # 运行起点（毫秒时间戳）：本次运行写过的报告才计入
-trap 'rm -f "$OUT" "$BENCH" "$PIPEFAIL_ENV"' EXIT
+BENCH_END="${BENCH}.end"  # 运行终点（毫秒时间戳）：耗时 = 终点 - 起点，见 DURATION_MS
+trap 'rm -f "$OUT" "$BENCH" "$BENCH_END" "$PIPEFAIL_ENV"' EXIT
 
-START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+START="$(date -u +%Y-%m-%dT%H:%M:%SZ)"   # 只给人读；耗时不走它（秒级精度，见下方 DURATION_MS）
 # 判据是"本次运行写过这份报告"，实现方式是运行起点的毫秒时间戳 vs 文件 mtime。
 #
 # 为什么不用 `find -newer`：busybox（alpine CI 镜像）的 -newer 只比较到**秒**，
@@ -129,6 +130,7 @@ node -e 'process.stdout.write(String(Date.now()))' >"$BENCH"
 
 "${CMD[@]}" >"$OUT" 2>&1
 CODE=$?
+node -e 'process.stdout.write(String(Date.now()))' >"$BENCH_END"
 END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # 从 surefire-reports 聚合测试计数写进头部（#17）：mvn -q 会把 Tests run 从 stdout 吞掉，
@@ -188,11 +190,26 @@ done < <(
 } >"$LOG"
 
 # ---- 性能基线比对（P0 卡点 2，2026-11-19）----
-# started/finished 已在日志头，此处算耗时并与 .ai/perf/baseline.json 比对。
+# 耗时取自毫秒时间戳（$BENCH / $BENCH_END），与 .ai/perf/baseline.json 比对。
 # 超基线 50% → 🟡 警告；超 100% → 🔴 提醒 architect；低于基线 50% → 提示更新基线（性能改善）。
 PERF_DIR=".ai/perf"
 PERF_BASELINE="${PERF_DIR}/baseline.json"
-DURATION_MS=$(node -e "console.log(Math.max(0, new Date(process.argv[1]) - new Date(process.argv[2])))" "$END" "$START" 2>/dev/null || echo 0)
+# 耗时必须用**毫秒**差，不能用 started/finished 两个 ISO 秒级时间戳相减。
+#
+# 上一版就是拿 START/END 相减的：精度只有 1000ms，于是 1s 量级的用例测出来是 0 或 1000，
+# 抖动 ±1000ms。后果不是"数字难看"，而是 test/perf-checks 不敢在小用例上断言档位——
+# 四个用例各自把 sleep 撑到 4.0s 才够信噪比，白等 12s（接进 CI 就是 12s × 每次推送）。
+#
+# 起点 $BENCH 本来就是毫秒（下面判 surefire 报告新鲜度也要用它），只是终点没记。
+# 现在并行记一个 $BENCH_END（都是 Date.now() 口径，同一时钟，不受秒截断影响），
+# 耗时降级为一次 shell 减法——顺带省掉原来那次 node 进程。日志头仍写秒级 ISO 时间戳：
+# 那是给人读的，"什么时候跑的"，1s 精度足够。
+DURATION_MS=""
+if [ -s "$BENCH" ] && [ -s "$BENCH_END" ]; then
+  DURATION_MS=$(( $(cat "$BENCH_END") - $(cat "$BENCH") ))
+fi
+case "$DURATION_MS" in ''|*[!0-9]*) DURATION_MS=0 ;; esac
+[ "$DURATION_MS" -lt 0 ] && DURATION_MS=0
 
 if [ "$DURATION_MS" -gt 0 ] && [ -f "$PERF_BASELINE" ]; then
   BASELINE_MS=$(node -e "

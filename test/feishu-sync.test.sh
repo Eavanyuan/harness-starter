@@ -9,6 +9,11 @@
 #   · 幂等：当前已是目标态 → ok(via=already)，不再调 transition_state
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+# 被测模块路径必须由 $HERE 推出来，不能写死绝对路径。
+# 曾经 case2/case3 的 heredoc 用了 <<'EOF'（单引号 = 不展开变量），于是 $HERE 用不了，
+# 作者就把当时的绝对路径粘了进去 —— 在本机永远绿，在 CI 上 100% ERR_MODULE_NOT_FOUND。
+# 这套件此前只有本地 `npm run gate` 在跑，所以一直没人看见；接进 CI 的第一分钟就红了。
+LIB="$HERE/scripts/lib/feishu-sync.mjs"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 pass=0; fail=0
@@ -16,7 +21,7 @@ check(){ if [ "$2" = "$3" ]; then printf "  \033[32m✓\033[0m %s\n" "$1"; pass=
 
 mkcall() { # mkcall <初始状态> <流转后状态 or FAIL>  → 输出 "ok|via|tools"
   cat > "$TMP/case.mjs" <<EOF
-import { acknowledgeBug } from '$HERE/scripts/lib/feishu-sync.mjs';
+import { acknowledgeBug } from '$LIB';
 const calls = [];
 let flipped = false;
 const call = async (tool, args) => {
@@ -45,8 +50,8 @@ check "调序：MQL回读→可流转态→transition_state(id)→MQL回读，�
 check "全程无评论" "$(printf '%s' "$out" | cut -d'|' -f4)" "no-comment"
 
 echo "== 2. 幂等：已是 Processing → ok(already)，不再流转 =="
-cat > "$TMP/case2.mjs" <<'EOF'
-import { acknowledgeBug } from '/Users/yuanyuan/Documents/workspace/harness-starter/scripts/lib/feishu-sync.mjs';
+cat > "$TMP/case2.mjs" <<EOF
+import { acknowledgeBug } from '$LIB';
 const calls = [];
 const call = async (tool, args) => {
   calls.push(tool);
@@ -61,8 +66,8 @@ check "ok=true via=already" "$(printf '%s' "$out" | cut -d'|' -f1-2)" "true|alre
 check "只调了一次 MQL 回读（未动流转）" "$(printf '%s' "$out" | cut -d'|' -f3)" "1"
 
 echo "== 3. 目标态不在可流转列表 → fail-closed 如实报错，不硬转 =="
-cat > "$TMP/case3.mjs" <<'EOF'
-import { transitionStatus } from '/Users/yuanyuan/Documents/workspace/harness-starter/scripts/lib/feishu-sync.mjs';
+cat > "$TMP/case3.mjs" <<EOF
+import { transitionStatus } from '$LIB';
 const calls = [];
 const call = async (tool) => {
   calls.push(tool);

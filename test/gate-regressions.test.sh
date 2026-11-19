@@ -89,8 +89,10 @@ printf '%s' '{"tool_name":"Bash","tool_input":{"command":"echo demo --no-verify 
 check "scan-ok 具名理由豁免关键词命中" 0 "$?"
 
 echo
-echo "结果：$pass 通过，$fail 失败"
-[ "$fail" -eq 0 ]
+# 注意：这里**不能**判定退出码。2026-11-19 p5-ci-parity 修过的坑——
+# 汇总与 `[ "$fail" -eq 0 ]` 曾写在这个位置，而文件后面还有「retro 豁免」「verify-rotate」
+# 两节。bash 的退出码只看最后一条命令，于是前五节的失败被后面多节的成功覆盖：
+# 脚本 exit 0，gate 判绿，红被吞掉。判定必须在文件最后一行，一处且只有一处。
 
 echo "== retro 豁免（2026-11-19 p1-consistency）：deferred+waived_by 放行 / 无豁免拦 / 有文件放行 =="
 node --input-type=module -e '
@@ -121,13 +123,33 @@ touch -t "$(date -v-30M +%Y%m%d%H%M.%S 2>/dev/null || date -d '30 minutes ago' +
 BEFORE=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
 (cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --dry-run --keep-days 0 >/dev/null)
 AFTER=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
-[ "$BEFORE" = "$AFTER" ]; check "dry-run 不写入（$BEFORE=$AFTER）" "0" "$?"
+[ "$BEFORE" = "$AFTER" ]; check "dry-run 不写入（${BEFORE}=${AFTER}）" "0" "$?"
 # 实际截断：头部+尾部保留，中间省略
 (cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --keep-days 0 >/dev/null)
 TRUNCATED=$(wc -c < "$VR/.ai/verify/CLOSE-GATE-test.log")
-[ "$TRUNCATED" -lt "$BEFORE" ]; check "截断后体积缩小（$BEFORE→$TRUNCATED）" "0" "$?"
+[ "$TRUNCATED" -lt "$BEFORE" ]; check "截断后体积缩小（${BEFORE}→${TRUNCATED}）" "0" "$?"
 grep -q "# exit_code: 0" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "头部元数据保留" "0" "$?"
 grep -q "结果：10 通过" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "尾部结果行保留" "0" "$?"
 grep -q "<!-- rotated" "$VR/.ai/verify/CLOSE-GATE-test.log"; check "轮转标记存在" "0" "$?"
 # 幂等：已轮转的不再截
 (cd "$VR" && node "$HERE/scripts/verify-rotate.mjs" --keep-days 0 2>&1 | grep -q "0 份.*截断"); check "已轮转的跳过（幂等）" "0" "$?"
+
+echo "== CI/本地单一清单（2026-11-19 p5-ci-parity）：workflow 只跑 npm run gate，手写分步清单不许复活 =="
+# 背景：CI 曾是 20 个手写步骤，本地 `npm run gate` 是另一份 34 段清单，两份互相不知道
+# 对方漏了什么。实测代价：六个套件只在本地清单里，其中本文件一直红着（`$VAR）` 把全角
+# 括号吞进变量名），而 CI 一路绿灯——断口被绿灯盖住，提交信息还写着 "gate green"。
+# 合并成一步后，"CI 跑哪些"不再是第二份决策而是 gate 的推论：加套件只改 package.json。
+# 这条判据防的是回退：有人再往 workflow 里加 `run: npm run test:xxx`，漂移就复活了。
+WF="$HERE/.github/workflows/quality-gate.yml"
+grep -qE '^[[:space:]]*run:[[:space:]]*npm run gate[[:space:]]*$' "$WF"; check "全量门禁单步存在（run: npm run gate）" "0" "$?"
+# 检测器单独成函数：同一段判据要对真文件跑「无命中」、对变异副本跑「有命中」。
+# 只跑前者是自证清白——它分不清「判据有效」和「正则写错了永远不命中」。
+drift() { grep -qE '^[[:space:]]*run:[^#]*npm (run )?(test|verify)' "$1"; }
+drift "$WF"; check "workflow 无手写分步套件（有 = 第二份清单复活）" "1" "$?"
+cp "$WF" "$TMPD/wf-drift.yml"
+printf '      - name: 手工分步（漂移模拟）\n        run: npm run test:task-loop\n' >> "$TMPD/wf-drift.yml"
+drift "$TMPD/wf-drift.yml"; check "变异：注入分步调用 → 判据变红" "0" "$?"
+
+echo
+echo "结果：$pass 通过，$fail 失败"
+[ "$fail" -eq 0 ]

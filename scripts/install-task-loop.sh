@@ -180,7 +180,7 @@ warn_legacy_secret() {
     local keep="${old}.leaked.$(date +%Y%m%d)"
     if mv -n "$old" "$keep" 2>/dev/null; then
       {
-        echo "注意：$old 里含有明文凭据（旧版安装器写进去的），已改名封存为 $keep。"
+        echo "注意：$old 里含有明文凭据（旧版安装器写进去的），已改名封存为 ${keep}。"
         echo "      token 本身不会因此失效——若该文件曾被备份/同步/贴出，去 GitLab 撤销并重建该 token。"
       } >&2
     else

@@ -581,7 +581,12 @@ if (!missingTools.length) ok.push(`外部命令齐备（${EXTERNAL_TOOLS.length}
         const worst = Math.max(...latest.map(x => x.d));
         const budget = perf.testSuiteMaxMs || Infinity;
         if (worst > budget) {
-          warn.push(`性能预算：最近 ${latest.length} 次验证最慢 ${Math.round(worst / 1000)}s 超预算 ${Math.round(budget / 1000)}s（harness.config.json performance.testSuiteMaxMs）——趋势见 architect-check F5`);
+          // warn 是函数不是数组（:30 `const warn = (m) => warns.push(m)`）。这里曾写成
+          // warn.push(...)，于是这条分支一被走到就 TypeError 崩溃——而它恰是"超预算"的
+          // 那条提醒。分支从入库起从未执行过：最近 5 次验证都没超 300s，直到全量日志
+          // 371s 第一次进来把它踩响。判据自己不能崩，否则它报的是"doctor 挂了"，
+          // 不是"超预算了"——两种红混成一种。
+          warn(`性能预算：最近 ${latest.length} 次验证最慢 ${Math.round(worst / 1000)}s 超预算 ${Math.round(budget / 1000)}s（harness.config.json performance.testSuiteMaxMs）——趋势见 architect-check F5`);
         } else {
           ok.push(`性能预算内：最近 ${latest.length} 次验证最慢 ${Math.round(worst / 1000)}s ≤ 预算 ${Math.round(budget / 1000)}s`);
         }
