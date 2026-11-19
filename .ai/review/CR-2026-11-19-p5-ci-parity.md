@@ -72,6 +72,7 @@
 | 1 | `.github/workflows/quality-gate.yml` 高危扫描步骤 | 该步骤是唯一不在 gate 内的判据，意味着**本地永远无法复现 CI 的红**。本次改动之所以没把它合进 gate，是因为它需要 `github.event` 上下文 | 后续可考虑把"取基线"抽象成参数（本地传 `HEAD~1`），让扫描逻辑本体进 gate、上下文注入留在 workflow | 记录，不在本批 |
 | 2 | 全仓 `$VAR` + 全角字符 | doctor 判据只能扫出"非 ASCII 紧跟变量名"，扫不出 `$(cmd)` 里嵌全角、或变量后跟半角标点再接全角的情况 | 判据已覆盖历史两起事故的同一形态；等第三起再扩，避免为想象中的问题加正则 | 记录 |
 | 3 | 本批提交 | 8 个文件混了三件事（CI 合并 / 计时精度 / 测试脆弱点），单独看任一件事的读者会被另外两件干扰 | 提交信息按三件事分条写清；若后续 CR 要求，可 `git rebase -i` 拆三个提交（本批不拆：三件事共享同一次全量验证，拆开会有中间态不可验证） | 说明 |
+| 4 | `scripts/ci-verify.mjs:131` + `hooks/lib/doc_completeness.mjs:572` | **提示承诺的出口不存在**：notice 写「S 档可写 `meta.no_doc_reason` 说明为什么不需要文档」，但 `missingDeclarations()` 根本不读这个字段——写了照样报。本任务已写满 168 字的理由，warning 照旧。存量问题（p2-cleanup / p3-verify-rotation / perf-early 等都在报），非本批引入 | 一行修法：调用处 `const undeclared = isAbandoned(state) \|\| noDoc ? [] : missingDeclarations(state)`，并把理由摘要带进 notice（别让它变成黑洞）。需配一条测试：有理由不报 / 无理由照报 | **记录，不在本批**——改的是所有任务的 notice 输出路径，与本批主题无关；无出口的 warning 会被训练成无视，这条要修，但该单独一次做 |
 
 ## 4 变异证据（H9）
 
