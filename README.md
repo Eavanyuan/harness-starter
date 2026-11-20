@@ -7,7 +7,7 @@
 2. **换个人、换个模型，标准还是不是同一个**——纪律长在仓库里，不长在谁的记忆里。
 
 ```bash
-npm run gate          # 一条命令验全部：体检 + 架构 + 33 项测试套件 + 证据链
+npm run gate          # 一条命令验全部：体检 + 架构 + 28 项测试套件 + 证据链
 ```
 
 ---
@@ -18,7 +18,8 @@ npm run gate          # 一条命令验全部：体检 + 架构 + 33 项测试�
 
 ```
 init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-run 包装验证命令留证据
-→ CR（机器判据 + 语义审）→ harness close 收尾 → gate 全绿 → 提交入库
+→ 证据随代码提交入库（CI 只认 git 里的事实）→ CR（机器判据 + 语义审）
+→ harness close 收尾（自动跑 gate）
 ```
 
 核心纪律一句话：**验证命令必须用 `bash scripts/verify-run.sh <todo-id> -- <命令>` 包装**——裸跑的日志没有标准头，CI 一律判"未入库=没跑过"。
@@ -33,7 +34,7 @@ init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-ru
 
 1. **单一源 + 生成**——`agents/*.agent.md` 是 12 个 agent 的唯一事实源，`hooks/hooks.manifest.json` 是 hook 接线的唯一源；`.claude/`、`.zcode/`、`prompts/` 全是生成物，改源后 `build:agents` / `build:hooks` 重建，漂移在 CI 变成构建错误。
 2. **git 是唯一序列化点**——任务状态、证据日志、配置全部入库；常驻进程只读事件、只发通知，不成为第二个状态源。
-3. **票拟与批红分离**——机器和 AI 只出候选与证据（🔴 findings、决策选项）；处置与 approve 永远归人。
+3. **机器提议、人来拍板**——机器和 AI 只出候选与证据（🔴 findings、决策选项）；处置与 approve 永远归人。
 4. **fail-closed 判定，fail-open 观测**——门禁坏了就拒绝（exit 2），绝不放行；监控坏了只记日志，不绑架判定。
 5. **判不了的明说不判**——CI 只认 git 里的日志事实；"代码好不好"归人审，不造形式化断言装样子。
 
@@ -50,15 +51,15 @@ init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-ru
 ```text
 ┌─ 会话层（每个开发者的本地）────────────────────────────────────┐
 │ CLI（Claude Code / ZCode / 任意读 AGENTS.md 的客户端）× 12 agent │
-│  编码 coder · 审查 code-reviewer · 架构 architect · 需求/规格/  │
-│  评审/测试/分解/选型/原型/复盘/编排 …… 角色分工，全在 agents/     │
+│  编码·审查·架构·需求·规格·规格评审·测试·分解·选型·原型·       │
+│  复盘·编排 —— 12 个角色，全在 agents/                            │
 │ 本地三道门：guard_command（高危命令）guard_write（考卷区）      │
 │             guard_state（无证据不得标完成）                      │
 └───────────────┬────────────────────────────────────────────────┘
                 │ git —— 唯一序列化点
 ┌───────────────┴────────────────────────────────────────────────┐
 │ 边界层（MR = 个人纪律 → 团队纪律）                                │
-│ · GitLab CI：review-router → ai-review（L0 机器判据 + 语义审）   │
+│ · GitLab CI：review-router → ai-review（机器判据零 token + 语义审）│
 │              → ci-verify（证据链口径）红灯挡合入                  │
 │ · broker（事件桥）：webhook → 飞书卡片/摘要/账本，aging 升级      │
 │ · task-loop（自动化循环）：见下节                                 │
@@ -114,7 +115,7 @@ bash scripts/install-task-loop.sh .           # 装定时器（macOS/Linux 自�
 node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N≥30 且 0 误触发再真跑
 ```
 
-**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 47→50 条已知坑清单）。
+**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 50 条已知坑清单）。
 
 **旁挂模式**：harness 不进业务仓——装独立目录，`--root` 指向业务仓（TDasset 即此形态），证据链落 harness 仓。
 
@@ -126,7 +127,8 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 |---|---|---|
 | `agents/*.agent.md` | 12 个 agent 唯一源 | `build:agents` |
 | `hooks/hooks.manifest.json` | hook 接线唯一源 | `build:hooks` |
-| `hooks/guard_*.mjs` | 本地三道写门 | 同批补测试 |
+| `hooks/guard_*.mjs` | 本地三道门（命令/写入/状态） | 同批补测试 |
+| `scripts/init-harness.sh` / `harness-cli.mjs` | 建档与一键收尾入口 | — |
 | `scripts/verify-run.sh` | 证据包装（标准日志头 + 耗时基线比对） | — |
 | `scripts/task-loop.mjs` | 自动化循环 runner | `test:task-loop` |
 | `scripts/lib/headless-executor.mjs` | cli 执行器（worktree/hook 注入/影子） | 同上 |
@@ -152,7 +154,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 | `runtime.taskLoop.*` | rules | 轮询节拍 / 工作窗 / 草稿跳过 / 建议项开关 |
 | `runtime.headless.executor` | rules | 执行器（autoclaw/cli）+ envNotes 环境事实 |
 | `runtime.budget` | rules | maxRounds=3 / 活动墙钟 / 认领 TTL |
-| `runtime.feishu.*` | rules | 优先级字段 / 迭代前缀过滤 / OAuth |
+| `runtime.feishu.*` | rules | 优先级门控 / 迭代前缀过滤（凭据在 ~/.harness） |
 | `gates.blockedCommands` | config | 高危命令拦截表（带等价安全写法提示） |
 
 改动即生效的项（不用重装定时器）：pollSeconds、activeHours、executor、envNotes、fixSuggestions。
@@ -160,7 +162,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 ## 治理三件套
 
 1. **架构守护**：机器健身函数（每次 gate，report 模式不阻存量）+ architect agent（adr/tier-3 触发）+ 周期健康报告。PR 侧用 `--strict` 拦新增违规。
-2. **性能可见**：CR 反模式静态扫（零 token）→ verify-run 耗时 vs 基线四档比对 → F5 验证耗时趋势（增长>30% 黄牌）→ doctor 预算对照。
+2. **性能可见**：CR 反模式静态扫描（零 token）→ verify-run 耗时 vs 基线四档比对 → F5 验证耗时趋势（增长>30% 黄牌）→ doctor 预算对照。
 3. **CR 循环**：risk_tier≥MEDIUM 必须 `ai-review --type cr`（独立脚本读 git diff，会话隔离防自审），≤3 轮预算，超限升级 human_decision。
 
 ## 深入阅读
