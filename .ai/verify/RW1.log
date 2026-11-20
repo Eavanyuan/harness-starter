@@ -1,0 +1,17 @@
+# cmd: bash -c $'python3 - <<PY\nimport re, os\nmd = open("README.md").read()\nlinks = re.findall(r"\\]\\(([^)#http][^)]*)\\)", md)\nbad = [l for l in links if not os.path.exists(l)]\nprint("\347\233\270\345\257\271\351\223\276\346\216\245:", len(links), "\345\235\217\351\223\276:", bad if bad else "\346\227\240")\nassert not bad\n# \345\205\263\351\224\256\344\272\213\345\256\236\346\212\275\346\243\200\nfor kw in ["12", "executor", "activeHours", "F1-F5", "50 \346\235\241\345\267\262\347\237\245\345\235\221", "maxRounds=3", "verify-run"]:\n    assert kw in md, kw\nprint("\345\205\263\351\224\256\344\272\213\345\256\236\346\212\275\346\243\200\351\200\232\350\277\207\357\274\210agent \346\225\260/\346\211\247\350\241\214\345\231\250/\345\267\245\344\275\234\347\252\227/\345\201\245\350\272\253\345\207\275\346\225\260/\345\235\221\346\270\205\345\215\225/\351\242\204\347\256\227/\350\257\201\346\215\256\345\214\205\350\243\205\357\274\211")\nPY\nnpm run -s check:skills'
+# started: 2026-11-20T12:35:20Z
+# finished: 2026-11-20T12:35:21Z
+# exit_code: 0
+# commit: unknown
+# task: readme-rewrite
+# ---- output tail (last 200 lines) ----
+相对链接: 6 坏链: 无
+关键事实抽检通过（agent 数/执行器/工作窗/健身函数/坑清单/预算/证据包装）
+.skills 校验
+  ✓ backend     82 行  stack=backend  refs=2  v1.1.0
+  ✓ deployment 153 行  stack=harness  refs=2  v1.0.0
+  ✓ e2e         66 行  stack=frontend  refs=1  v1.0.0
+  ✓ frontend    70 行  stack=frontend  refs=1  v1.0.0
+  ✓ harness     79 行  stack=harness  refs=2  v1.1.0
+  required_skills 已声明：backend, harness
+  结果：5 个 skill 通过

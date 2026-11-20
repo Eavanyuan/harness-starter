@@ -1,133 +1,180 @@
 # harness-starter
 
-一套能让 **3 种 CLI、多个工程师** 共用同一条 AI 编码流水线的脚手架。
-解决两件事：**AI 的产出能不能被机器验收**，以及**换个人、换个模型，标准还是不是同一个**。
+一套让 **多个工程师、多种 CLI** 共用同一条 AI 编码流水线的脚手架。
+它只解决两件事：
 
-## 🚀 从这里开始
-
-**[guides/快速上手.md](guides/快速上手.md) —— 五步从零到 task-loop 跑起来**（小白照做就行）：
-
-1. 把 harness 装进你的项目（新项目 / 存量项目）
-2. 接 GitLab（PAT + Runner + Webhook）
-3. 接飞书项目（MCP + OAuth + 严重级词表）
-4. 起 task-loop（定时器 + 影子周 + 真跑）
-5. 日常使用
-
-
-## 旁挂模式（跨仓使用）
-
-harness 不必装进业务代码仓——装在独立目录、`--root` 指向代码仓即可（TDasset 即此形态）：
+1. **AI 的产出能不能被机器验收**——每个"做完了"都要有跑过命令的证据；
+2. **换个人、换个模型，标准还是不是同一个**——纪律长在仓库里，不长在谁的记忆里。
 
 ```bash
-node harness-starter/scripts/harness-cli.mjs init .          # harness 装自己仓
-# harness.config.json 的 projects.dir 用相对路径指向代码仓（如 ../TDasset），
-# lint/test 命令用 `cd ../TDasset && ...` 过去跑；证据链落 harness 仓（CI 口径"日志入库"不变）
-node scripts/task-loop.mjs --once --root .                    # 定时器也装在 harness 仓
+npm run gate          # 一条命令验全部：体检 + 架构 + 33 项测试套件 + 证据链
 ```
 
-适用：业务仓不想收 harness 文件（评审噪音/交付边界）、或多仓共用一套 harness。
-代价：本地 hooks 不挂业务仓（门禁后撤到 harness 仓会话与 CR）、跨仓引用要求两仓同机同层级。
+---
+
+## 30 秒理解
+
+一个任务的完整生命周期：
+
+```
+init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-run 包装验证命令留证据
+→ CR（机器判据 + 语义审）→ harness close 收尾 → gate 全绿 → 提交入库
+```
+
+核心纪律一句话：**验证命令必须用 `bash scripts/verify-run.sh <todo-id> -- <命令>` 包装**——裸跑的日志没有标准头，CI 一律判"未入库=没跑过"。
+
+这套东西全自动跑起来是什么样：task-loop 定时轮询飞书缺陷单和 GitLab MR，认领→归因→生成工单→执行器修复→推分支→等 CI→再归因，人只在升级点和批准点出现。
+
+---
+
+## 设计哲学
+
+**五条不变式**（改任何一层前先对照）：
+
+1. **单一源 + 生成**——`agents/*.agent.md` 是 12 个 agent 的唯一事实源，`hooks/hooks.manifest.json` 是 hook 接线的唯一源；`.claude/`、`.zcode/`、`prompts/` 全是生成物，改源后 `build:agents` / `build:hooks` 重建，漂移在 CI 变成构建错误。
+2. **git 是唯一序列化点**——任务状态、证据日志、配置全部入库；常驻进程只读事件、只发通知，不成为第二个状态源。
+3. **票拟与批红分离**——机器和 AI 只出候选与证据（🔴 findings、决策选项）；处置与 approve 永远归人。
+4. **fail-closed 判定，fail-open 观测**——门禁坏了就拒绝（exit 2），绝不放行；监控坏了只记日志，不绑架判定。
+5. **判不了的明说不判**——CI 只认 git 里的日志事实；"代码好不好"归人审，不造形式化断言装样子。
+
+**三条关键取舍**：
+
+- **约束代码化，知识留 prompt**："不许做什么"（hook + CI）要确定；"怎么做"（skill/agent 的 markdown）要人能读能改。
+- **按路径判，不按身份判**：hook 载荷里没有 agent 名；要真正收紧只有裁 `capabilities`（工具集）。
+- **提醒优先于阻断**：性能超线、架构黄牌是信号不是死刑——先可见，再行动，存量债不挡新开发。
+
+---
 
 ## 整体架构
 
 ```text
-┌───────────────────── 会话层（每个开发者的本地）─────────────────────┐
-│ CLI（Claude Code / ZCode / DeepSeek）× 11 个 agent                  │
-│ agent 唯一源 agents/*.agent.md → 生成三套产物，改一处处处同步        │
-│ 本地三道门：guard_command（高危命令 + Bash 写/读通道）              │
-│             guard_write（考卷区）guard_state（无证据不得标完成）    │
-│             ← verify-run 产证据；两道写门共用同一套路径判据          │
-└──────────────────────────┬─────────────────────────────────────────┘
-                           │ git —— 唯一序列化点
-                           │ （任务状态、证据日志、路由规则、代码全部入库）
-┌──────────────────────────┴─────────────────────────────────────────┐
-│ 边界层（MR = 个人纪律 → 团队纪律）                                   │
-│ · GitLab CI：review-router（变更→审核类型，零 LLM）                  │
-│              → ai-review（L0 机器判据零 token + 单发语义审）         │
-│              → ci-verify（证据链 CI 口径）—— 红灯即挡合入            │
-│ · broker（薄事件桥）：GitLab webhook → 飞书卡片票拟找人；            │
-│   方案 D 批红：人在 RS 开放问题行裁决 → push diff 落账（author 身份）│
-│   订阅三档投递（card/digest/ledger）+ aging 到点升级                 │
-│ · task-loop（本地循环执行器）：拉模型轮询打回评论/飞书缺陷单，        │
-│   git CAS 认领（跨机互斥）→ 会话打包（制品交接）→ CI 归因            │
-│   （指纹+merge-base 基线+三分流）→ 停点=引入失败0+人审有效            │
-└──────────────────────────┬─────────────────────────────────────────┘
-                           │ 观测面（fail-open：坏了不绑架判定）
-┌──────────────────────────┴─────────────────────────────────────────┐
-│ .ai/ledger：deny.jsonl（误拦率基线）· events.jsonl（路由/决策/token）│
-│ → ledger:report 复盘 · doctor 门禁在场性（runner/批准规则/MCP 数据档）│
-└────────────────────────────────────────────────────────────────────┘
-     横切：harness-cli 把以上整套装进任意存量/新项目（init/remove 安全内核）
+┌─ 会话层（每个开发者的本地）────────────────────────────────────┐
+│ CLI（Claude Code / ZCode / 任意读 AGENTS.md 的客户端）× 12 agent │
+│  编码 coder · 审查 code-reviewer · 架构 architect · 需求/规格/  │
+│  评审/测试/分解/选型/原型/复盘/编排 …… 角色分工，全在 agents/     │
+│ 本地三道门：guard_command（高危命令）guard_write（考卷区）      │
+│             guard_state（无证据不得标完成）                      │
+└───────────────┬────────────────────────────────────────────────┘
+                │ git —— 唯一序列化点
+┌───────────────┴────────────────────────────────────────────────┐
+│ 边界层（MR = 个人纪律 → 团队纪律）                                │
+│ · GitLab CI：review-router → ai-review（L0 机器判据 + 语义审）   │
+│              → ci-verify（证据链口径）红灯挡合入                  │
+│ · broker（事件桥）：webhook → 飞书卡片/摘要/账本，aging 升级      │
+│ · task-loop（自动化循环）：见下节                                 │
+└───────────────┬────────────────────────────────────────────────┘
+┌───────────────┴────────────────────────────────────────────────┐
+│ 观测与治理                                                       │
+│ · .ai/ledger 事件账本 → ledger:report 复盘                       │
+│ · doctor 体检：配置有没有、接线对不对、性能预算、僵尸任务         │
+│ · architect-check F1-F5 架构健身函数（模块边界/依赖/复杂度/      │
+│   配置面/验证耗时趋势）· verify-run 耗时基线 · 性能预算           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**五条架构不变式**（改任何一层前先对照）：
+## task-loop：自动化修复循环
 
-1. **单一源 + 生成**——`agents/` 与 `hooks/hooks.manifest.json` 是唯一事实源，三套 CLI 产物全部生成，`--check` 进 CI 防漂移。
-2. **git 是唯一序列化点**——一切状态变更走正式提交；常驻服务（broker/task-loop）只读事件、只发通知，不成为第二个状态源。
-3. **票拟与批红分离**——机器与 AI 只出候选和证据（🔴 findings、决策卡选项），处置与 approve 永远归对应角色的人。
-4. **fail-closed 判定、fail-open 观测**——门禁失败绝不放行（规则坏 → exit 2）；观测失败只记 stderr 不影响判定。
-5. **判不了的明说不判**——本地口径认 mtime、CI 口径只认 git 事实；语义质量归人审，不造形式化断言装样子。
+监控端与执行端**解耦**，靠工单文件（`pack-*.md`）做宿主无关协议：
 
-## 设计取舍
-
-1. **单一源 + 生成**：3 CLI × 11 agent = 33 份文件，手写三个月后必然漂移——生成 + CI 漂移检测变成构建期错误。
-2. **约束代码化，知识留 prompt**："不许做什么"要确定（hook + CI）；"怎么做"要人能读能改（markdown）。
-3. **不追求全自动门禁**：`feature_complete` / `quality_clean` 机器判不了；门禁守最低限度的诚实，不守正确性。
-4. **skill 两层、单文件 ≤200 行**：让"是否真的加载过"可被检验。
-5. **按路径判，不按身份判**：PreToolUse 载荷里没有 agent 名；真收紧只有裁 `capabilities`。
-6. **判不了的就不假装**：CI 判 mtime 会把合规 PR 判红；两边共用校验库但口径分开。
-
-## 目录速览
-
-| 目录 | 是什么 | 改不改 |
-|---|---|---|
-| `agents/*.agent.md` | 11 个 agent 唯一事实源 | ✅ 改后跑 `build:agents` |
-| `harness.rules.json` | 审核路由+订阅+运行时配置 | ✅ 改数据不改代码 |
-| `harness.config.json` | CLI 能力映射+高危命令 | ⚠️ 考卷区（需放行条） |
-| `AGENTS.md` | 常驻规则（所有 CLI 都读） | ✅ |
-| `.skills/` | 领域知识（≤200 行两层深） | ✅ |
-| `scripts/` | 全部工具（17 脚本 + 23 共享库） | ✅ 同批配测试 |
-| `hooks/` | 三道门 + 校验核心 | ⚠️ 考卷区（需放行条） |
-| `test/` | 25 组自测 + e2e | ✅ |
-| `templates/` | 9 张文档模板 | ⚠️ 考卷区（需放行条） |
-| `.ai/` | 任务状态 + 证据 + 观测账本 | 状态按任务写；`verify/*.log` 入库 |
-| `.claude/ .zcode/ prompts/` | 生成物 | ❌ 不要手改 |
-| `deploy/task-loop/` | 定时器模板 + CI 参考配置 | ✅ 部署时抄 |
-
-## 常用命令
-
-```bash
-npm run doctor          # 体检（含门禁在场性）
-npm run gate            # 全量自检（25 组，必须全绿）
-npm run verify:state    # 证据链校验（CI 口径）
-npm run ledger:report   # 拦截面统计
-npm run e2e             # L2：真 GitLab 端到端
-
-bash scripts/init-harness.sh <slug> [S|M|L|XL] [--type feature|change|bugfix] [--related <slug或feishu:单号>]
-bash scripts/verify-run.sh [--task <任务名>] <todo-id> -- <命令>
-node scripts/task-loop.mjs --once [--dry-run]
-bash scripts/install-task-loop.sh <仓库> [--print|--status|--uninstall]
+```
+launchd/systemd 心跳 → task-loop.mjs（节流：pollSeconds / activeHours / OFF 哨兵）
+  → 拉飞书单（优先级门控 + 迭代前缀过滤 + 信息完备性检查）
+  → 拉 GitLab MR（打回评论 / CI 红归因：引入 vs 基线同款）
+  → CAS 认领（跨机互斥）→ 生成工单落盘
+  → 执行器取工单：修 → 本地复现优先（envNotes 环境事实随工单）→ 推分支 → 等 CI → 下一轮
+  → 预算约束（maxRounds=3）超限升级给人
 ```
 
-## CLI 接法
+**执行器可插拔**（ADR-22）：`runtime.headless.executor.kind`
 
-| CLI | 形态 | 注意 |
+| kind | 机制 | 适用 |
 |---|---|---|
-| Claude Code | subagent（`.claude/` 生成） | clone 即用 |
-| ZCode | subagent（`.zcode/` 生成） | 首次需确认信任工作区 hook |
-| DeepSeek 兼容端点 | subagent（复用 `.claude/`） | 设 `ANTHROPIC_BASE_URL` |
-| DeepSeek 独立 CLI | prompt-only（`prompts/`） | **无 hook**，只有 CI 兜底 |
+| `autoclaw`（缺省） | 宿主定时会话轮询工单 | 已有 AutoClaw 的机器 |
+| `cli` | runner 认领即起无头 CLI 会话（worktree + hook 注入 + 产物验收 + 影子模式） | 任意机器；零客户端通知、事件驱动 |
 
 ---
 
-## 文档索引
+## 快速开始
 
-| 文档 | 给谁看 |
-|---|---|
-| **[guides/快速上手.md](guides/快速上手.md)** | 第一次用的人（五步跑通） |
-| [guides/审核与通知自动化.md](guides/审核与通知自动化.md) | 配 broker/飞书/CI 的人 |
-| [guides/多人协作最佳实践.md](guides/多人协作最佳实践.md) | 团队负责人 |
-| [guides/需求变更与Bug修复.md](guides/需求变更与Bug修复.md) | 走 change/bugfix 流程的人 |
-| `docs/06-reference/state-fields.md` | 想了解 state.json 字段的人 |
-| `docs/06-reference/config-keys.md` | 想查配置键 / 默认值 / 消费方的人 |
-| `docs/06-reference/adr/ADR-010-task-loop.md` | 想了解 task-loop 架构裁决的人 |
+**路径一：本地开发（最小集）**
+
+```bash
+bash scripts/init-harness.sh <slug> S        # 建任务档案（feature）
+# …写代码，改前先 node scripts/resolve-skills.mjs --diff 加载对应 skill…
+bash scripts/verify-run.sh --task <slug> <id> -- <验证命令>   # 证据
+node scripts/harness-cli.mjs close . <slug> --by "你的名字"    # 收尾（gate 自跑）
+```
+
+**路径二：全自动 task-loop**
+
+```bash
+node scripts/feishu-auth.mjs login            # 飞书 OAuth（可选）
+# ~/.harness/task-loop/task-loop.env 放 GITLAB_URL/TOKEN（0600）
+bash scripts/install-task-loop.sh .           # 装定时器（macOS/Linux 自适应）
+node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N≥30 且 0 误触发再真跑
+```
+
+**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 47→50 条已知坑清单）。
+
+**旁挂模式**：harness 不进业务仓——装独立目录，`--root` 指向业务仓（TDasset 即此形态），证据链落 harness 仓。
+
+---
+
+## 模块地图
+
+| 目录/文件 | 是什么 | 改后要跑 |
+|---|---|---|
+| `agents/*.agent.md` | 12 个 agent 唯一源 | `build:agents` |
+| `hooks/hooks.manifest.json` | hook 接线唯一源 | `build:hooks` |
+| `hooks/guard_*.mjs` | 本地三道写门 | 同批补测试 |
+| `scripts/verify-run.sh` | 证据包装（标准日志头 + 耗时基线比对） | — |
+| `scripts/task-loop.mjs` | 自动化循环 runner | `test:task-loop` |
+| `scripts/lib/headless-executor.mjs` | cli 执行器（worktree/hook 注入/影子） | 同上 |
+| `scripts/doctor.mjs` | 配置体检（配了没、生效没） | `test:doctor-gates` |
+| `scripts/architect-check.mjs` | 架构健身函数 F1-F5（report/strict 双模式） | `test:architect` |
+| `scripts/ai-review.mjs` | CR 机器判据 + 语义审（读 diff 不读记忆，禁自审） | `test:ai-review` |
+| `.skills/<stack>/SKILL.md` | 各栈硬规则（Stage 0 强制读） | `check:skills` |
+| `templates/` | RS/ADR/CR/FS 文档模板 | — |
+| `test/`（28 套件） | 全部门禁与流程的测试 | `npm run gate` |
+| `.ai/tasks/<slug>/state.json` | 任务唯一进度源（不认会话记忆） | `verify:state` |
+| `retro/` | 每次任务的复盘（经验沉淀第一站） | `test:retro` |
+
+## 配置速查
+
+两个文件分工：**`harness.config.json` = 部署事实**（这个仓是谁、栈是什么、阈值多少），**`harness.rules.json` = 行为规则**（审查判据、runtime、通知）。
+
+| 常用配置 | 位置 | 作用 |
+|---|---|---|
+| `projects[]` | config | 栈目录与 lint/test 命令 |
+| `architecture.*` | config | F1-F5 阈值（黄 2000/红 3000 行等） |
+| `performance.*` | config | 性能预算（测试套件 300s / gate 600s） |
+| `reviews.*.machine_checks` | rules | L0 机器判据（含 `perf_anti_patterns`） |
+| `runtime.taskLoop.*` | rules | 轮询节拍 / 工作窗 / 草稿跳过 / 建议项开关 |
+| `runtime.headless.executor` | rules | 执行器（autoclaw/cli）+ envNotes 环境事实 |
+| `runtime.budget` | rules | maxRounds=3 / 活动墙钟 / 认领 TTL |
+| `runtime.feishu.*` | rules | 优先级字段 / 迭代前缀过滤 / OAuth |
+| `gates.blockedCommands` | config | 高危命令拦截表（带等价安全写法提示） |
+
+改动即生效的项（不用重装定时器）：pollSeconds、activeHours、executor、envNotes、fixSuggestions。
+
+## 治理三件套
+
+1. **架构守护**：机器健身函数（每次 gate，report 模式不阻存量）+ architect agent（adr/tier-3 触发）+ 周期健康报告。PR 侧用 `--strict` 拦新增违规。
+2. **性能可见**：CR 反模式静态扫（零 token）→ verify-run 耗时 vs 基线四档比对 → F5 验证耗时趋势（增长>30% 黄牌）→ doctor 预算对照。
+3. **CR 循环**：risk_tier≥MEDIUM 必须 `ai-review --type cr`（独立脚本读 git diff，会话隔离防自审），≤3 轮预算，超限升级 human_decision。
+
+## 深入阅读
+
+- [guides/快速上手.md](guides/快速上手.md) —— 五步从零到 task-loop
+- [docs/01-requirements/](docs/01-requirements/) —— 需求规格（每特性一份 RS）
+- [docs/03-decisions/](docs/03-decisions/) —— 技术决策记录（ADR）
+- [retro/](retro/) —— 复盘全档（踩坑第一现场）
+- [.skills/deployment/references/pitfall-checklist.md](.skills/deployment/references/pitfall-checklist.md) —— 50 条已知坑（跨项目可迁移）
+- [AGENTS.md](AGENTS.md) —— 给所有 CLI 的常驻规则（路由表 + 红线）
+
+## 红线（不许做）
+
+- 不删 `verify` 字段、不改 `status` 枚举、不手改生成物与考卷区（`hooks/`、`templates/`、`agents/`、两个配置）
+- 不 `git push --force`（用 `--force-with-lease`）、不 `rm -rf /`、不读 `.env`、不管道执行远程脚本
+- 不绕过影子周直接真跑；凭据只进 0600 文件（`~/.harness/`），绝不进 git
+- agent 代提交必须显式 `GIT_AUTHOR_*/GIT_COMMITTER_*` 指向本人

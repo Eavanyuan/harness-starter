@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "readme-rewrite",
+    "task_type": "change",
+    "related_task": "harness-doc-gate",
+    "remote_id": null,
+    "baseline": "8540f14",
+    "affected_ids": [
+      "README.md（全量重写）"
+    ],
+    "change_tier": 1,
+    "created_at": "2026-11-20T12:34:31Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "README 本身就是交付物"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "需求即用户指令（简洁易懂/架构模块/设计哲学/最新功能）"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "纯文档，无决策点"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/readme-rewrite-收尾.md"
+  },
+  "todos": [
+    {
+      "id": "RW1",
+      "title": "README 全量重写：审计最新功能后按新架构重写（哲学/架构/task-loop 双执行器/模块地图/配置速查/治理三件套/红线）",
+      "status": "completed",
+      "files": [
+        "README.md"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/RW1.log",
+        "command": "链接完整性 + 关键事实抽检 + check:skills"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "N/A（文档）",
+        "tests": "相对链接零坏链；7 项关键事实抽检过；check:skills 绿",
+        "feature_complete": "覆盖 12 agents/双执行器/activeHours/envNotes/性能四卡点/architect 三层/50 坑/旁挂模式",
+        "quality_clean": "133→200 行内，无配置内部转储，速查表指向详细文档"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-readme-rewrite",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "pending",
+      "files": [],
+      "verify": null,
+      "ooda_stage": "act",
+      "audit": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}
