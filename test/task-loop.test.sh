@@ -2427,3 +2427,34 @@ node "$HERE/scripts/task-loop.mjs" --once --root "$TMP/repo" > "$TMP/out13.txt" 
 check "窗外 → exit 0（跳过不是故障）" "0" "$?"
 grep -q "工作时间窗外" "$TMP/out13.txt" && r=0 || r=1
 check "说清是窗外的原因（不是静默跳过）" "0" "$r"
+
+echo "== 5c-sex. 识别器扩展（!1972 五 job 全漏提取的形态）：CI shell 错 / runner stderr / surefire 汇总 =="
+node --input-type=module -e '
+import { ciFailure, extractCiFailures } from "'"$HERE"'/scripts/lib/ci-failures.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+// CI shell 级
+const s1 = ciFailure("ERROR: primary en E2E suite failed with exit 1.");
+must(s1 && s1.kind === "shell" && /E2E suite failed/.test(s1.fingerprint), "ci-shell");
+const s2 = ciFailure("ERROR: Job failed: exit status 1");
+must(s2 && s2.kind === "shell", "ci-job-failed");
+// runner stderr（01E 前缀 + Error/Exception/FAIL）
+const e1 = ciFailure("01E Error: 免费许可激活接口失败: 500");
+must(e1 && e1.kind === "stderr" && /许可激活/.test(e1.fingerprint), "runner-stderr");
+const e2 = ciFailure("01E Failed to load resource types Error: connection refused");
+must(e2 && e2.kind === "stderr", "runner-stderr-2");
+// 前缀变体（无 01E 也有纯 Error: 开头的）
+const e3 = ciFailure("Error: some test assertion failed");
+must(e3 && e3.kind === "stderr", "bare-error");
+// surefire 汇总行（非零失败）
+const sf = ciFailure("Tests run: 10, Failures: 3, Errors: 0, Skipped: 0");
+must(sf && sf.kind === "test" && /failures-3/.test(sf.fingerprint), "surefire-summary");
+// 零失败汇总行不命中
+const sf0 = ciFailure("Tests run: 10, Failures: 0, Errors: 0, Skipped: 0");
+must(!sf0, "surefire-zero-no");
+// INFO 行不命中（防误报）
+must(!ciFailure("[INFO] Tests run: 10, Failures: 0"), "info-no");
+must(!ciFailure("some random text with ERROR in middle of sentence"), "mid-line-no");
+console.log("sex-ok");
+' > "$TMP/csex.txt" 2>&1
+grep -q "^sex-ok$" "$TMP/csex.txt" && r=0 || { cat "$TMP/csex.txt"; r=1; }
+check "识别器扩展：CI shell / runner stderr（含 01E 前缀）/ surefire 非零汇总 / 防误报" "0" "$r"

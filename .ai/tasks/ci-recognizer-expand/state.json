@@ -1,0 +1,136 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ci-recognizer-expand",
+    "task_type": "change",
+    "related_task": "ci-fail-trigger",
+    "remote_id": null,
+    "baseline": "1e73416",
+    "affected_ids": [
+      "scripts/lib/ci-failures.mjs（CI_SHELL_ERR + RUNNER_STDERR + SUREFIRE_SUMMARY 三识别器）",
+      "test/task-loop.test.sh（5c-sex 八断言）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-20T12:58:07Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "识别器扩展：!1972 五 job 全漏提取（traces 下载成功但格式不认）——加三类新形态"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-20T04:00:00Z",
+      "exit_at": "2026-11-20T04:05:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-20T04:05:00Z",
+      "exited_at": "2026-11-20T04:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：实测形态直推",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-20T04:05:00Z",
+      "exited_at": "2026-11-20T04:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：纯 lib 扩展",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-20T04:05:00Z",
+      "exited_at": "2026-11-20T04:05:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-20T04:05:00Z",
+      "exited_at": "2026-11-20T04:30:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-20T04:30:00Z",
+      "exited_at": "2026-11-20T04:35:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "self-review + !1972 真实 trace 验证（0→18 failures）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-20T04:35:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {},
+  "todos": [
+    {
+      "id": "CRX1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "识别器三类新形态：CI_SHELL_ERR（ERROR: … exit N——GitLab CI shell 级失败，大写锚定防混大小写误入）+ RUNNER_STDERR（01E/Error:/Exception/FAIL/AssertionError 开头——playwright/vitest 输出）+ SUREFIRE_SUMMARY（Tests run: N, Failures: [1-9] 非零汇总）",
+      "files": [
+        "scripts/lib/ci-failures.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "task-loop 130 全绿（+5c-sex 八断言）+ !1972 真实 trace 验证 0→18 failures",
+        "feature_complete": "用户指出的\"多个并行 job 错误没拿到全部错日志\"闭合：traces 本来就下载了，识别器现在能从 shell/stderr/surefire 三种格式提取失败行",
+        "quality_clean": "CI_SHELL_ERR 大写锚定（i 去掉）防混大小写 Error: 误入；RUNNER_STDERR 10 字最小长度防短词误报；零失败汇总/INFO 行不命中"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CRX1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

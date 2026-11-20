@@ -40,6 +40,13 @@ const SUREFIRE = /^\[ERROR\]\s+([A-Za-z_][\w$]*(?:\.[A-Za-z_][\w$]*)+)\.(\w+):\d
 /** 汇总/噪声行：不是失败身份 */
 const NOISE = /^\[ERROR\]\s+(?:Tests run:|COMPILATION ERROR|BUILD FAILURE|Failures?:|Errors?:|\^+$|->)/i;
 const PYTEST = /^FAILED\s+(\S+?::\S+)/;
+// ---- 2026-11-20 ci-recognizer-expand（!1972 实测五 job 全漏提取——traces 已下载但识别器不认格式） ----
+// GitLab CI shell 级失败：`ERROR: primary en E2E suite failed with exit 1.` / `ERROR: Job failed: exit status 1`
+const CI_SHELL_ERR = /^ERROR:\s+(.+?)(?:\s+with\s+exit\s+\d+|\s*:\s*exit\s+status\s+\d+)?[.\s]*$/; // 大写锚定：混大小写 Error: 归 RUNNER_STDERR
+// GitLab runner stderr 段（`01E` 前缀 + Error/Exception/FAIL 内容——!1972 的 playwright/vitest 输出全是这种）
+const RUNNER_STDERR = /^(?:\d{2}[EO])?\s*((?:Error|Exception|FAIL(?:ED)?|AssertionError|TimeoutError)[\s:].{10,})$/i;
+// surefire 汇总行带非零失败：`Tests run: 10, Failures: 3, ...`（已有 surefire 明细行，这里兜汇总行）
+const SUREFIRE_SUMMARY = /^Tests run:\s+\d+,\s+Failures:\s+([1-9]\d*)/;
 const GO = /^--- FAIL: (\S+)/;
 const JEST = /^[✕x]\s+(.{4,})$/;
 
@@ -67,6 +74,13 @@ export function ciFailure(line) {
   }
   m = n.match(PYTEST);
   if (m) return { fingerprint: m[1].slice(0, 120), kind: 'test', body: n };
+  // !1972 三类新形态
+  m = n.match(CI_SHELL_ERR);
+  if (m && m[1] && m[1].length > 5) return { fingerprint: m[1].slice(0, 100), kind: 'shell', body: n };
+  m = n.match(RUNNER_STDERR);
+  if (m && m[1]) return { fingerprint: m[1].replace(/\s+/g, ' ').slice(0, 100), kind: 'stderr', body: n };
+  m = n.match(SUREFIRE_SUMMARY);
+  if (m) return { fingerprint: `surefire-failures-${m[1]}`, kind: 'test', body: n };
   m = n.match(GO);
   if (m) return { fingerprint: m[1], kind: 'test', body: n };
   m = n.match(JEST);
