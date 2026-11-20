@@ -1,0 +1,8 @@
+# cmd: python3 /tmp/rw3check.py
+# started: 2026-11-20T12:56:13Z
+# finished: 2026-11-20T12:56:13Z
+# exit_code: 0
+# commit: unknown
+# task: readme-rewrite
+# ---- output tail (last 200 lines) ----
+RW3 核验通过：图改缩进树/L0 清零/黑话清零/前置补齐

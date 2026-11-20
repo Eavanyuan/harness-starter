@@ -40,7 +40,7 @@ init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-ru
 
 **三条关键取舍**：
 
-- **约束代码化，知识留 prompt**："不许做什么"（hook + CI）要确定；"怎么做"（skill/agent 的 markdown）要人能读能改。
+- **约束代码化，方法留文档**："不许做什么"（hook + CI）必须确定；"怎么做"（agent / skill 的 markdown）必须人能读能改。
 - **按路径判，不按身份判**：hook 载荷里没有 agent 名；要真正收紧只有裁 `capabilities`（工具集）。
 - **提醒优先于阻断**：性能超线、架构黄牌是信号不是死刑——先可见，再行动，存量债不挡新开发。
 
@@ -49,28 +49,28 @@ init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-ru
 ## 整体架构
 
 ```text
-┌─ 会话层（每个开发者的本地）────────────────────────────────────┐
-│ CLI（Claude Code / ZCode / 任意读 AGENTS.md 的客户端）× 12 agent │
-│  编码·审查·架构·需求·规格·规格评审·测试·分解·选型·原型·       │
-│  复盘·编排 —— 12 个角色，全在 agents/                            │
-│ 本地三道门：guard_command（高危命令）guard_write（考卷区）      │
-│             guard_state（无证据不得标完成）                      │
-└───────────────┬────────────────────────────────────────────────┘
-                │ git —— 唯一序列化点
-┌───────────────┴────────────────────────────────────────────────┐
-│ 边界层（MR = 个人纪律 → 团队纪律）                                │
-│ · GitLab CI：review-router → ai-review（机器判据零 token + 语义审）│
-│              → ci-verify（证据链口径）红灯挡合入                  │
-│ · broker（事件桥）：webhook → 飞书卡片/摘要/账本，aging 升级      │
-│ · task-loop（自动化循环）：见下节                                 │
-└───────────────┬────────────────────────────────────────────────┘
-┌───────────────┴────────────────────────────────────────────────┐
-│ 观测与治理                                                       │
-│ · .ai/ledger 事件账本 → ledger:report 复盘                       │
-│ · doctor 体检：配置有没有、接线对不对、性能预算、僵尸任务         │
-│ · architect-check F1-F5 架构健身函数（模块边界/依赖/复杂度/      │
-│   配置面/验证耗时趋势）· verify-run 耗时基线 · 性能预算           │
-└─────────────────────────────────────────────────────────────────┘
+会话层（每个开发者的本地）
+├─ CLI：Claude Code / ZCode / 任何读 AGENTS.md 的客户端
+├─ 12 个 agent（全在 agents/）：编码 · 审查 · 架构 · 需求 · 规格 ·
+│  规格评审 · 测试 · 分解 · 选型 · 原型 · 复盘 · 编排
+└─ 本地三道门
+   ├─ guard_command —— 高危命令拦截
+   ├─ guard_write   —— 考卷区 / 生成物 / 凭据路径
+   └─ guard_state   —— 无证据不得标完成
+        │
+        ▼  git = 唯一序列化点：任务状态、证据日志、配置、代码全部入库
+        │
+边界层（MR：个人纪律 → 团队纪律）
+├─ GitLab CI：review-router → ai-review（机器判据零 token + 语义审）
+│              → ci-verify（证据链口径）—— 红灯挡合入
+├─ broker：GitLab webhook → 飞书卡片 / 摘要 / 账本，aging 到点升级
+└─ task-loop：自动化修复循环（见下节）
+        │
+观测与治理
+├─ .ai/ledger 事件账本 → ledger:report 复盘
+├─ doctor 体检：配置在场性、接线、性能预算、僵尸任务
+└─ architect-check F1-F5：模块边界 / 依赖方向 / 复杂度预算 / 配置面 /
+   验证耗时趋势（性能基线与预算见「治理三件套」）
 ```
 
 ## task-loop：自动化修复循环
@@ -97,6 +97,8 @@ launchd/systemd 心跳 → task-loop.mjs（节流：pollSeconds / activeHours / 
 
 ## 快速开始
 
+前置：Node.js ≥ 20、git。本仓就是脚手架本体——clone 后即可用；装进业务仓见路径三。
+
 **路径一：本地开发（最小集）**
 
 ```bash
@@ -109,7 +111,7 @@ node scripts/harness-cli.mjs close . <slug> --by "你的名字"    # 收尾（ga
 **路径二：全自动 task-loop**
 
 ```bash
-node scripts/feishu-auth.mjs login            # 飞书 OAuth（可选）
+node scripts/feishu-auth.mjs login            # 飞书 OAuth（不接飞书可跳过，只跑 GitLab）
 # ~/.harness/task-loop/task-loop.env 放 GITLAB_URL/TOKEN（0600）
 bash scripts/install-task-loop.sh .           # 装定时器（macOS/Linux 自适应）
 node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N≥30 且 0 误触发再真跑
@@ -150,7 +152,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 | `projects[]` | config | 栈目录与 lint/test 命令 |
 | `architecture.*` | config | F1-F5 阈值（黄 2000/红 3000 行等） |
 | `performance.*` | config | 性能预算（测试套件 300s / gate 600s） |
-| `reviews.*.machine_checks` | rules | L0 机器判据（含 `perf_anti_patterns`） |
+| `reviews.*.machine_checks` | rules | 机器判据（含 `perf_anti_patterns` 性能反模式） |
 | `runtime.taskLoop.*` | rules | 轮询节拍 / 工作窗 / 草稿跳过 / 建议项开关 |
 | `runtime.headless.executor` | rules | 执行器（autoclaw/cli）+ envNotes 环境事实 |
 | `runtime.budget` | rules | maxRounds=3 / 活动墙钟 / 认领 TTL |
@@ -176,7 +178,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 
 ## 红线（不许做）
 
-- 不删 `verify` 字段、不改 `status` 枚举、不手改生成物与考卷区（`hooks/`、`templates/`、`agents/`、两个配置）
+- 不删 `verify` 字段、不改 `status` 枚举、不手改生成物（`.claude/`、`.zcode/`、`prompts/`）与考卷区（`hooks/`、`templates/`、`agents/`、`harness.config.json`、`harness.rules.json`）
 - 不 `git push --force`（用 `--force-with-lease`）、不 `rm -rf /`、不读 `.env`、不管道执行远程脚本
 - 不绕过影子周直接真跑；凭据只进 0600 文件（`~/.harness/`），绝不进 git
 - agent 代提交必须显式 `GIT_AUTHOR_*/GIT_COMMITTER_*` 指向本人
