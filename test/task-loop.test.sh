@@ -83,7 +83,34 @@ git -C "$CLIFIX/repo" config user.email t@t; git -C "$CLIFIX/repo" config user.n
 printf 'base\n' > "$CLIFIX/repo/f.txt"; git -C "$CLIFIX/repo" add f.txt; git -C "$CLIFIX/repo" commit -qm base
 git -C "$CLIFIX/repo" push -q origin master 2>/dev/null || git -C "$CLIFIX/repo" push -q origin main
 BRANCH=$(git -C "$CLIFIX/repo" branch --show-current)
-cp /tmp/fake-cli.sh "$CLIFIX/fake-cli.sh"
+# 测试替身自生成（test-selfcontain 2026-11-21）：不依赖 /tmp——重启即清，外部文件=测试在别的机器/重启后必红
+cat > "$TMP/fake-cli.sh" <<'FAKECLI'
+#!/usr/bin/env bash
+# T5 测试替身：产物目录/worktree 优先取环境变量（确定），退回 prompt 解析（尽力）。
+# FAKE_MODE=ok(默认)|noart|boom
+PROMPT="$(cat)"
+SESS_DIR="${T5_SESS_DIR:-$(printf '%s' "$PROMPT" | grep -o '产物目录（[^）]*）：[^ ]*' | sed 's/.*：//')}"
+WT="${T5_WT:-$(printf '%s' "$PROMPT" | grep -o '工作目录（[^）]*）：[^ ]*' | sed 's/.*：//')}"
+if [ "$FAKE_MODE" = "boom" ]; then exit 3; fi
+if [ "$FAKE_MODE" != "noart" ] && [ -n "$SESS_DIR" ]; then
+  mkdir -p "$SESS_DIR"
+  printf '[]' > "$SESS_DIR/todo.json"
+  printf '[]' > "$SESS_DIR/acks.json"
+  printf '[]' > "$SESS_DIR/resolves.json"
+  printf '# round-1
+fake session
+' > "$SESS_DIR/round-1.md"
+fi
+if [ -n "$WT" ] && [ -d "$WT" ]; then
+  git -C "$WT" config user.email t@t && git -C "$WT" config user.name t
+  printf 'fix
+' > "$WT/fake-fix.txt"
+  git -C "$WT" add fake-fix.txt && git -C "$WT" commit -qm "fix: fake"
+fi
+exit 0
+FAKECLI
+chmod +x "$TMP/fake-cli.sh"
+cp "$TMP/fake-cli.sh" "$CLIFIX/fake-cli.sh"
 cat > "$CLIFIX/run-t5.mjs" <<'MJS'
 const here = process.argv[2], repoDir = process.argv[3], mode = process.argv[4], startRef = process.argv[5];
 const { runCliExecutor } = await import(here + "/scripts/lib/headless-executor.mjs");
@@ -135,7 +162,7 @@ git clone -q "$TL5C/r.git" "$TL5C/w" 2>/dev/null
   && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
   && mkdir -p .claude && cp "$HERE/.claude/settings.json" .claude/ \
   && git add -A && git commit -qm base && git push -q origin HEAD:main )
-cp /tmp/fake-cli.sh "$TL5C/fake-cli.sh"
+cp "$TMP/fake-cli.sh" "$TL5C/fake-cli.sh"
 node --input-type=module -e '
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
