@@ -636,6 +636,38 @@ check "只有 mtime 变（内容无差异）不算改动" 0 "$(cl --local)"
 printf 'changed\n' >> "$TMP/clone/src/A.java"
 check "真改了源码没重跑 → 照样拦住" 1 "$(cl --local)"
 
+echo "== 6z. 旁挂边界：声明的文件在仓外（../目标仓）——ci 降提示不拦（CI 红实测 2026-11-21） =="
+SC="$(mktemp -d)"; git init -q "$SC"
+cd "$SC" || exit 1
+git config user.email t@t; git config user.name t
+# ci-verify 的 ROOT 写死为脚本自身位置——夹具必须带脚本副本（同 17-24 行整树复制的原因）
+if ! ( cd "$HERE" && tar -cf - scripts hooks .ai ) | ( cd "$SC" && tar -xf - ); then
+  echo "sidecar fixture 建不起来" >&2; exit 1
+fi
+mkdir -p .ai/verify .ai/tasks/demo
+rm -rf .ai/tasks/* && mkdir -p .ai/tasks/demo
+mksc() { node -e '
+  const fs=require("fs");const p=".ai/tasks/demo/state.json";
+  const s={stage:"done",meta:{},gate_result:{stage:"done",last_check:"2026-01-01T00:00:00Z",checks:[{name:"retro_doc",pass:true}]},
+    todos:[{id:process.argv[1],status:"completed",files:JSON.parse(process.argv[2]),
+      verify:{log_path:".ai/verify/SC1.log"},ooda_stage:"audit",
+      audit:{compile:"PASS",tests:"ok",feature_complete:"ok",quality_clean:"ok"}}]};
+  fs.writeFileSync(p, JSON.stringify(s,null,2));' "$1" "$2"; }
+printf '# started: 2026-01-01T00:00:00Z\n# finished: 2026-01-01T00:00:01Z\n# exit_code: 0\n# task: demo\n' > .ai/verify/SC1.log
+# a) 仓外声明（旁挂目标仓）→ 放行
+mksc SC1 '["../TDC-Registering/x/src/A.java"]'
+git add -A && git commit -qm sidecar-out
+code=0; node "$SC/scripts/ci-verify.mjs" >/dev/null 2>"$SC/err" || code=$?
+check "仓外声明文件 → ci 放行（无从核实不硬判）" 0 "$code"
+# b) 仓内幽灵文件 → 照旧拦（旁挂豁免不是全免）
+mksc SC2 '["src/不存在的文件.java"]'
+git add -A && git commit -qm phantom-in
+code=0; node "$SC/scripts/ci-verify.mjs" >/dev/null 2>"$SC/err" || code=$?
+check "仓内幽灵文件 → 照旧拦" 1 "$code"
+grep -q "声明的源码文件不存在" "$SC/err" && r=0 || r=1
+check "点名幽灵文件" 0 "$r"
+cd "$HERE" >/dev/null; rm -rf "$SC"
+
 echo
 printf "结果：%d 通过，%d 失败\n" "$pass" "$fail"
 [ "$fail" -eq 0 ] || exit 1

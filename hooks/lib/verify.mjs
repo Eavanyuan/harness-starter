@@ -411,9 +411,18 @@ export function checkVerify(todo, repo, opts = {}) {
 
   if (mode === 'ci') {
     // CI 只认 git 里存在的事实：文件在不在、日志进没进版本库。
-    const missing = declared.filter((f) => !existsSync(resolve(repo, f)));
+    // 旁挂边界（2026-11-21 CI 红实测）：声明的文件在仓外（../TDC-*/...）是旁挂模式的合法形态——
+    // 约束 A 决定目标仓代码永不进本仓，CI checkout 里必然不存在。判"不存在=红"会把所有旁挂任务
+    // 挡死在 CI。仓外文件本仓无从核实，降为提示；仓内文件照旧硬判。
+    const repoRoot = resolve(repo);
+    const outside = declared.filter((f) => !resolve(repoRoot, f).startsWith(repoRoot + sep));
+    const inside = declared.filter((f) => resolve(repoRoot, f).startsWith(repoRoot + sep));
+    const missing = inside.filter((f) => !existsSync(resolve(repo, f)));
     if (missing.length) {
       return { ok: false, reason: `声明的源码文件不存在：${missing.slice(0, 3).join(', ')}` };
+    }
+    if (outside.length) {
+      console.log(`[verify] 提示（不判失败）：${outside.length} 个声明文件在仓外（旁挂目标仓）——CI checkout 无从核实，按本地证据链口径` );
     }
     const tracked = gitTracked(repo, v.log_path);
     if (tracked === false) {
