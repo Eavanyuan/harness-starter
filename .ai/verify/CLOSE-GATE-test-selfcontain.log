@@ -1,0 +1,79 @@
+# cmd: npm run gate
+# started: 2026-11-21T09:25:46Z
+# finished: 2026-11-21T09:26:26Z
+# exit_code: 1
+# commit: unknown
+# task: test-selfcontain
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 gate
+> node scripts/gate-parallel.mjs
+
+[gate] 35 段：并发 34（6 路） + 串行 1（时间敏感）
+  [32m✓[0m [ 1/34]    0s  npm run check:hooks
+  [32m✓[0m [ 2/34]    0s  npm run check:agents
+  [32m✓[0m [ 3/34]    0s  npm run check:skills
+  [32m✓[0m [ 4/34]    0s  npm run architect
+  [32m✓[0m [ 5/34]    0s  npm run test:glob
+  [32m✓[0m [ 6/34]    0s  npm run doctor
+  [32m✓[0m [ 7/34]    0s  npm run test:agents
+  [32m✓[0m [ 8/34]    1s  npm run test:writes
+  [32m✓[0m [ 9/34]    2s  npm run test:init
+  [32m✓[0m [10/34]    2s  npm run test:verify-run
+  [32m✓[0m [11/34]    0s  npm run test:ledger
+  [32m✓[0m [12/34]    5s  npm run test:skills
+  [32m✓[0m [13/34]    5s  npm run test:hooks
+  [32m✓[0m [14/34]    1s  npm run test:wiring
+  [32m✓[0m [15/34]    1s  npm run test:router
+  [32m✓[0m [16/34]    3s  npm run test:completeness
+  [31m✗[0m [17/34]    7s  npm run verify:state
+  [32m✓[0m [18/34]    1s  npm run test:ai-review
+  [32m✓[0m [19/34]    1s  npm run test:feishu-oauth
+  [32m✓[0m [20/34]    0s  npm run test:feishu-sync
+  [32m✓[0m [21/34]    0s  npm run test:feishu-ask
+  [32m✓[0m [22/34]    2s  npm run test:feishu-bug-source
+  [32m✓[0m [23/34]    3s  npm run test:broker
+  [32m✓[0m [24/34]    0s  npm run test:architect
+  [32m✓[0m [25/34]    0s  npm run test:gate-parallel
+  [32m✓[0m [26/34]    1s  npm run test:gate-regressions
+  [32m✓[0m [27/34]    1s  npm run test:retro
+  [32m✓[0m [28/34]    2s  npm run test:stale
+  [32m✓[0m [29/34]    0s  npm run test:task-loop-contract
+  [32m✓[0m [30/34]    2s  npm run test:doctor-gates
+  [32m✓[0m [31/34]    6s  npm run test:feishu-ws
+  [32m✓[0m [32/34]   12s  npm run test:evidence
+  [32m✓[0m [33/34]   14s  npm run test:harness-cli
+  [32m✓[0m [34/34]   25s  npm run test:task-loop
+  [32m✓[0m [串行]    5s  npm run -s test:perf-checks
+
+[gate] 1 段失败（共 35 段，40.2s）：
+
+──── [31m✗[0m npm run verify:state  (exit 1) ────
+  ! p3-verify-rotation: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! p4-hotfix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! p5-ci-parity: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! p6-gate-honesty: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! perf-early: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! poll-30m: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! poll-config: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! poll-config: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! readme-rewrite: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! review-p2-fix: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! review-verdict-comment: 阶段 done 已越过产出阶段，但 artifacts 里没登记 WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! stale-task-gate: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! stale-task-gate: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! task-loop-close: 阶段 done 已越过产出阶段，但 artifacts 里没登记 WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! tdc-sidecar: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! test-selfcontain: 阶段 impl 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! test-selfcontain: 本阶段门禁尚未评估（gate_result.checks 为空）—— 先按阶段清单跑一遍并写回结果
+  ! usability-fixes: 阶段 done 已越过产出阶段，但 artifacts 里没登记 RS、FS、WBS —— 完备性检查覆盖不到未声明的产物（S 档可写 meta.no_doc_reason 说明为什么不需要文档）
+  ! 1 个改动文件未声明进任何 TODO（新鲜度比对不覆盖它们，收口前补进对应 TODO 的 files）：retro/test-selfcontain-收尾.md
+[ci-verify] 门禁未通过（口径 ci）：
+  ✗ test-selfcontain: (task) [skip] stage_history 里 "wbs" → "review" 不是相邻阶段，且未记名豁免（waived_by 为空）—— 现行链与适用退休链 v1 都比对过仍不相邻，跳阶可以，但要有人签字
+  ✗ test-selfcontain: TS1 [verify] 日志 exit_code = 1，不是 0
+
+CI 口径只认 git 事实：日志是否入库、exit_code 是否为 0、声明文件是否存在。
+新鲜度（日志晚于源码、72h 时效）只在本地 hook 里判：npm run verify:state -- --local
+
+[gate] 完整日志：/var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/harness-gate-HLH6Fw
+[gate] 排查偶发红：npm run gate:serial（串行能排除并发干扰）
