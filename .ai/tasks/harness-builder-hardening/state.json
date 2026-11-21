@@ -19,9 +19,10 @@
         "T1"
       ],
       "todos_total": 1
-    }
+    },
+    "abandon_reason": "体检清账（2026-11-21）：任务停 10 天零动作、唯一 TODO 空 title 无证据——工作已被后续任务链（task-loop/ai-review/门禁系列）实质覆盖。若需要重新立项以明确范围建新任务。"
   },
-  "stage": "impl",
+  "stage": "abandoned",
   "stage_history": [],
   "artifacts": {},
   "todos": [
