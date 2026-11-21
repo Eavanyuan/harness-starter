@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "registering-instance-guard",
+    "task_type": "bugfix",
+    "related_task": "tdc-sidecar",
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "tdc-console/console AppController#createApp（POST /app）",
+      "tdc-console/console AppController#createTdAndAssetInstance（POST /app/tsdb-asset）",
+      "新增 AppControllerRegistrationGuardTest（回归）"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-21T09:52:00Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-21T09:52:00Z",
+      "exited_at": "2026-11-21T10:05:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "backend": "1.1.0"
+      }
+    }
+  ],
+  "artifacts": {
+    "rs": ".ai/tasks/registering-instance-guard/rs.md",
+    "review": ".ai/review/CR-2026-11-21-registering-instance-guard.md"
+  },
+  "todos": [
+    {
+      "id": "RIG1",
+      "stack": "backend",
+      "kind": "regression",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "复现测试先行 + 修复：AppController 两个创建端点加 ensureRegistrationCompleted（非 ACTIVE 抛 436 NOT_ACTIVATION_ERROR，先于余额检查）；回归测试 4 用例（REGISTERING×2 拒绝且无下游调用 / null principal 拒绝 / ACTIVE 放行且真实到达余额检查）",
+      "files": [
+        "../TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/controller/AppController.java",
+        "../TDC-registering-fix/tdc-console/console/src/test/java/com/taosdata/tcloud/console/controller/AppControllerRegistrationGuardTest.java"
+      ],
+      "required_skills": [
+        "backend"
+      ],
+      "audit": {
+        "compile": "-pl tdc-console/console -am 编译过（JDK 11）；期间发现并清除 apply_patch 失败残留的 .zwork/artifacts 副本（类重复→lombok 连带错的根因）",
+        "tests": "AppControllerRegistrationGuardTest 4/4 绿（RIG1.log，exit 0）；变异验证：sed 摘掉两处守卫调用→3 红 1 绿 BUILD FAILURE（失败的是三条拒绝用例），恢复后复绿——测试可证伪",
+        "feature_complete": "REGISTERING/INVITED/null principal 一律 436；ACTIVE 正常进入原流程（余额检查被真实调用的正向断言）；FREE 豁免不再能绕过状态门",
+        "quality_clean": "改动仅两个创建端点入口+一个私有方法+新测试文件；未动 Cluster 生命周期端点（rs 开放问题 1 另行收口）；测试不起 Spring 上下文，离线 0.3s 级"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RIG1.log",
+        "command": "cd ../TDC-registering-fix && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -pl tdc-console/console -am test -DskipTests=false -Dtest='AppControllerRegistrationGuardTest' -Dsurefire.failIfNoSpecifiedTests=false"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-registering-instance-guard",
+      "stack": "harness",
+      "status": "pending",
+      "ooda_stage": "act",
+      "text": "收尾：TDC 分支 fix/registering-instance-guard（基于 origin/main d143a228a）提交并推送后，视 harness-starter 并发会话（test-selfcontain）状态执行 close（全量 gate）→ 翻 done + retro",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {},
+      "verify": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

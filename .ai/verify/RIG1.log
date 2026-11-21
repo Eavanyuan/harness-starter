@@ -1,0 +1,207 @@
+# cmd: bash -c cd\ ../TDC-registering-fix\ \&\&\ JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home\ /opt/homebrew/bin/mvn\ -pl\ tdc-console/console\ -am\ test\ -DskipTests=false\ -Dtest=\"AppControllerRegistrationGuardTest\"\ -Dsurefire.failIfNoSpecifiedTests=false
+# started: 2026-11-21T09:46:49Z
+# finished: 2026-11-21T09:46:55Z
+# exit_code: 0
+# commit: ea7ad1b581e00ef687186ced85a47f3ce2aed057
+# task: registering-instance-guard
+# ---- output tail (last 200 lines) ----
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] -----------------< com.taosdata.tcloud:billing-client >-----------------
+[INFO] Building billing-client 1.0-SNAPSHOT                              [8/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-billing/billing-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ billing-client ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-billing/billing-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.1:compile (default-compile) @ billing-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ billing-client ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-billing/billing-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.1:testCompile (default-testCompile) @ billing-client ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:2.19.1:test (default-test) @ billing-client ---
+[INFO] Tests are skipped.
+[INFO] 
+[INFO] --------------------< com.taosdata.tcloud:tdc-mgmt >--------------------
+[INFO] Building tdc-mgmt 1.0-SNAPSHOT                                    [9/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] ------------------< com.taosdata.tcloud:mgmt-client >-------------------
+[INFO] Building mgmt-client 1.0-SNAPSHOT                                [10/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/mgmt-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ mgmt-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/mgmt-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ mgmt-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ mgmt-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/mgmt-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ mgmt-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ mgmt-client ---
+[INFO] 
+[INFO] -------------------< com.taosdata.tcloud:uc-client >--------------------
+[INFO] Building uc-client 1.0-SNAPSHOT                                  [11/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/uc-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ uc-client ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/uc-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ uc-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ uc-client ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/uc-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ uc-client ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ uc-client ---
+[INFO] No tests to run.
+[INFO] 
+[INFO] ------------------< com.taosdata.tcloud:auth-client >-------------------
+[INFO] Building auth-client 1.0-SNAPSHOT                                [12/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/auth-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ auth-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/auth-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ auth-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ auth-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-mgmt/auth-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ auth-client ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ auth-client ---
+[INFO] No tests to run.
+[INFO] 
+[INFO] --------------------< com.taosdata.tcloud:console >---------------------
+[INFO] Building console 1.0-SNAPSHOT                                    [13/13]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ console ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] Copying 16 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ console ---
+[INFO] Changes detected - recompiling the module!
+[INFO] Compiling 276 source files to /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/target/classes
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/config/IAMConfig.java: 某些输入文件使用或覆盖了已过时的 API。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/config/IAMConfig.java: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/controller/BillingController.java: 某些输入文件使用或覆盖了标记为待删除的已过时 API。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/controller/BillingController.java: 有关详细信息, 请使用 -Xlint:removal 重新编译。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/controller/DataBaseController.java: 某些输入文件使用了未经检查或不安全的操作。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/main/java/com/taosdata/tcloud/console/controller/DataBaseController.java: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ console ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ console ---
+[INFO] Changes detected - recompiling the module!
+[INFO] Compiling 30 source files to /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/target/test-classes
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/test/java/com/taosdata/tcloud/test/AppTokenControllerTest.java: 某些输入文件使用或覆盖了已过时的 API。
+[INFO] /Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/src/test/java/com/taosdata/tcloud/test/AppTokenControllerTest.java: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ console ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taosdata.tcloud.console.controller.AppControllerRegistrationGuardTest
+17:46:55,218 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.xml]
+17:46:55,219 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback.groovy]
+17:46:55,219 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Found resource [logback.xml] at [file:/Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/target/classes/logback.xml]
+17:46:55,241 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - debug attribute not set
+17:46:55,242 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - Will scan for changes in [file:/Users/yuanyuan/Documents/workspace/TDC-registering-fix/tdc-console/console/target/classes/logback.xml] 
+17:46:55,242 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - Setting ReconfigureOnChangeTask scanning period to 30 seconds
+17:46:55,243 |-INFO in ch.qos.logback.core.joran.action.ConversionRuleAction - registering conversion word ip with class [com.taosdata.tcloud.api.utils.LogIpUtil]
+17:46:55,244 |-ERROR in ch.qos.logback.core.joran.spi.Interpreter@8:92 - no applicable action for [springProperty], current ElementPath  is [[configuration][springProperty]]
+17:46:55,244 |-INFO in ch.qos.logback.core.joran.action.ConversionRuleAction - registering conversion word m with class [com.taosdata.tcloud.commons.util.ArgObject2JsonFormatLayout]
+17:46:55,244 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.ConsoleAppender]
+17:46:55,245 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [STDOUT]
+17:46:55,246 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:46:55,260 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.rolling.RollingFileAppender]
+17:46:55,261 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [CONSOLE-FILE]
+17:46:55,261 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:46:55,264 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@684429600 - Will use gz compression
+17:46:55,264 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@684429600 - Will use the pattern logs/t-console/%d/console.%d{yyyyMMddHHmmss}.%i.log for the active file
+17:46:55,265 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3b152928 - The date pattern is 'yyyy-MM-dd' from file name pattern 'logs/t-console/%d/console.%d{yyyyMMddHHmmss}.%i.log.gz'.
+17:46:55,265 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3b152928 - Roll-over at midnight.
+17:46:55,273 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3b152928 - Setting initial period to Sat Nov 21 17:46:55 CST 2026
+17:46:55,274 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3b152928 - SizeAndTimeBasedFNATP is deprecated. Use SizeAndTimeBasedRollingPolicy instead
+17:46:55,274 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3b152928 - For more information see http://logback.qos.ch/manual/appenders.html#SizeAndTimeBasedRollingPolicy
+17:46:55,275 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[CONSOLE-FILE] - Active log file name: logs/t-console/2026-11-21/console.20261121174655.0.log
+17:46:55,275 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[CONSOLE-FILE] - File property is set to [null]
+17:46:55,275 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.rolling.RollingFileAppender]
+17:46:55,275 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [ERROR]
+17:46:55,275 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:46:55,276 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@1450712470 - Will use gz compression
+17:46:55,276 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@1450712470 - Will use the pattern logs/t-console/%d/error.%d{yyyyMMddHHmmss}.%i.log for the active file
+17:46:55,276 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5173200b - The date pattern is 'yyyy-MM-dd' from file name pattern 'logs/t-console/%d/error.%d{yyyyMMddHHmmss}.%i.log.gz'.
+17:46:55,276 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5173200b - Roll-over at midnight.
+17:46:55,276 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5173200b - Setting initial period to Sat Nov 21 17:46:55 CST 2026
+17:46:55,276 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5173200b - SizeAndTimeBasedFNATP is deprecated. Use SizeAndTimeBasedRollingPolicy instead
+17:46:55,276 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5173200b - For more information see http://logback.qos.ch/manual/appenders.html#SizeAndTimeBasedRollingPolicy
+17:46:55,277 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[ERROR] - Active log file name: logs/t-console/2026-11-21/error.20261121174655.0.log
+17:46:55,277 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[ERROR] - File property is set to [null]
+17:46:55,277 |-INFO in ch.qos.logback.classic.joran.action.LoggerAction - Setting level of logger [com.alibaba.nacos.client] to WARN
+17:46:55,277 |-INFO in ch.qos.logback.classic.joran.action.LoggerAction - Setting additivity of logger [com.alibaba.nacos.client] to false
+17:46:55,277 |-INFO in ch.qos.logback.classic.joran.action.RootLoggerAction - Setting level of ROOT logger to INFO
+17:46:55,277 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [STDOUT] to Logger[ROOT]
+17:46:55,277 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [CONSOLE-FILE] to Logger[ROOT]
+17:46:55,277 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [ERROR] to Logger[ROOT]
+17:46:55,277 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - End of configuration.
+17:46:55,277 |-INFO in ch.qos.logback.classic.joran.JoranConfigurator@25c5e994 - Registering current configuration as safe fallback point
+
+2026-11-21T17:46:55.328+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [t-console] [main] [0] [0] [0] [] [] c.t.t.c.c.AppController#createTdAndAssetInstance:300 Create TDengine and TDAsset instance with request: "{\"hasDemoData\":false,\"highAvailability\":false}"
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.269 s -- in com.taosdata.tcloud.console.controller.AppControllerRegistrationGuardTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for commons 1.0-SNAPSHOT:
+[INFO] 
+[INFO] commons ............................................ SUCCESS [  0.378 s]
+[INFO] commons-logging .................................... SUCCESS [  0.031 s]
+[INFO] tdc-control ........................................ SUCCESS [  0.000 s]
+[INFO] control-client ..................................... SUCCESS [  0.050 s]
+[INFO] tdc-console ........................................ SUCCESS [  0.000 s]
+[INFO] console-client ..................................... SUCCESS [  0.041 s]
+[INFO] tdc-billing ........................................ SUCCESS [  0.000 s]
+[INFO] billing-client ..................................... SUCCESS [  0.095 s]
+[INFO] tdc-mgmt ........................................... SUCCESS [  0.000 s]
+[INFO] mgmt-client ........................................ SUCCESS [  0.049 s]
+[INFO] uc-client .......................................... SUCCESS [  0.019 s]
+[INFO] auth-client ........................................ SUCCESS [  0.011 s]
+[INFO] console ............................................ SUCCESS [  4.227 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  5.073 s
+[INFO] Finished at: 2026-11-21T17:46:55+08:00
+[INFO] ------------------------------------------------------------------------
