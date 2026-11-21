@@ -158,7 +158,9 @@ git -C "$CLIFIX/origin.git" rev-parse --verify refs/heads/tl-t5test >/dev/null 2
 echo "== 2d. cli 执行器端到端（真 runner：触发→认领→工单→cli 会话→影子轮） =="
 TL5C="$TMP/e2e5c"; git init -q --bare "$TL5C/r.git"
 git clone -q "$TL5C/r.git" "$TL5C/w" 2>/dev/null
-( cd "$TL5C/w" && git config user.email t@t && git config user.name t \
+# 分支名显式 main：CI 的 git 缺省 init.defaultBranch=master（本机是 main），fixture 若随缺省走，
+# runner 以 MR.source_branch=main 建 worktree 时起点不存在 → cli_env_failed（2026-11-21 CI 红实测）
+( cd "$TL5C/w" && git checkout -q -b main && git config user.email t@t && git config user.name t \
   && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
   && mkdir -p .claude && cp "$HERE/.claude/settings.json" .claude/ \
   && git add -A && git commit -qm base && git push -q origin HEAD:main )
@@ -225,7 +227,7 @@ printf '{"hooks":{"enabled":true}}' > "$EX2/.zcode/config.json"
 node "$HERE/scripts/task-loop.mjs" --once --root "$EX2" > "$TMP/ex2.txt" 2>&1
 check "相对路径 cmd → exit 1（坑 #50）" "1" "$?"
 grep -q "绝对路径" "$TMP/ex2.txt"; check "点明绝对路径要求" "0" "$?"
-node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"cli",cli:{cmd:"/opt/homebrew/bin/claude"}};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX2/harness.rules.json"
+node -e 'const fs=require("fs");const p=process.argv[1];const j=JSON.parse(fs.readFileSync(p));j.runtime.headless.executor={kind:"cli",cli:{cmd:"/bin/echo"}};fs.writeFileSync(p,JSON.stringify(j,null,2))' "$EX2/harness.rules.json"
 node "$HERE/scripts/task-loop.mjs" --once --root "$EX2" > "$TMP/ex3.txt" 2>&1
 check "cmd 合法但缺 repoDir → exit 1" "1" "$?"
 grep -q "repoDir" "$TMP/ex3.txt"; check "点名缺 repoDir" "0" "$?"
