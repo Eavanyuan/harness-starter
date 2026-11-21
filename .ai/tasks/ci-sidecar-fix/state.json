@@ -1,0 +1,126 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ci-sidecar-fix",
+    "task_type": "bugfix",
+    "related_task": "test-selfcontain",
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "hooks/lib/verify.mjs（ci 口径声明文件判据）",
+      "test/task-loop.test.sh（可移植性）",
+      "test/evidence.test.sh（6z 节）",
+      ".github/workflows/quality-gate.yml（恢复单步 gate）"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-21T10:27:44Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "no_doc_reason": "S 档 bugfix 快速路径：CI 红根因修复，retro 即文档"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "deferred",
+      "waived_by": "bugfix 快速路径：CI 五连红即需求"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "同上：无决策点"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "同上"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "同上"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {
+    "retro": "retro/ci-sidecar-fix-CI五连红.md"
+  },
+  "todos": [
+    {
+      "id": "CSF1",
+      "title": "旁挂边界守卫（verify.mjs ci 口径：仓外降提示）+ 双向测试",
+      "status": "completed",
+      "kind": "regression",
+      "red_log_path": ".ai/verify/TS1.log",
+      "files": [
+        "hooks/lib/verify.mjs",
+        "test/evidence.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CSF1.log",
+        "command": "test:evidence && test:hooks && verify:state && test:completeness"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 过",
+        "tests": "evidence+hooks+verify:state+completeness 全绿（新增 6z 仓外放行/仓内幽灵两例）",
+        "feature_complete": "CI 旁挂任务（registering-instance-guard 实案）不再被判死",
+        "quality_clean": "谓词第一版写反被同批测试当场拦住"
+      }
+    },
+    {
+      "id": "CSF2",
+      "title": "CI 可移植性：合法 cmd 用 /bin/echo；§2d fixture 显式 main 分支",
+      "status": "completed",
+      "kind": "regression",
+      "red_log_path": ".ai/verify/TS1.log",
+      "files": [
+        "test/task-loop.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CSF2.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "bash -n 过",
+        "tests": "task-loop 150/150；CI run 51 绿（40-50 连红后首次）",
+        "feature_complete": "两处环境形态差异消除",
+        "quality_clean": "差异原因注释入测试"
+      }
+    },
+    {
+      "id": "CSF3",
+      "title": "workflow 恢复单步 gate + 删临时注解步（诊断脚手架退场）",
+      "status": "completed",
+      "files": [
+        ".github/workflows/quality-gate.yml"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CSF3.log",
+        "command": "test:gate-regressions + 单步 gate 在场"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "yml 结构",
+        "tests": "gate-regressions 过（含单步存在断言）",
+        "feature_complete": "高危扫描与单步 gate 原样恢复",
+        "quality_clean": "无临时步残留"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

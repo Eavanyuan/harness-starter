@@ -52,16 +52,3 @@ jobs:
           echo "未发现高危命令"
       - name: 全量门禁（npm run gate）
         run: npm run gate
-      # 【临时诊断 2026-11-21】CI 上 test:task-loop 145/4 红但本地全绿——失败时把 ✗ 行以注解吐出
-      # （注解 API 免认证可读，job 日志要 admin）。定位后删除本步。
-      - name: 失败段注解（临时）
-        if: failure()
-        run: |
-          set +e
-          LOG=$(mktemp)
-          npm run -s test:task-loop > "$LOG" 2>&1
-          echo "task-loop 重跑："
-          tail -30 "$LOG"
-          grep -E "✗" "$LOG" | head -10 | while IFS= read -r line; do
-            echo "::error title=task-loop::$(printf '%s' "$line" | tr '\n' ' ' | head -c 700)"
-          done
