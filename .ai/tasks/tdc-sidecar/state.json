@@ -19,7 +19,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -57,6 +57,16 @@
       "stage": "review",
       "gate": "pass",
       "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-tdc-sidecar.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/tdc-sidecar-收尾.md"
     }
   ],
   "artifacts": {
@@ -114,23 +124,36 @@
     {
       "id": "CLOSE-GATE-tdc-sidecar",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "act",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "收尾：harness-cli close（自动跑全量 gate 并包装日志）→ 翻 done + retro。暂缓原因：并发会话正在本仓改 test-selfcontain（test/task-loop.test.sh 17:23 仍在写，TS1 红、state 半成品），按坑 #45 并发改同一仓先串行——待其落定后执行 close",
       "files": [],
       "required_skills": [
         "harness"
       ],
-      "audit": {},
-      "verify": null
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-tdc-sidecar.log",
+        "command": "npm run gate（harness close）"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-21T09:53:37Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }
