@@ -16,26 +16,28 @@ TDC（`git@git.tdengine.net:rd-app/cloud.git`，Java 11 多模块）在 2026-10-
 
 环境实测依据（2026-11-21，本机）：commons `-DskipTests=false` 7 用例真跑绿；tdc-billing 同参数 BUILD SUCCESS **零测试**（硬编码生效）；tdc-billing 在 Java 23 下编译期 `NoSuchFieldError: JCTree$JCImport`、JDK 11 下编译通过；`tdc-mgmt/uc` 的 `PublicControllerLicenseSmsTest` 4 用例 JDK 11 下绿。
 
-## 开放问题
-
-1. TDC 内嵌副本（`.ai/` 两项停滞任务 + 2 份 verify 日志 + 全套散落 harness 文件 + `.gitignore` harness 标记行）如何处置：归档后清理 / 原样保留——待用户裁决，不阻塞本次注册。
-2. 飞书 task-loop 是否为 Cloud 迭代（label 前缀 `Cloud-`）开接单通道——本次不做，另行决策（当前 iteration.prefix 只放行 IDMP）。
-3. TDC-UI / TDC-Go 是否注册——本次不做。
-
 ## 非功能约束
 
-- 旁挂目录与目标仓同机同层级；证据链全部落 harness 仓（CI 口径不变）。
-- 不向目标仓写入任何文件（约束 A）；跨仓引用零网络依赖。
+- 不新增配置键，只新增值；既有消费者（doctor/check-skills/review-router）行为零变化，TDasset 两条目未动。
+- 命令内嵌本机绝对路径（mvn/JAVA_HOME）——与 envNotes 同口径：宿主环境事实的唯一事实源在配置里可见可迁移。
+- test 命令必须离线真绿（扩大作用域前先验离线绿，写入 envNotes）。
 
 ## 范围外
 
-- 目标仓自身的 CI 改造；harness 与目标仓的 webhook 打通（走既有 broker）。
+- 飞书 task-loop 为 Cloud 迭代开接单通道（同开放问题 2）。
+- TDC-UI / TDC-Go 仓注册（同开放问题 3）。
+- TDC 内嵌副本清理的执行（部署动作，11-21 已经用户裁决"归档后清理"执行完毕：→ `../TDC-harness-legacy/`，TDC 仓已零 harness 文件）。
 
 ## 术语表
 
-- **旁挂（sidecar）**：harness 装独立目录、`--root` 指向业务仓的部署形态。
-- **tdc-sidecar**：TDengine 系资产仓（TDasset 类）的旁挂部署约定。
+- 旁挂：harness 文件不进产品仓（状态/证据留 harness 仓），`projects[].dir` 指向产品仓的接入形态。
+- 收编（内嵌）：harness-builder 把 harness 文件复制进产品仓的旧形态（TDC 10-31 采用，已废弃归档）。
+- envNotes：`harness.rules.json runtime.headless.envNotes`——宿主环境事实唯一事实源，随工单渲染。
+- skipTests 双形态：TDasset 双属性（-D 可翻）vs TDC 四模块 surefire 硬编码（-D 翻不动）。
 
 ## 开放问题
 
-- 多业务仓共用一套 harness 时的 projects 路由细化（当前按相对路径约定）。
+1. ~~TDC 内嵌副本如何处置~~ 已裁决并执行（11-21）：归档至 `../TDC-harness-legacy/` 后清理，TDC 仓零 harness 文件。
+2. 飞书 task-loop 是否为 Cloud 迭代（label 前缀 `Cloud-`）开接单通道——本次不做，另行决策（当前 iteration.prefix 只放行 IDMP）。
+3. TDC-UI / TDC-Go 是否注册——本次不做。
+4. 多业务仓共用一套 harness 时的 projects 路由细化（当前按相对路径约定，后续按需演进）。

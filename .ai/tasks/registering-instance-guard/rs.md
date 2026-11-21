@@ -20,6 +20,25 @@
 2. 回归测试（离线可跑，纯 JUnit+Mockito，不起 Spring 上下文）：REGISTERING 被 436 拒绝且无下游调用、null principal 拒绝、ACTIVE 放行并真实到达余额检查；变异验证（摘掉守卫→测试红）。
 3. 修复分支基于 origin/main（d143a228a），不动 main。
 
+## 非功能约束
+
+- 不引入新依赖与新配置键；复用 commons 既有异常体系与 436 NOT_ACTIVATION_ERROR（与 uc 侧"未激活"语义一致）。
+- 回归测试不依赖 Spring 上下文与外部环境，离线 0.3s 级可跑（对齐 TDC 离线可验证面）。
+- ACTIVE 用户路径零行为变化（守卫仅拦非 ACTIVE）。
+
+## 范围外
+
+- ClusterController 生命周期端点（start/suspend/expansion）同类状态缺口——另任务收口（同开放问题 1）。
+- 前端对 console 域 436 的处理与引导（合入后联查，同建议项 2）。
+- 既有 AppControllerTest（Spring 上下文型）的环境化治理。
+
+## 术语表
+
+- REGISTERING/ACTIVE：用户状态机（UserStatus）；ACTIVE=完成注册（含密码/补全信息），REGISTERING=注册未完成（登录态仅服务于补全流程）。
+- 实例：AppController 管理的 tsdb/TDengine（AppType.TDENGINE）与 asset（TDASSET）实例。
+- 守卫：ensureRegistrationCompleted——创建端点入口的用户状态强制检查。
+- 旁挂：harness 文件不进产品仓、状态与证据留在 harness-starter 的接入形态。
+
 ## 开放问题
 
 1. `ClusterController` 的 start/suspend/expansion 等生命周期端点同属"资源操作无用户状态检查"（仅有资源级 @RequiresPrivileges），本任务不扩科——建议另开任务统一收口（拦截器形态）。
