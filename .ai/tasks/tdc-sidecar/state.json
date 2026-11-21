@@ -1,0 +1,111 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "tdc-sidecar",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "harness.config.json projects[]（新增 TDC backend 条目）",
+      "harness.config.json notes.tdc_sidecar",
+      "harness.rules.json runtime.headless.envNotes（TDC 四条）"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-21T09:23:19Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-21T09:23:19Z",
+      "exited_at": "2026-11-21T09:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "deployment": "1.0.0",
+        "harness": "1.1.0"
+      }
+    }
+  ],
+  "artifacts": {
+    "rs": ".ai/tasks/tdc-sidecar/rs.md",
+    "review": ".ai/review/CR-2026-11-21-tdc-sidecar.md"
+  },
+  "todos": [
+    {
+      "id": "TDC1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "配置注册：projects[] 新增 TDC backend 条目（dir ../TDC，lint=整仓 validate，test=tdc-mgmt/uc -am -Dtest='PublicController*Test'，testOne=单类形态）+ notes.tdc_sidecar；envNotes 增补 TDC 环境事实四条（JDK11 钉死、skipTests 硬编码四模块、指定测试类形态、离线不绿全景）",
+      "files": [
+        "harness.config.json",
+        "harness.rules.json"
+      ],
+      "required_skills": [
+        "deployment",
+        "harness"
+      ],
+      "audit": {
+        "compile": "两份 JSON 可解析；doctor 消费无红（dir 存在、命令不撞 blockedCommands、id=backend 合法栈 id）",
+        "tests": "doctor + check-skills 5 skill 全绿（TDC1.log）；仓库级 ci-verify 被并发会话 test-selfcontain 半成品状态污染（TS1 exit_code=1 + 跳阶未豁免），非本次改动引入，见 CLOSE todo 暂缓说明",
+        "feature_complete": "projects[].dir=../TDC 存在；TDasset 两条既有条目未动；cr paths_from=projects 将同时覆盖两仓源码路径",
+        "quality_clean": "test 命令与实测证据命令逐字符一致（TDC2.log 离线真绿）；环境依赖全景（contract 502 / AAD env / 硬编码 skipTests）全部入 envNotes 不留口头口径"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TDC1.log",
+        "command": "node scripts/doctor.mjs && node scripts/check-skills.mjs"
+      }
+    },
+    {
+      "id": "TDC2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "TDC 侧命令实测（部署 skill Stage 0.3：lint/test 必须真实可跑）：整仓 validate 过；tdc-mgmt/uc -am -Dtest='PublicController*Test' 4 用例绿；负向演练：无过滤整跑 -am 会撞 mgmt-client 契约测试（直连 192.168.1.107:8001，离线 502×4）与 azure-marketplace（AAD_TENANT_ID 缺失×2）——作用域收窄有实测依据，非拍脑袋",
+      "files": [],
+      "required_skills": [
+        "deployment"
+      ],
+      "audit": {
+        "compile": "JAVA_HOME=MS JDK 11.0.29 整仓 mvn validate exit 0；Homebrew Java 23 编不过 tdc-billing（Lombok 1.18.22 撞 JCTree$JCImport，实测）",
+        "tests": "PublicControllerLicenseSmsTest 4/4 绿（TDC2.log，exit_code 0）；commons StringUtilsTest 7/7 绿",
+        "feature_complete": "配置的 test 命令即证据命令；skipTests 硬编码模块（billing/gateway顶层/job/oss）CLI -D 翻不动已实测（billing BUILD SUCCESS 零测试）并写入 envNotes",
+        "quality_clean": "负向结果全部入 envNotes：扩大 test 作用域前必须先验离线绿"
+      },
+      "verify": {
+        "log_path": ".ai/verify/TDC2.log",
+        "command": "cd ../TDC && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -q validate && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -pl tdc-mgmt/uc -am test -DskipTests=false -Dtest='PublicController*Test' -Dsurefire.failIfNoSpecifiedTests=false"
+      }
+    },
+    {
+      "id": "CLOSE-GATE-tdc-sidecar",
+      "stack": "harness",
+      "status": "pending",
+      "ooda_stage": "act",
+      "text": "收尾：harness-cli close（自动跑全量 gate 并包装日志）→ 翻 done + retro。暂缓原因：并发会话正在本仓改 test-selfcontain（test/task-loop.test.sh 17:23 仍在写，TS1 红、state 半成品），按坑 #45 并发改同一仓先串行——待其落定后执行 close",
+      "files": [],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {},
+      "verify": null
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

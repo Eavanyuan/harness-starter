@@ -1,0 +1,207 @@
+# cmd: bash -c cd\ ../TDC\ \&\&\ JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home\ /opt/homebrew/bin/mvn\ -q\ validate\ \&\&\ JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home\ /opt/homebrew/bin/mvn\ -pl\ tdc-mgmt/uc\ -am\ test\ -DskipTests=false\ -Dtest=\"PublicController\*Test\"\ -Dsurefire.failIfNoSpecifiedTests=false
+# started: 2026-11-21T09:28:59Z
+# finished: 2026-11-21T09:29:03Z
+# exit_code: 0
+# commit: unknown
+# task: tdc-sidecar
+# ---- output tail (last 200 lines) ----
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/auth-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ auth-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/auth-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ auth-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ auth-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/auth-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ auth-client ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ auth-client ---
+[INFO] 
+[INFO] ----------------< com.taosdata.tcloud:aws-marketplace >-----------------
+[INFO] Building aws-marketplace 1.0-SNAPSHOT                            [13/17]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/aws-marketplace/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ aws-marketplace ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/aws-marketplace/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ aws-marketplace ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ aws-marketplace ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/aws-marketplace/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ aws-marketplace ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ aws-marketplace ---
+[INFO] 
+[INFO] ---------------< com.taosdata.tcloud:azure-marketplace >----------------
+[INFO] Building azure-marketplace 1.0-SNAPSHOT                          [14/17]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] ---------< com.taosdata.tcloud:commercial-marketplace-openapi >---------
+[INFO] Building commercial-marketplace-openapi 1.0-SNAPSHOT             [15/17]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/commercial-marketplace-openapi/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ commercial-marketplace-openapi ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/commercial-marketplace-openapi/resources
+[INFO] 
+[INFO] --- compiler:3.8.0:compile (default-compile) @ commercial-marketplace-openapi ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ commercial-marketplace-openapi ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/commercial-marketplace-openapi/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.0:testCompile (default-testCompile) @ commercial-marketplace-openapi ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ commercial-marketplace-openapi ---
+[INFO] 
+[INFO] ------------< com.taosdata.tcloud:azure-marketplace-client >------------
+[INFO] Building azure-marketplace-client 1.0-SNAPSHOT                   [16/17]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/azure-marketplace-client/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ azure-marketplace-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/azure-marketplace-client/src/main/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ azure-marketplace-client ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ azure-marketplace-client ---
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/azure-marketplace/azure-marketplace-client/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ azure-marketplace-client ---
+[INFO] No sources to compile
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ azure-marketplace-client ---
+[INFO] 
+[INFO] -----------------------< com.taosdata.tcloud:uc >-----------------------
+[INFO] Building uc 1.0-SNAPSHOT                                         [17/17]
+[INFO]   from /Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/uc/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[WARNING] 1 problem was encountered while building the effective model for org.javassist:javassist:jar:3.21.0-GA during dependency collection step for project (use -X to see details)
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ uc ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] Copying 10 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.8.1:compile (default-compile) @ uc ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ uc ---
+[WARNING] Using platform encoding (UTF-8 actually) to copy filtered resources, i.e. build is platform dependent!
+[INFO] skip non existing resourceDirectory /Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/uc/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.8.1:testCompile (default-testCompile) @ uc ---
+[INFO] Nothing to compile - all classes are up to date
+[INFO] 
+[INFO] --- surefire:3.2.5:test (default-test) @ uc ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.taosdata.tcloud.controller.PublicControllerLicenseSmsTest
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/Users/yuanyuan/.m2/repository/ch/qos/logback/logback-classic/1.2.6/logback-classic-1.2.6.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/Users/yuanyuan/.m2/repository/org/slf4j/slf4j-simple/1.7.32/slf4j-simple-1.7.32.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+17:29:03,609 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback-test.xml]
+17:29:03,610 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Could NOT find resource [logback.groovy]
+17:29:03,610 |-INFO in ch.qos.logback.classic.LoggerContext[default] - Found resource [logback.xml] at [file:/Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/uc/target/classes/logback.xml]
+17:29:03,634 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - debug attribute not set
+17:29:03,635 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - Will scan for changes in [file:/Users/yuanyuan/Documents/workspace/TDC/tdc-mgmt/uc/target/classes/logback.xml] 
+17:29:03,635 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - Setting ReconfigureOnChangeTask scanning period to 30 seconds
+17:29:03,636 |-INFO in ch.qos.logback.core.joran.action.ConversionRuleAction - registering conversion word ip with class [com.taosdata.tcloud.api.utils.LogIpUtil]
+17:29:03,636 |-INFO in ch.qos.logback.core.joran.action.ConversionRuleAction - registering conversion word m with class [com.taosdata.tcloud.commons.util.ArgObject2JsonFormatLayout]
+17:29:03,638 |-ERROR in ch.qos.logback.core.joran.spi.Interpreter@10:92 - no applicable action for [springProperty], current ElementPath  is [[configuration][springProperty]]
+17:29:03,638 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.ConsoleAppender]
+17:29:03,639 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [STDOUT]
+17:29:03,639 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:29:03,655 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.rolling.RollingFileAppender]
+17:29:03,656 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [CONSOLE-FILE]
+17:29:03,656 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:29:03,660 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@2090563811 - No compression will be used
+17:29:03,660 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@2090563811 - Will use the pattern logs/uc/%d/console.%d{yyyyMMddHHmmss}.%i.log for the active file
+17:29:03,661 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3068b369 - The date pattern is 'yyyy-MM-dd' from file name pattern 'logs/uc/%d/console.%d{yyyyMMddHHmmss}.%i.log'.
+17:29:03,661 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3068b369 - Roll-over at midnight.
+17:29:03,671 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3068b369 - Setting initial period to Sat Nov 21 17:29:03 CST 2026
+17:29:03,671 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3068b369 - SizeAndTimeBasedFNATP is deprecated. Use SizeAndTimeBasedRollingPolicy instead
+17:29:03,671 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@3068b369 - For more information see http://logback.qos.ch/manual/appenders.html#SizeAndTimeBasedRollingPolicy
+17:29:03,672 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[CONSOLE-FILE] - Active log file name: logs/uc/2026-11-21/console.20261121172903.0.log
+17:29:03,672 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[CONSOLE-FILE] - File property is set to [null]
+17:29:03,672 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - About to instantiate appender of type [ch.qos.logback.core.rolling.RollingFileAppender]
+17:29:03,673 |-INFO in ch.qos.logback.core.joran.action.AppenderAction - Naming appender as [ERROR]
+17:29:03,673 |-INFO in ch.qos.logback.core.joran.action.NestedComplexPropertyIA - Assuming default type [ch.qos.logback.classic.encoder.PatternLayoutEncoder] for [encoder] property
+17:29:03,673 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@399149970 - No compression will be used
+17:29:03,673 |-INFO in c.q.l.core.rolling.TimeBasedRollingPolicy@399149970 - Will use the pattern logs/uc/%d/error.%d{yyyyMMddHHmmss}.%i.log for the active file
+17:29:03,674 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5491f68b - The date pattern is 'yyyy-MM-dd' from file name pattern 'logs/uc/%d/error.%d{yyyyMMddHHmmss}.%i.log'.
+17:29:03,674 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5491f68b - Roll-over at midnight.
+17:29:03,674 |-INFO in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5491f68b - Setting initial period to Sat Nov 21 17:29:03 CST 2026
+17:29:03,674 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5491f68b - SizeAndTimeBasedFNATP is deprecated. Use SizeAndTimeBasedRollingPolicy instead
+17:29:03,674 |-WARN in ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP@5491f68b - For more information see http://logback.qos.ch/manual/appenders.html#SizeAndTimeBasedRollingPolicy
+17:29:03,674 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[ERROR] - Active log file name: logs/uc/2026-11-21/error.20261121172903.0.log
+17:29:03,674 |-INFO in ch.qos.logback.core.rolling.RollingFileAppender[ERROR] - File property is set to [null]
+17:29:03,675 |-INFO in ch.qos.logback.classic.joran.action.LoggerAction - Setting level of logger [com.alibaba.nacos.client] to WARN
+17:29:03,675 |-INFO in ch.qos.logback.classic.joran.action.LoggerAction - Setting additivity of logger [com.alibaba.nacos.client] to false
+17:29:03,675 |-INFO in ch.qos.logback.classic.joran.action.RootLoggerAction - Setting level of ROOT logger to INFO
+17:29:03,675 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [STDOUT] to Logger[ROOT]
+17:29:03,675 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [CONSOLE-FILE] to Logger[ROOT]
+17:29:03,675 |-INFO in ch.qos.logback.core.joran.action.AppenderRefAction - Attaching appender named [ERROR] to Logger[ROOT]
+17:29:03,675 |-INFO in ch.qos.logback.classic.joran.action.ConfigurationAction - End of configuration.
+17:29:03,675 |-INFO in ch.qos.logback.classic.joran.JoranConfigurator@736ac09a - Registering current configuration as safe fallback point
+
+SLF4J: Actual binding is of type [ch.qos.logback.classic.util.ContextSelectorStaticBinder]
+2026-11-21T17:29:03.687+0800 [ERROR] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.PublicController#sendLicenseSms:101 "public_send_code" error :"serviceKey is not exist."
+2026-11-21T17:29:03.734+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： code=836211&phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.740+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： code=836211&phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.741+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.PublicController#sendLicenseSms:113 send license sms for "13800001234" success.
+2026-11-21T17:29:03.742+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： code=836211&phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.742+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： code=836211&phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.743+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.PublicController#sendLicenseSms:113 send license sms for "13800001234" success.
+2026-11-21T17:29:03.744+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.745+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.746+0800 [ERROR] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.PublicController#sendLicenseSms:115 license sms error: "code must be 4-8 digits"
+2026-11-21T17:29:03.747+0800 [INFO] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.u.SignatureUtils#getSignature:57 参数排序后： code=836211&phone=13800001234&type=VERIFY_CODE&nonce=9527&ts=1730000000000
+2026-11-21T17:29:03.747+0800 [ERROR] [CLOUD_REGION_IS_UNDEFINED] [uc] [main] [0] [0] [0] [] [] c.t.t.c.PublicController#sendLicenseSms:107 "public_send_code" error :"signature is not valid."
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.306 s -- in com.taosdata.tcloud.controller.PublicControllerLicenseSmsTest
+[INFO] 
+[INFO] Results:
+[INFO] 
+[INFO] Tests run: 4, Failures: 0, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for commons 1.0-SNAPSHOT:
+[INFO] 
+[INFO] commons ............................................ SUCCESS [  0.450 s]
+[INFO] commons-logging .................................... SUCCESS [  0.038 s]
+[INFO] tdc-control ........................................ SUCCESS [  0.000 s]
+[INFO] control-client ..................................... SUCCESS [  0.068 s]
+[INFO] tdc-console ........................................ SUCCESS [  0.001 s]
+[INFO] console-client ..................................... SUCCESS [  0.052 s]
+[INFO] tdc-billing ........................................ SUCCESS [  0.001 s]
+[INFO] billing-client ..................................... SUCCESS [  0.107 s]
+[INFO] tdc-mgmt ........................................... SUCCESS [  0.001 s]
+[INFO] mgmt-client ........................................ SUCCESS [  0.058 s]
+[INFO] uc-client .......................................... SUCCESS [  0.022 s]
+[INFO] auth-client ........................................ SUCCESS [  0.013 s]
+[INFO] aws-marketplace .................................... SUCCESS [  0.010 s]
+[INFO] azure-marketplace .................................. SUCCESS [  0.000 s]
+[INFO] commercial-marketplace-openapi ..................... SUCCESS [  0.106 s]
+[INFO] azure-marketplace-client ........................... SUCCESS [  0.046 s]
+[INFO] uc ................................................. SUCCESS [  0.848 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  2.028 s
+[INFO] Finished at: 2026-11-21T17:29:03+08:00
+[INFO] ------------------------------------------------------------------------

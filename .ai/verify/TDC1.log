@@ -1,0 +1,46 @@
+# cmd: bash -c node\ scripts/doctor.mjs\ \&\&\ node\ scripts/check-skills.mjs
+# started: 2026-11-21T09:29:53Z
+# finished: 2026-11-21T09:29:53Z
+# exit_code: 0
+# commit: unknown
+# task: tdc-sidecar
+# ---- output tail (last 200 lines) ----
+[doctor] 配置体检
+
+  说明：project.name 仍是 "harness-starter"，按模板态体检（占位目录只算提醒）。
+        接到真实项目后先改 harness.config.json 的 project.name 与 stacks，再重跑。
+
+  ✓ projects[backend] → ../TDasset
+  ✓ projects[frontend] → ../TDasset
+  ✓ projects[backend] → ../TDC
+  ✓ claude hook 接线完整（4 个）
+  ✓ zcode hook 接线完整（4 个）
+  ✓ 配置键均有消费者（19 个）
+  ✓ 剖面 B 空间：taosdata_td.Defect（指派判据 current_status_operator，严重级 priority）
+  ✓ GitLab 接入：https://git.tdengine.net
+  ✓ 门禁自测 28 个
+  ✓ 任务停滞判据：44 个任务，阈值 3 天（时钟=git 提交时间）
+  ✓ agent 源 12 个
+  ✓ agents.enabled 11/12 个启用
+  ✓ AGENTS.md 68/70 行
+  ✓ state 字段契约：16 个判据字段均有读者
+  ✓ state 字段契约：代码读取的 23 个字段都在契约里（双向一致）
+  ✓ 凭据文件：/Users/yuanyuan/.harness/task-loop/task-loop.env（生效 2 键）
+  ✓ 外部命令齐备（3 个）
+  ✓ executor=autoclaw（替身模式）：工单落盘后由宿主定时器（AutoClaw 会话）处理——宿主停了工单会积压，doctor 不校验宿主
+  ✓ 性能预算内：最近 5 次验证最慢 41s ≤ 预算 300s
+  ✓ 源文件无「$VAR 紧跟非 ASCII」写法（bash 3.2 吞变量名）
+  ✓ write-allowlist 放行条有效期均 ≤ 30 天（再续一次就突破窗口 → 红）
+  ! target "deepseek" 没有 hook 机制 —— 只有 CI 兜底，文档里不要写"hook 硬拦"
+  ! runtime.feishu.severity.map 未配置，将退回内置词表（高/中/低 + P 档 + 英文）——换过空间的话词表大概率对不上
+  ! 门禁在场性未检查：GitLab 未完整接入（缺 project）——不接不算故障，接入后在 runtime.gitlab.url 写实例地址并提供 GITLAB_TOKEN 与 HARNESS_GITLAB_PROJECT，此处才会给出结论
+
+结果：通过（3 个提醒）
+.skills 校验
+  ✓ backend     82 行  stack=backend  refs=2  v1.1.0
+  ✓ deployment 153 行  stack=harness  refs=2  v1.0.0
+  ✓ e2e         66 行  stack=frontend  refs=1  v1.0.0
+  ✓ frontend    70 行  stack=frontend  refs=1  v1.0.0
+  ✓ harness     79 行  stack=harness  refs=2  v1.1.0
+  required_skills 已声明：backend, harness, deployment
+  结果：5 个 skill 通过

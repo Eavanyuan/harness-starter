@@ -161,7 +161,11 @@
         "TDasset 跳测试是两个独立属性（根 pom skipTests=true + tda-server pom skip.tests=true）——跑测试必须 -DskipTests=false -Dskip.tests=false 双开，只开一个=零测试假绿",
         "指定测试类：/opt/homebrew/bin/mvn -pl tda-server -am test -DskipTests=false -Dskip.tests=false -Dtest='<类名>' -Dsurefire.failIfNoSpecifiedTests=false（-am 连依赖模块；无匹配测试的模块靠末参数不炸）",
         "前端：pnpm 在 PATH；e2e（zh=ci.zh.local / en=ci.local）需起环境，跑不了在 round 报告写明",
-        "降级语义：本地跑不了（依赖/环境/测试类不存在）→ round 报告写明「本地无法复现+原因」后才许按 CI 日志盲修；能复现却不绿不推"
+        "降级语义：本地跑不了（依赖/环境/测试类不存在）→ round 报告写明「本地无法复现+原因」后才许按 CI 日志盲修；能复现却不绿不推",
+        "TDC（rd-app/cloud.git，旁挂 2026-11-21）：mvn 同样用绝对路径；必须 JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home（MS OpenJDK 11）——mvn 缺省的 Homebrew Java 23 编不过 tdc-billing（Lombok 1.18.22 撞 JCTree$JCImport 变更，实测 NoSuchFieldError）",
+        "TDC skipTests 陷阱（形态与 TDasset 不同）：tdc-billing/tdc-gateway/tdc-job/tdc-oss 四个顶层 pom 把 skipTests=true 硬编码进 surefire configuration，CLI -D 翻不动（billing 实测 BUILD SUCCESS 零测试）——可跑测试模块=commons/tdc-mgmt（实测绿）、tdc-console/tdc-control/tdc-monitor/tdc-gateway/gateway（pom 无硬编码，gateway 嵌套 pom 已显式 false）；billing/job/oss 要跑测试需先改产品 pom，工单里写明别硬跑",
+        "TDC 指定测试类：JAVA_HOME=<MS JDK 11> /opt/homebrew/bin/mvn -pl <模块路径，如 tdc-mgmt/uc> -am test -DskipTests=false -Dtest='<类名>' -Dsurefire.failIfNoSpecifiedTests=false；当前活跃区 tdc-mgmt/uc（License Center），PublicControllerLicenseSmsTest 4 用例实测绿",
+        "TDC 整仓/连带 -am 的 test 离线不绿，默认 test 作用域收到 PublicController*Test：mgmt-client 契约测试（MgmtUserInfoServiceTest 等）直连 http://192.168.1.107:8001（离线 502 实测）、azure-marketplace 测试要 AAD_TENANT_ID 等 env 变量；扩大作用域前先在本地验证离线绿，跑不了的写明环境要求"
       ],
       "executor": {
         "$comment": "T5 执行器分叉（ADR-22）：autoclaw=宿主替身轮询工单（本机缺省，用户指令 2026-11-19）；cli=runner 认领即起无头会话（T5-2/3/4 已实现：worktree+hook注入+产物验收+影子缺省开）。cli 必配 cmd/repoDir 绝对路径。切 cli 非影子需三条件（ADR-22 D5）。",

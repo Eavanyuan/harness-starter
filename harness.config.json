@@ -299,10 +299,19 @@
       "lint": "cd ../TDasset && pnpm --dir frontend run lint",
       "test": "cd ../TDasset && pnpm --dir frontend run test:unit",
       "testOne": "cd ../TDasset && pnpm --dir frontend exec vitest run <file>"
+    },
+    {
+      "id": "backend",
+      "dir": "../TDC",
+      "srcGlob": "**/src/main/java/**/*.java",
+      "lint": "cd ../TDC && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -q validate",
+      "test": "cd ../TDC && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -pl tdc-mgmt/uc -am test -DskipTests=false -Dtest='PublicController*Test' -Dsurefire.failIfNoSpecifiedTests=false",
+      "testOne": "cd ../TDC && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -pl tdc-mgmt/uc -am test -DskipTests=false -Dtest=<name> -Dsurefire.failIfNoSpecifiedTests=false"
     }
   ],
   "notes": {
-    "tdasset_sidecar": "TDasset 旁挂（2026-11-14）：harness 文件不进 TDasset 仓（用户指令）；代码仓在 ../TDasset，命令经 cd 过去跑；test/testOne 必须双开 skipTests=false（TDasset 根 pom 与 tda-server 是两个独立跳过属性）。"
+    "tdasset_sidecar": "TDasset 旁挂（2026-11-14）：harness 文件不进 TDasset 仓（用户指令）；代码仓在 ../TDasset，命令经 cd 过去跑；test/testOne 必须双开 skipTests=false（TDasset 根 pom 与 tda-server 是两个独立跳过属性）。",
+    "tdc_sidecar": "TDC 旁挂（2026-11-21）：仓=rd-app/cloud.git，沿 TDasset 11-14 纪律 harness 文件不进产品仓。TDC 内 2026-10-31 的 harness-builder 内嵌副本已停滞（projects 空置、证据曾被误提交 a97fb4837 后删），处置待用户裁决。命令 JAVA_HOME 钉 MS OpenJDK 11.0.29（mvn 缺省 Java 23 撞 tdc-billing 的 Lombok 1.18.22）；test 默认作用域 tdc-mgmt/uc（当前活跃区，License Center）。"
   },
   "architecture": {
     "$comment": "架构 fitness functions 阈值（architect-check.mjs 消费）。黄牌=提醒 architect 关注；红牌=阻断合入。测试文件独立红线（天然长）。lastKeyCount 在周期健康检查时更新。",
