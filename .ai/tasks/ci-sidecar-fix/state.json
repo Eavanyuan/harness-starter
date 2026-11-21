@@ -21,7 +21,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档 bugfix 快速路径：CI 红根因修复，retro 即文档"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -46,6 +46,21 @@
     {
       "stage": "impl",
       "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-ci-sidecar-fix.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/ci-sidecar-fix-CI五连红.md"
     }
   ],
   "artifacts": {
@@ -113,14 +128,36 @@
         "feature_complete": "高危扫描与单步 gate 原样恢复",
         "quality_clean": "无临时步残留"
       }
+    },
+    {
+      "id": "CLOSE-GATE-ci-sidecar-fix",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-ci-sidecar-fix.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-21T10:28:35Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }
