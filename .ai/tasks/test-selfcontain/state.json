@@ -80,7 +80,9 @@
         "tests": "150/150（§2c 9 例 + §2d 4 例全绿）",
         "feature_complete": "零外部依赖；诊断链：gate 红→/tmp 依赖→127→cp 缺失",
         "quality_clean": "发现 b 用例断言过松（ok:false 被 127 也满足）——本轮未改，记录"
-      }
+      },
+      "kind": "regression",
+      "red_log_path": ".ai/verify/TS1.log"
     },
     {
       "id": "TS3",

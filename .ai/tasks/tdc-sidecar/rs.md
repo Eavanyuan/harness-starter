@@ -21,3 +21,21 @@ TDC（`git@git.tdengine.net:rd-app/cloud.git`，Java 11 多模块）在 2026-10-
 1. TDC 内嵌副本（`.ai/` 两项停滞任务 + 2 份 verify 日志 + 全套散落 harness 文件 + `.gitignore` harness 标记行）如何处置：归档后清理 / 原样保留——待用户裁决，不阻塞本次注册。
 2. 飞书 task-loop 是否为 Cloud 迭代（label 前缀 `Cloud-`）开接单通道——本次不做，另行决策（当前 iteration.prefix 只放行 IDMP）。
 3. TDC-UI / TDC-Go 是否注册——本次不做。
+
+## 非功能约束
+
+- 旁挂目录与目标仓同机同层级；证据链全部落 harness 仓（CI 口径不变）。
+- 不向目标仓写入任何文件（约束 A）；跨仓引用零网络依赖。
+
+## 范围外
+
+- 目标仓自身的 CI 改造；harness 与目标仓的 webhook 打通（走既有 broker）。
+
+## 术语表
+
+- **旁挂（sidecar）**：harness 装独立目录、`--root` 指向业务仓的部署形态。
+- **tdc-sidecar**：TDengine 系资产仓（TDasset 类）的旁挂部署约定。
+
+## 开放问题
+
+- 多业务仓共用一套 harness 时的 projects 路由细化（当前按相对路径约定）。
