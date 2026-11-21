@@ -16,36 +16,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      # 【临时诊断模式 2026-11-21】CI 红 5 连但本地/新鲜克隆全绿（macOS），无日志权限——
-      # 把 gate 拆成 8 步，用 jobs API 的每步结论定位红组（不需要读日志）。
-      # 定位后立即恢复单步 gate（单清单原则）。
-      - name: S1 静态链
-        run: npm run -s doctor && npm run -s architect && npm run -s check:skills && npm run -s check:agents && npm run -s check:hooks
-      - name: S2a verify:state
-        run: npm run -s verify:state
-      - name: S2b test:glob
-        run: npm run -s test:glob
-      - name: S2c test:hooks
-        run: npm run -s test:hooks
-      - name: S2d test:writes
-        run: npm run -s test:writes
-      - name: S2e test:agents
-        run: npm run -s test:agents
-      - name: S3 入口与证据
-        if: always()
-        run: npm run -s test:skills && npm run -s test:init && npm run -s test:harness-cli && npm run -s test:evidence && npm run -s test:verify-run
-      - name: S4 账本与评审
-        if: always()
-        run: npm run -s test:ledger && npm run -s test:completeness && npm run -s test:wiring && npm run -s test:router && npm run -s test:ai-review
-      - name: S5 飞书链
-        if: always()
-        run: npm run -s test:broker && npm run -s test:feishu-ws && npm run -s test:feishu-oauth && npm run -s test:feishu-bug-source && npm run -s test:feishu-sync
-      - name: S6 回归与体检
-        if: always()
-        run: npm run -s test:feishu-ask && npm run -s test:gate-regressions && npm run -s test:stale && npm run -s test:retro && npm run -s test:doctor-gates
-      - name: S7 task-loop
-        if: always()
-        run: npm run -s test:task-loop && npm run -s test:task-loop-contract
-      - name: S8 性能与架构
-        if: always()
-        run: npm run -s test:architect && npm run -s test:perf-checks
+      # 【临时诊断模式 R3】前两轮定位红段（verify:state / S6 组 / S7 组），本地无法复现。
+      # 本轮：跑嫌疑段并捕获输出，红时以 ::error:: 注解吐出尾巴——注解 API 免认证可读。
+      - name: 诊断（红段输出→注解）
+        run: |
+          set +e
+          for seg in verify:state test:feishu-ask test:gate-regressions test:stale test:retro test:doctor-gates test:task-loop test:task-loop-contract; do
+            LOG=$(mktemp)
+            npm run -s "$seg" > "$LOG" 2>&1
+            CODE=$?
+            if [ $CODE -ne 0 ]; then
+              TAIL=$(grep -E "✗|FAIL|Error|失败|结果" "$LOG" | tail -8 | head -c 900 | tr '\n' '|')
+              echo "::error title=$seg::$TAIL"
+              echo "[$seg] red, tail:"
+              tail -20 "$LOG"
+            else
+              echo "[$seg] green"
+            fi
+          done
+          exit 1
