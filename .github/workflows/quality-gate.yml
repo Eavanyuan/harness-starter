@@ -21,17 +21,31 @@ jobs:
       # 定位后立即恢复单步 gate（单清单原则）。
       - name: S1 静态链
         run: npm run -s doctor && npm run -s architect && npm run -s check:skills && npm run -s check:agents && npm run -s check:hooks
-      - name: S2 状态与核心
-        run: npm run -s verify:state && npm run -s test:glob && npm run -s test:hooks && npm run -s test:writes && npm run -s test:agents
+      - name: S2a verify:state
+        run: npm run -s verify:state
+      - name: S2b test:glob
+        run: npm run -s test:glob
+      - name: S2c test:hooks
+        run: npm run -s test:hooks
+      - name: S2d test:writes
+        run: npm run -s test:writes
+      - name: S2e test:agents
+        run: npm run -s test:agents
       - name: S3 入口与证据
+        if: always()
         run: npm run -s test:skills && npm run -s test:init && npm run -s test:harness-cli && npm run -s test:evidence && npm run -s test:verify-run
       - name: S4 账本与评审
+        if: always()
         run: npm run -s test:ledger && npm run -s test:completeness && npm run -s test:wiring && npm run -s test:router && npm run -s test:ai-review
       - name: S5 飞书链
+        if: always()
         run: npm run -s test:broker && npm run -s test:feishu-ws && npm run -s test:feishu-oauth && npm run -s test:feishu-bug-source && npm run -s test:feishu-sync
       - name: S6 回归与体检
+        if: always()
         run: npm run -s test:feishu-ask && npm run -s test:gate-regressions && npm run -s test:stale && npm run -s test:retro && npm run -s test:doctor-gates
       - name: S7 task-loop
+        if: always()
         run: npm run -s test:task-loop && npm run -s test:task-loop-contract
       - name: S8 性能与架构
+        if: always()
         run: npm run -s test:architect && npm run -s test:perf-checks
