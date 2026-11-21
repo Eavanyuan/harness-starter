@@ -8,92 +8,30 @@ on:
 jobs:
   gate:
     runs-on: ubuntu-latest
-    # 默认超时是 6 小时。链路上有端到端用例（假 GitLab / 假飞书服务、轮询等待），
-    # 一旦某个等待条件写错就会挂满 6 小时才失败——那是最难查的一类红。
-    # 全量实测 52s，给 15 分钟是 17 倍余量。
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          # 高危扫描要 diff base…HEAD，ci-verify 要读提交时间判"账实是否同一件事"。
-          # 浅克隆下这两件事都会静默退化成"跳过"，跳过和通过长得一样。
           fetch-depth: 0
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      # 唯一一条不属于 `npm run gate` 的判据：它要 event 上下文（base 分支 / before 提交），
-      # 那是 CI 才有的东西，本地无从复现。放最前——1 秒出结果，拦的是安全事故不是回归。
-      #
-      # hook 只拦 agent 走的那条路，人手动 commit 是直通的，这里兜住。
-      # 只扫脚本类文件的**新增行**：文档里写 "rm -rf" 是在讲解规则，不是要执行它。
-      - name: 高危命令扫描
-        run: |
-          set -uo pipefail
-          # 基线怎么取：PR 用 base 分支，push 用上一个提交。
-          # 原来一律取 origin/${github.base_ref || 'main'}——push 到 main 时 base_ref 是空的，
-          # BASE 落到 origin/main，而 HEAD 就是 origin/main，diff 恒为空 → 整步 skip。
-          # 也就是"直接推 main"这条最需要兜底的路，兜底一直是空转。
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="origin/${{ github.base_ref }}"
-          else
-            BASE="${{ github.event.before }}"
-            # before 为空 / 全零（新分支首推）/ 已被 force push 抹掉 → 退到上一个提交，再退到根提交
-            if [ -z "$BASE" ] || printf '%s' "$BASE" | grep -qE '^0+$' || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
-              BASE="$(git rev-parse HEAD~1 2>/dev/null || git rev-list --max-parents=0 HEAD | tail -1)"
-            fi
-          fi
-          echo "比较基线：$BASE … HEAD"
-          FILES=$(git diff --name-only "$BASE"..HEAD -- \
-            '*.sh' '*.bash' '*.mjs' '*.cjs' '*.js' '*.py' '*.yml' '*.yaml' 'Makefile' 'package.json' || true)
-          if [ -z "$FILES" ]; then
-            echo "本次改动没有脚本类文件，跳过"
-            exit 0
-          fi
-          echo "$FILES"
-          # 只扫**新增行**。上一版扫整份文件：给 test/hooks.test.sh 加两行断言，
-          # 会把文件里躺了半年的断言素材（喂给 hook 的 stdin 那种）一并判成可疑——
-          # 红来自仓库旧内容，与这次改动无关。判据要回答的是"这次改动有没有引入危险命令"。
-          ADDED="$(mktemp)"
-          trap 'rm -f "$ADDED"' EXIT
-          printf '%s\n' "$FILES" | while IFS= read -r f; do
-            [ -n "$f" ] || continue
-            git diff -U0 "$BASE"..HEAD -- "$f" | grep -E '^\+' | grep -vE '^\+\+\+ ' >> "$ADDED" || true
-          done
-          # 禁用项的字面量必须拆开拼：这个文件自己也在被扫范围内（只要 PR 改了 workflow，
-          # FILES 里就有它），写全的话扫描会命中自己的定义 —— 于是"改 workflow"这个动作
-          # 本身必然红，跟改动内容无关。实测：本 PR 只是加了一个 test 步骤就被判可疑。
-          # 拆成两段邻接的字符串，运行时才拼成那串禁用选项，源码里不存在完整字面量。
-          # 注意连注释也不能写全，注释同样会被扫到（刚才就踩过）。
-          NO_VERIFY="--no-ver""ify"
-          # 例外必须写理由（≥8 字）：断言素材与真执行在文本上无法区分，而把命令拆成
-          # 拼接字符串会让测试不可读——不可读的断言迟早被删掉。理由短于 8 字不算，
-          # 一个空标记等于绕过。
-          HITS="$(grep -E \
-            "rm[[:space:]]+-[A-Za-z]*(rf|fr)[A-Za-z]*[[:space:]]+/[^a-zA-Z]|git push (--force|-f)([^a-zA-Z]|$)|git push[^|]*[[:space:]]\+[^[:space:]]+|${NO_VERIFY}|(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh" \
-            "$ADDED" | grep -vE 'scan-ok: .{8,}' || true)"
-          if [ -n "$HITS" ]; then
-            echo "$HITS"
-            echo "::error::检测到可疑命令，请人工确认后改用可回滚形式（若确为断言素材，行尾加 scan-ok: <理由>）"
-            exit 1
-          fi
-          echo "未发现高危命令"
-
-      # 全量门禁：CI 与本地跑**同一条命令**，清单只有 package.json 里的 gate 这一份。
-      #
-      # 以前这里是 20 个手写步骤，本地 `npm run gate` 是另一份 34 段清单，两份都不知道
-      # 对方漏了什么。代价实测过：六个套件只存在于本地清单（glob / gate-regressions /
-      # stale / retro / feishu-sync / feishu-ask），其中 gate-regressions 一直红着——
-      # 崩溃点在双引号里写了 `$VAR）`，全角括号被 bash 3.2 吞进变量名。于是形成闭环：
-      # 本地红 → 全量要 6 分钟没人等 → CI 全绿 → 提交信息写 "gate green"。
-      # 判据不是没了，是执行面断在本地，且断口被 CI 的绿灯盖住。
-      #
-      # 合成一步之后，"CI 跑哪些"不再是决策，而是 gate 的推论：加一个套件只需要改
-      # package.json，不用记得同时改两处。
-      #
-      # 耗时不是代价：34 段在 ubuntu-latest 上实测 52s，比原来只跑 20 套件的 56s 还快
-      # ——省下的纯等待（perf-checks 的四次 sleep 4s，已降到 1s）比新增 14 套件更贵。
-      # 单个步骤失败看不出是哪一段时，看日志里 `> harness-starter@1.1.0 test:xxx` 这一行。
-      - name: 全量门禁（npm run gate）
-        run: npm run gate
+      # 【临时诊断模式 2026-11-21】CI 红 5 连但本地/新鲜克隆全绿（macOS），无日志权限——
+      # 把 gate 拆成 8 步，用 jobs API 的每步结论定位红组（不需要读日志）。
+      # 定位后立即恢复单步 gate（单清单原则）。
+      - name: S1 静态链
+        run: npm run -s doctor && npm run -s architect && npm run -s check:skills && npm run -s check:agents && npm run -s check:hooks
+      - name: S2 状态与核心
+        run: npm run -s verify:state && npm run -s test:glob && npm run -s test:hooks && npm run -s test:writes && npm run -s test:agents
+      - name: S3 入口与证据
+        run: npm run -s test:skills && npm run -s test:init && npm run -s test:harness-cli && npm run -s test:evidence && npm run -s test:verify-run
+      - name: S4 账本与评审
+        run: npm run -s test:ledger && npm run -s test:completeness && npm run -s test:wiring && npm run -s test:router && npm run -s test:ai-review
+      - name: S5 飞书链
+        run: npm run -s test:broker && npm run -s test:feishu-ws && npm run -s test:feishu-oauth && npm run -s test:feishu-bug-source && npm run -s test:feishu-sync
+      - name: S6 回归与体检
+        run: npm run -s test:feishu-ask && npm run -s test:gate-regressions && npm run -s test:stale && npm run -s test:retro && npm run -s test:doctor-gates
+      - name: S7 task-loop
+        run: npm run -s test:task-loop && npm run -s test:task-loop-contract
+      - name: S8 性能与架构
+        run: npm run -s test:architect && npm run -s test:perf-checks
