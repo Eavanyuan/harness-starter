@@ -33,11 +33,36 @@
         "deployment": "1.0.0",
         "harness": "1.1.0"
       }
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
     }
   ],
   "artifacts": {
     "rs": ".ai/tasks/tdc-sidecar/rs.md",
-    "review": ".ai/review/CR-2026-11-21-tdc-sidecar.md"
+    "review": ".ai/review/CR-2026-11-21-tdc-sidecar.md",
+    "retro": "retro/tdc-sidecar-收尾.md"
   },
   "todos": [
     {

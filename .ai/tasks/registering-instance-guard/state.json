@@ -19,7 +19,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -32,11 +32,46 @@
       "skill_versions": {
         "backend": "1.1.0"
       }
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪（close 补记）：无该阶段产出要求"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-registering-instance-guard.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/registering-instance-guard-收尾.md"
     }
   ],
   "artifacts": {
     "rs": ".ai/tasks/registering-instance-guard/rs.md",
-    "review": ".ai/review/CR-2026-11-21-registering-instance-guard.md"
+    "review": ".ai/review/CR-2026-11-21-registering-instance-guard.md",
+    "retro": "retro/registering-instance-guard-收尾.md"
   },
   "todos": [
     {
@@ -55,35 +90,49 @@
       ],
       "audit": {
         "compile": "-pl tdc-console/console -am 编译过（JDK 11）；期间发现并清除 apply_patch 失败残留的 .zwork/artifacts 副本（类重复→lombok 连带错的根因）",
-        "tests": "AppControllerRegistrationGuardTest 4/4 绿（RIG1.log，exit 0）；变异验证：sed 摘掉两处守卫调用→3 红 1 绿 BUILD FAILURE（失败的是三条拒绝用例），恢复后复绿——测试可证伪",
+        "tests": "AppControllerRegistrationGuardTest 4/4 绿（RIG1.log，exit 0）；变异红跑留档 RIG1RED.log（摘守卫→3 红 1 绿，exit 1）——修复前行为=缺陷本身，红跑即复现证据",
         "feature_complete": "REGISTERING/INVITED/null principal 一律 436；ACTIVE 正常进入原流程（余额检查被真实调用的正向断言）；FREE 豁免不再能绕过状态门",
         "quality_clean": "改动仅两个创建端点入口+一个私有方法+新测试文件；未动 Cluster 生命周期端点（rs 开放问题 1 另行收口）；测试不起 Spring 上下文，离线 0.3s 级"
       },
       "verify": {
         "log_path": ".ai/verify/RIG1.log",
         "command": "cd ../TDC-registering-fix && JAVA_HOME=/Users/yuanyuan/Library/Java/JavaVirtualMachines/ms-11.0.29/Contents/Home /opt/homebrew/bin/mvn -pl tdc-console/console -am test -DskipTests=false -Dtest='AppControllerRegistrationGuardTest' -Dsurefire.failIfNoSpecifiedTests=false"
-      }
+      },
+      "red_log_path": ".ai/verify/RIG1RED.log"
     },
     {
       "id": "CLOSE-GATE-registering-instance-guard",
       "stack": "harness",
-      "status": "pending",
-      "ooda_stage": "act",
+      "status": "completed",
+      "ooda_stage": "audit",
       "text": "收尾：TDC 分支 fix/registering-instance-guard（基于 origin/main d143a228a）提交并推送后，视 harness-starter 并发会话（test-selfcontain）状态执行 close（全量 gate）→ 翻 done + retro",
       "files": [],
       "required_skills": [
         "harness"
       ],
-      "audit": {},
-      "verify": null
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-registering-instance-guard.log",
+        "command": "npm run gate（harness close）"
+      }
     }
   ],
   "blockers": [],
   "deviations": [],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-21T09:51:35Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }
