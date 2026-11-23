@@ -2511,7 +2511,7 @@ must(!/同类错误/.test(pack2.prompt), "story-miss");
 must(/CDD 纪律/.test(pack.prompt) && /修完后必须.*补.*注释/.test(pack.prompt), "cdd-protocol");
 // ④ RS 模板有 Contract
 const rs = readFileSync("'"$HERE"'/templates/RS-需求规格.md", "utf8");
-must(/## 2\.5 Contract/.test(rs) && /影响模块/.test(rs) && /验收标准/.test(rs), "rs-contract");
+must(/### 2\.5 Contract/.test(rs) && /影响模块/.test(rs) && /验收标准/.test(rs), "rs-contract");
 console.log("sept-ok");
 ' > "$TMP/csept.txt" 2>&1
 grep -q "^sept-ok$" "$TMP/csept.txt" && r=0 || { cat "$TMP/csept.txt"; r=1; }
