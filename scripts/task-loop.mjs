@@ -508,6 +508,8 @@ if (wantFeishu) {
 
 const ranSources = [wantGitlab ? 'gitlab' : null, wantFeishu ? 'feishu' : null].filter(Boolean).join('+');
 // 跨流水轮次携带（ci-inflight-hold）：sweep 重置 ack 时记下"这是第几轮"，claim 循环据此判升级
+// 追问失败连续计数（按单）：ask_fail_streak 事件 + 3 次本地通知（2026-11-23）
+const askFailStreak = new Map();
 const carryRounds = new Map();
 
 // ---- ack 生命周期 sweep（2026-11-16 关账半环）：触发源消失/内容已变 → 清账或重认 ----
@@ -648,11 +650,20 @@ for (const t of triggers) {
         // add_comment 的真实 API 错误被吞——排障只能现场重放。事件是唯一的离线证据。）
         recordEvent('task-loop', 'info_incomplete', { id: t.id, asked: !!check.asked, already_asked: !!check.already_asked, reason: String(check.reason || '').slice(0, 120), ...(check.error ? { error: String(check.error).slice(0, 160) } : {}) });
         if (check.asked) {
+          askFailStreak.delete(String(t.id));
           console.log(`[task-loop] ${t.id} 信息不全 → 已评论 @提交者追问（不接单）：${check.reason}`);
         } else if (check.already_asked) {
           console.log(`[task-loop] ${t.id} 信息不全且已追问过 → 跳过（等提交者补充）`);
         } else {
-          console.log(`[task-loop] ${t.id} 信息不全但追问失败 → 跳过本轮：${check.reason}`);
+          // 追问失败连续计数（2026-11-23 用户定案：连续 3 次告警）——每轮静默重试会永远卡住且无人知晓，
+          // "没扫描到"的表象正是这么来的。按单计数防跨单污染；评论成功/已追问即清零。
+          askFailStreak.set(String(t.id), (askFailStreak.get(String(t.id)) || 0) + 1);
+          const streak = askFailStreak.get(String(t.id));
+          recordEvent('task-loop', 'ask_fail_streak', { id: t.id, streak, error: String(check.error || '').slice(0, 160) });
+          console.log(`[task-loop] ${t.id} 信息不全但追问失败（连续 ${streak}）→ 跳过本轮：${check.reason}`);
+          if (streak >= 3) {
+            spawnSync('osascript', ['-e', `display notification "工单 ${t.id} 追问评论连续 ${streak} 次失败——信息不全单卡住，查看 task-loop.out" with title "task-loop 追问失败"`], { stdio: 'ignore', timeout: 5000 });
+          }
         }
         continue; // 不认领不流转，下一轮重新评估
       }
