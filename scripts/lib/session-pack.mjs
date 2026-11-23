@@ -14,6 +14,10 @@ import { join } from 'node:path';
 
 const PROTOCOL_COMMON = `
 ## 工作协议（严格遵守）
+0. **CDD 纪律（2026-11-23，得物启发）**：动手前先读要改的文件里的注释——注释距离代码最近，
+   是最可靠的设计意图来源（实测补齐注释后准确率 52%→90%+）。如果注释缺失或与代码不一致，
+   以代码行为为准并在 round 日志里标注。**修完后必须给你改过的每个函数/类补上注释**：
+   一行说明它做什么、为什么这样做（设计意图，不是复述代码）。缺注释的修复=未完成的修复。
 1. 你在一个独立的 worktree 里工作，只改本目录相关文件；不要动 .ai/task-loop/ 之外的流程文件。
 2. 结束前**必须**在会话产物目录写出以下文件（缺失任何一件 = 本轮无效）：
    - todo.json：[{ "id": "<评论/缺陷编号>", "issue": "<一句话>", "action": "<做了什么>" }]
@@ -97,7 +101,7 @@ ${PROTOCOL_COMMON.replace('<N>', '1')}
  * CI 失败修复工单（ci-fail-trigger，2026-11-17）：MR 的流水红 → 引入清单 + 基线同款 + 日志摘录。
  * failures/attribute 形状见 scripts/lib/ci-failures.mjs（fingerprint 稳定身份、excerpt 原文行）。
  */
-export function buildR1ProfileCI({ mr, introduced, inherited = [], baselineStatus = 'unknown', failedJobs = [], excerpts = [], opaque = false, viewNote = null, envNotes = [] }) {
+export function buildR1ProfileCI({ mr, introduced, inherited = [], baselineStatus = 'unknown', failedJobs = [], excerpts = [], opaque = false, viewNote = null, envNotes = [], storyNote = null }) {
   const intro = introduced.map((f) => `- [${f.kind}] ${f.fingerprint}${f.file ? `（${f.file}${f.line ? ':' + f.line : ''}）` : ''}`).join('\n');
   const inher = inherited.map((f) => `- ${f.fingerprint}`).join('\n');
   const jobs = failedJobs.map((j) => `- ${j.stage}/${j.name} ${j.webUrl || ''}`).join('\n');
@@ -113,6 +117,7 @@ ${inher || '-（无）'}
 
 ## 失败的 job（日志在 GitLab，必要时拉全量 trace）
 ${jobs || '-（无）'}
+${storyNote || ''}
 ${viewNote && (viewNote.failedJobTotal > viewNote.failedJobs || viewNote.jobsPageTruncated || viewNote.traceFailures > 0) ? `> ⚠ 归因视角不完整：失败 job ${viewNote.failedJobs}/${viewNote.failedJobTotal}${viewNote.jobsPageTruncated ? '，jobs 列表翻页截断' : ''}${viewNote.traceFailures > 0 ? `，trace 拉取失败 ${viewNote.traceFailures} 个` : ''}——清单不是全集，以 job 链接为准。` : ''}
 
 ## 日志摘录（失败行原文，定位锚）

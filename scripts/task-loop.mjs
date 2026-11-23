@@ -210,6 +210,21 @@ function writeRoundsHistory(h) {
 }
 const roundsHistory = readRoundsHistory();
 
+// ---- Story 层（2026-11-23，得物 Highway+ATV 启发）----
+// 已知问题的修法固化：指纹命中 → 引用历史修法（Highway）；未命中 → 自由探索后沉淀
+function lookupStory(fingerprints) {
+  if (!Array.isArray(fingerprints) || !fingerprints.length) return null;
+  let stories = {};
+  try { stories = JSON.parse(readFileSync(join(root, '.ai', 'task-loop', 'stories.json'), 'utf8')); } catch { return null; }
+  const hits = [];
+  for (const fp of fingerprints) {
+    const st = stories[fp];
+    if (st && st.fix && st.fix.length > 10) hits.push(`- \`${fp.slice(0, 60)}\` → ${st.fix.slice(0, 120)}`);
+  }
+  if (!hits.length) return null;
+  return `\n## 同类错误历史修法（Story——上次怎么修的，直接参考不走弯路）\n${hits.join('\n')}\n`;
+}
+
 function finish({ code, stamp }) {
   const parts = [`触发 ${triggers.length}`, `认领 ${stats.claimed}`, `待复核 ${stats.noop}`, `跳过 ${stats.skip}`, `关账 ${stats.gone}`, `内容更新 ${stats.stale}`];
   if (stats.pack) parts.push(`会话包 ${stats.pack}`);

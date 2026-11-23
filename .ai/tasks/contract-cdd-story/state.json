@@ -1,0 +1,140 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "contract-cdd-story",
+    "task_type": "change",
+    "related_task": "task-loop",
+    "remote_id": null,
+    "baseline": "8fbeaac",
+    "affected_ids": [
+      "templates/RS-需求规格.md（Contract 节）",
+      "scripts/lib/session-pack.mjs（CDD 纪律+storyNote 参数）",
+      "scripts/task-loop.mjs（lookupStory+工单注入）",
+      "test/task-loop.test.sh（5c-sept）"
+    ],
+    "change_tier": 2,
+    "created_at": "2026-11-23T06:18:26Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1",
+    "change_tier_note": "得物 TPRD/CDD/Highway 三件借鉴：Contract 需求边界结构化、CDD 注释驱动修复纪律、Story 同类错误经验引用"
+  },
+  "stage": "ci",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "entered_at": "2026-11-23T02:00:00Z",
+      "exited_at": "2026-11-23T02:10:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "adr",
+      "entered_at": "2026-11-23T02:10:00Z",
+      "exited_at": "2026-11-23T02:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：得物文章已裁决三个方向",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "fs_review",
+      "entered_at": "2026-11-23T02:10:00Z",
+      "exited_at": "2026-11-23T02:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：模板+协议+工单三处",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "wbs",
+      "entered_at": "2026-11-23T02:10:00Z",
+      "exited_at": "2026-11-23T02:10:00Z",
+      "gate": "deferred",
+      "waived_by": "S 档：单 todo",
+      "agent": null,
+      "model": null,
+      "skill_versions": {}
+    },
+    {
+      "stage": "impl",
+      "entered_at": "2026-11-23T02:10:00Z",
+      "exited_at": "2026-11-23T02:40:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "coder",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "review",
+      "entered_at": "2026-11-23T02:40:00Z",
+      "exited_at": "2026-11-23T02:50:00Z",
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "self-review + 5c-sept 测试（story 命中/不命中/CDD/RS Contract 四断言）",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
+    },
+    {
+      "stage": "ci",
+      "entered_at": "2026-11-23T02:50:00Z",
+      "exited_at": null,
+      "gate": null,
+      "waived_by": null,
+      "agent": "orchestrator（S 档折叠）",
+      "model": null,
+      "skill_versions": {}
+    }
+  ],
+  "artifacts": {},
+  "todos": [
+    {
+      "id": "CCS1",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "得物三件借鉴：①RS 模板加 Contract 节（EP/影响模块/约束/验收标准——需求边界机器可读化）②session-pack 协议第 0 条加 CDD 纪律（修前读注释+修后补注释=未完成的修复）③task-loop lookupStory（指纹→历史修法，工单注入同类错误 Story）",
+      "files": [
+        "templates/RS-需求规格.md",
+        "scripts/lib/session-pack.mjs",
+        "scripts/task-loop.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "node --check 双件过",
+        "tests": "task-loop 150 全绿（+5c-sept 四断言：story 命中/不命中/CDD 协议/RS Contract）",
+        "feature_complete": "得物 TPRD/CDD/Highway 三件落地——AI 开工前有边界（Contract）、修前读注释（CDD）、同类错误直接引用历史修法（Story）",
+        "quality_clean": "Story 查 .ai/task-loop/stories.json（指纹→修法）；story 库由修复执行器修后回写——进化层（ATV→Highway）的种子"
+      },
+      "verify": {
+        "log_path": ".ai/verify/CCS1.log",
+        "command": "bash test/task-loop.test.sh"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

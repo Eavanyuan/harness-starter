@@ -2487,3 +2487,32 @@ console.log("sex-ok");
 ' > "$TMP/csex.txt" 2>&1
 grep -q "^sex-ok$" "$TMP/csex.txt" && r=0 || { cat "$TMP/csex.txt"; r=1; }
 check "识别器扩展：CI shell / runner stderr（含 01E 前缀）/ surefire 非零汇总 / 防误报" "0" "$r"
+
+echo "== 5c-sept. Contract/CDD/Story 三件（得物启发 2026-11-23）：工单含 story / CDD 协议在场 / RS 模板有 Contract =="
+node --input-type=module -e '
+import { buildR1ProfileCI } from "'"$HERE"'/scripts/lib/session-pack.mjs";
+import { readFileSync } from "node:fs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+// ① Story 命中：工单含历史修法
+const pack = buildR1ProfileCI({
+  mr: { iid: 1, title: "t" },
+  introduced: [{ kind: "javac", fingerprint: "tda-server/src/A.java cannot find symbol" }],
+  storyNote: "\n## 同类错误历史修法\n- `cannot find symbol` → 检查 import 与类型签名",
+});
+must(/同类错误历史修法/.test(pack.prompt) && /cannot find symbol/.test(pack.prompt), "story-hit");
+// ② Story 不命中：无 story 节
+const pack2 = buildR1ProfileCI({
+  mr: { iid: 1, title: "t" },
+  introduced: [{ kind: "javac", fingerprint: "x" }],
+  storyNote: null,
+});
+must(!/同类错误/.test(pack2.prompt), "story-miss");
+// ③ CDD 协议在场
+must(/CDD 纪律/.test(pack.prompt) && /修完后必须.*补.*注释/.test(pack.prompt), "cdd-protocol");
+// ④ RS 模板有 Contract
+const rs = readFileSync("'"$HERE"'/templates/RS-需求规格.md", "utf8");
+must(/## 2\.5 Contract/.test(rs) && /影响模块/.test(rs) && /验收标准/.test(rs), "rs-contract");
+console.log("sept-ok");
+' > "$TMP/csept.txt" 2>&1
+grep -q "^sept-ok$" "$TMP/csept.txt" && r=0 || { cat "$TMP/csept.txt"; r=1; }
+check "Contract/CDD/Story：工单 story 命中与不命中、CDD 协议在场、RS 模板 Contract 结构" "0" "$r"
