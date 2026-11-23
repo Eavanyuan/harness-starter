@@ -644,7 +644,9 @@ for (const t of triggers) {
       const { checkInfoOrAsk } = await import('./lib/feishu-ask.mjs');
       const check = await checkInfoOrAsk({ call: feishuCall, projectKey: feishuCfg.projectKey, workItemId: t.id, workItemType: t.itemType || 'Defect' });
       if (!check.ok) {
-        recordEvent('task-loop', 'info_incomplete', { id: t.id, asked: !!check.asked, already_asked: !!check.already_asked, reason: String(check.reason || '').slice(0, 120) });
+        // error 字段必须进事件（2026-11-23 实测教训：追问失败时 reason 只带缺失清单，
+        // add_comment 的真实 API 错误被吞——排障只能现场重放。事件是唯一的离线证据。）
+        recordEvent('task-loop', 'info_incomplete', { id: t.id, asked: !!check.asked, already_asked: !!check.already_asked, reason: String(check.reason || '').slice(0, 120), ...(check.error ? { error: String(check.error).slice(0, 160) } : {}) });
         if (check.asked) {
           console.log(`[task-loop] ${t.id} 信息不全 → 已评论 @提交者追问（不接单）：${check.reason}`);
         } else if (check.already_asked) {
