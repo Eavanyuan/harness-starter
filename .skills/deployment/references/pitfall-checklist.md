@@ -81,3 +81,6 @@
 | 48 | 测试脚本写了但没接进 gate 聚合 = 从不运行——architect-check 的 --root 越界（argv[2+indexOf] off-by-one）存在数月，test:architect 因不在 gate 里从未被跑到。新增测试必须同批接进 gate | 🔴 | perf-early 实测 |
 | 49 | 时间戳秒级分辨率有 ±1s 抖动——基于耗时的测试用例必须在抖动区间内仍确定归档（先算 [min,max] 时长区间再选基线），否则偶发红 | 🟡 | perf-early 实测 |
 | 50 | agent 沙箱 PATH ≠ 用户 shell PATH——mvn 装在 /opt/homebrew/bin 但沙箱看不到，agent 判"无 mvn"降级盲修。**解法（已落地）**：环境事实进 harness.rules.json `runtime.headless.envNotes`，随每份工单渲染（session-pack 四剖面）——配置随仓走可迁移，宿主 prompt 只指向配置不复制内容 | 🔴 | mvn 误判实测 |
+| 51 | **宿主定时器会因 misfire 静默丢拍**——AutoClaw 调度器：计划时刻机器没醒（合盖/休眠），醒来处理时迟到 > misfireGraceMs（10 分钟）即按 policy=skip 丢弃。症状 = 执行器"时跑时不跑"，日志是 `scheduling.admit.skipped reason=misfire`。执行器节拍应远小于机器醒着的连续时段，或宿主保持唤醒 | 🟡 | 2026-11-23 执行器丢拍 |
+| 52 | **"连不上大模型"有三层，别停在第一层**——①上游过载（`http 529 overloaded_error`，`model.capacity.retry_scheduled` 指数退避后放弃，耗时数百秒）；②运行时解析到不可用连接（请求发出即败，耗时 1~6s，主日志无 WARN）；③misfire 丢拍（根本没跑）。判据看**每次运行的耗时与 transcript 条目数**：秒败+仅 1 条 request = 连接层；数百秒+重试 = 上游；无 occurrence = 调度层 | 🔴 | 2026-11-23/24 执行器 38 连败 |
+| 53 | **模型绑定的三个"真相层"可以互相矛盾**——界面/API 回显的 modelConnectionId ≠ 库内 scheduled_tasks.model_connection_id（任务表此列恒空，模型按**项目/会话偏好**解析：`work_preferences` 的 `project_model_connection:*` / `session_model_connection:*`）≠ 运行时实际发出的模型（只有 transcript 的 `payload.data.model` 和 `work_runs.connection_model` 是事实）。"accepted + 版本号上涨"不等于生效——验收必须看下一拍 transcript | 🔴 | 2026-11-24 绑定写入后库列仍空 |
