@@ -1,4 +1,4 @@
-# 部署已知坑清单（47 条，从 24 个 retro + 17 个 CR 蒸馏）
+# 部署已知坑清单（53 条：首批 47 条蒸馏自 24 个 retro + 17 个 CR，#48–53 为后续实战追记）
 
 > 按部署阶段分组。每条标注来源（retro/CR 文件名）与严重度（🔴 阻断 / 🟡 注意）。
 
@@ -44,6 +44,8 @@
 | 26 | 最新值门核子属性/trait/KPI displaySubAttribute——门内不要复刻解析逻辑，直接调用取值路径的同一个解析函数 | 🔴 | IDOR 复审 |
 | 27 | 库名用 resolvedSourceDbName()（sourceDBName 回落 dbName），不用 getDbName()——与写路径口径必须一致 | 🔴 | IDOR 复审 |
 
+> 执行器/定时任务的坑见文末 #51–53（编号稳定不重排，故未移入本节）。
+
 ## CR/审核阶段（8 条）
 
 | # | 坑 | 严重度 | 来源 |
@@ -78,9 +80,14 @@
 | 45 | 多仓并发改同一文件必须按文件集分工或串行——拆分重写覆盖接线是实测事故 | 🟡 | 并发教训 |
 | 46 | BSD/GNU 差异：sed -i '' 是 BSD 专属，GNU 会把 '' 当文件名——用 node 替代或 sed -i.bak | 🟡 | CI 实测 |
 | 47 | read 工具会脱敏 URL 中的 token 字面量——用 read 输出做 apply_patch 锚文本时会静默不匹配，用 sed/od 核对磁盘真实字节 | 🟡 | TDasset 教训 |
+
+## 后续实战追记（6 条，#48–53）
+
+> 2026-11-19 起逐次追记；编号稳定不重排，按追记顺序排列。
+
 | 48 | 测试脚本写了但没接进 gate 聚合 = 从不运行——architect-check 的 --root 越界（argv[2+indexOf] off-by-one）存在数月，test:architect 因不在 gate 里从未被跑到。新增测试必须同批接进 gate | 🔴 | perf-early 实测 |
 | 49 | 时间戳秒级分辨率有 ±1s 抖动——基于耗时的测试用例必须在抖动区间内仍确定归档（先算 [min,max] 时长区间再选基线），否则偶发红 | 🟡 | perf-early 实测 |
 | 50 | agent 沙箱 PATH ≠ 用户 shell PATH——mvn 装在 /opt/homebrew/bin 但沙箱看不到，agent 判"无 mvn"降级盲修。**解法（已落地）**：环境事实进 harness.rules.json `runtime.headless.envNotes`，随每份工单渲染（session-pack 四剖面）——配置随仓走可迁移，宿主 prompt 只指向配置不复制内容 | 🔴 | mvn 误判实测 |
 | 51 | **宿主定时器会因 misfire 静默丢拍**——AutoClaw 调度器：计划时刻机器没醒（合盖/休眠），醒来处理时迟到 > misfireGraceMs（10 分钟）即按 policy=skip 丢弃。症状 = 执行器"时跑时不跑"，日志是 `scheduling.admit.skipped reason=misfire`。执行器节拍应远小于机器醒着的连续时段，或宿主保持唤醒 | 🟡 | 2026-11-23 执行器丢拍 |
-| 52 | **"连不上大模型"有三层，别停在第一层**——①上游过载（`http 529 overloaded_error`，`model.capacity.retry_scheduled` 指数退避后放弃，耗时数百秒）；②运行时解析到不可用连接（请求发出即败，耗时 1~6s，主日志无 WARN）；③misfire 丢拍（根本没跑）。判据看**每次运行的耗时与 transcript 条目数**：秒败+仅 1 条 request = 连接层；数百秒+重试 = 上游；无 occurrence = 调度层 | 🔴 | 2026-11-23/24 执行器 38 连败 |
-| 53 | **模型绑定的三个"真相层"可以互相矛盾**——界面/API 回显的 modelConnectionId ≠ 库内 scheduled_tasks.model_connection_id（任务表此列恒空，模型按**项目/会话偏好**解析：`work_preferences` 的 `project_model_connection:*` / `session_model_connection:*`）≠ 运行时实际发出的模型（只有 transcript 的 `payload.data.model` 和 `work_runs.connection_model` 是事实）。"accepted + 版本号上涨"不等于生效——验收必须看下一拍 transcript | 🔴 | 2026-11-24 绑定写入后库列仍空 |
+| 52 | **"执行器连不上大模型"先别信这个归因——它多半不是连接问题**。已实测到的三种形态，靠**每次运行的耗时 + 是否记了用量**区分：①上游过载——`http 529 overloaded_error`，`model.capacity.retry_scheduled` 指数退避，耗时数百秒；②**任务被超时掐断**——真实长任务跑到 `timeoutSeconds` 上限被判 failed，下一拍 `skipped`；③掐断后的**秒败**——1~6s、`input=0`、只试一次。**秒败 ≠ 连接层**（2026-11-24 实证：同一连接、同一定时任务，秒败 81 次的同时也成功跑完过 1757s；用户手动切换同一模型可用）。判连接是否可用，看**同一连接在别处有没有成功运行**，不要看失败运行的耗时 | 🔴 | 2026-11-23/24 执行器秒败 81 次 |
+| 53 | **模型选择的真实解析机制未查明——别把推断当机制写下来**。已确认的事实只有三条：(a) `scheduled_tasks.model_connection_id` 为空，任务不携带模型；(b) 运行时实际发出的模型以 `work_runs.connection_model` / transcript 的 `payload.data.model` 为准；(c) 给会话写 `session_model_connection:*` 偏好后，**只生效了一拍**就回到原模型，且项目/会话偏好会被本会话之外的途径改动。**未查明**：定时任务新起一轮时按什么规则解析模型。另：执行器的工作记录在**真实执行会话**里（trace 与 `work_runs` 都按该会话 ID），不是定时任务记录线上的那个会话——看错会话会得出"执行器全停"的错误结论 | 🔴 | 2026-11-24 绑定只生效一拍；看错会话误判 38 连败 |
