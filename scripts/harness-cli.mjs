@@ -4,7 +4,7 @@
  * 方案：docs/plans/2026-10-30-harness-builder-final.md
  *
  * 本文件是薄入口：只做参数解析与子命令分发。实现按域拆在 scripts/lib/cli/：
- *   check / detect / analyze / init / remove / verify / resume(+decisions) / abandon / review-packet
+ *   check / detect / analyze / init / remove / verify / resume(+decisions) / abandon / review-packet / feishu
  * 共享工具（die / usage / safeTarget / 原子写 / manifest / preflight / survey）在
  * scripts/lib/cli/shared.mjs。init 的安全内核说明见 scripts/lib/cli/init.mjs 头注。
  */
@@ -20,12 +20,13 @@ import { cmdAbandon } from './lib/cli/abandon.mjs';
 import { cmdReviewPacket } from './lib/cli/review-packet.mjs';
 import { cmdRuntime } from './lib/cli/runtime.mjs';
 import { cmdClose } from './lib/cli/close.mjs';
+import { cmdFeishu, IntakeError } from './feishu-intake.mjs';
 
 const args = process.argv.slice(2);
 const cmd = args[0];
 // 每个动词显式声明自己接受的 flag：拼错/不支持的 flag 直接 usage，
 // 不能让它被当成 positional 静默吞掉（--stack-dir svc-a 就曾这样把目录当参数丢掉）。
-const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except', '--ack-strikes'], verify: ['--mode', '--file'], abandon: ['--reason', '--by'], runtime: ['--spawn_agents', '--shell', '--ask_user', '--by'], close: ['--by'] };
+const VALUE_FLAGS = { analyze: ['--out', '--max-edges'], init: ['--agents', '--stack-dir'], resume: ['--by', '--from', '--except', '--ack-strikes'], verify: ['--mode', '--file'], abandon: ['--reason', '--by'], runtime: ['--spawn_agents', '--shell', '--ask_user', '--by'], close: ['--by'], feishu: ['--confirm', '--by', '--slug', '--tier', '--baseline'] };
 const BOOL_FLAGS = { detect: ['--json'], analyze: ['--in-project', '--full-edges'], init: ['--dry-run'], remove: ['--dry-run', '--yes', '--force'], resume: ['--advance', '--accept-suggested'], 'review-packet': ['--first'], verify: ['--json'], runtime: ['--reset'] };
 const valueFlags = new Set(VALUE_FLAGS[cmd] || []);
 const boolFlags = new Set(BOOL_FLAGS[cmd] || []);
@@ -124,6 +125,33 @@ switch (cmd) {
         shell: values['--shell'] || '',
         ask_user: values['--ask_user'] || '',
       }, { reset: flags.has('--reset'), by: (values['--by'] || '').trim() })
+    );
+    break;
+  }
+  case 'feishu': {
+    // 第一个位置参数是工作项 ID 或链接时，目标仓库取当前目录；否则它是仓库路径，第二个才是工作项。
+    const isRef = (s) => /^\d{1,20}$/.test(s) || /^https?:\/\//i.test(s);
+    const first = positional[0];
+    const refIsFirst = first !== undefined && isRef(first);
+    const ref = refIsFirst ? first : positional[1];
+    const target = refIsFirst ? '.' : first;
+    if (ref === undefined) {
+      console.error('[harness] feishu 需要工作项 ID 或链接');
+      usage();
+    }
+    // 这个子命令要连飞书，是异步的；错误在这里统一成「一句人话 + 退出码」。
+    cmdFeishu(target, ref, {
+      confirm: values['--confirm'],
+      by: values['--by'],
+      slug: values['--slug'],
+      tier: values['--tier'],
+      baseline: values['--baseline'],
+    }).then(
+      (code) => process.exit(code),
+      (e) => {
+        console.error(`[harness] ${e.message}`);
+        process.exit(e instanceof IntakeError ? e.code : 1);
+      },
     );
     break;
   }

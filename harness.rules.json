@@ -203,7 +203,69 @@
         "fieldName": "迭代周期",
         "prefix": "IDMP"
       },
-      "repoHint": "IDMP 缺陷 → idmp 仓库（git.tdengine.net:rd-app/idmp.git；旁挂模式：harness 在本仓，修复在产品仓进行）——工单里指路用，产品路由是部署事实不是脚手架常识"
+      "repoHint": "IDMP 缺陷 → idmp 仓库（git.tdengine.net:rd-app/idmp.git；旁挂模式：harness 在本仓，修复在产品仓进行）——工单里指路用，产品路由是部署事实不是脚手架常识",
+      "intake": {
+        "$comment": "`harness feishu <工作项ID>` 的配置（RS-飞书任务接入.md）。fields 的值是字段的中文名：字段 key 是空间级的随机标识、换空间就变，而且每个工作项类型的字段表不同，所以每次运行都按名称在该类型的字段表里查 key。名称写错或该类型没有这个字段，都会进「未读取」清单，不静默。typeMap：飞书工作项类型名 → 任务类型；feature=新功能、bugfix=修缺陷、ask=需人确认。change 无法从飞书类型看出，看「用户行为变更说明」字段辅助判断。",
+        "dir": ".ai/intake",
+        "fields": {
+          "description": [
+            "描述"
+          ],
+          "reporterSteps": [
+            "报告人的复现步骤"
+          ],
+          "behaviorChange": [
+            "用户行为变更说明"
+          ],
+          "rootCause": [
+            "根因分析（By Dev）"
+          ],
+          "solution": [
+            "解决方案（by Dev）"
+          ],
+          "impact": [
+            "影响范围（by Dev）"
+          ],
+          "pullRequest": [
+            "代码实现（PR）"
+          ]
+        },
+        "attachmentFields": [
+          "附件"
+        ],
+        "typeMap": {
+          "feature": [
+            "需求",
+            "Feature",
+            "Story",
+            "Epic"
+          ],
+          "bugfix": [
+            "缺陷",
+            "Defect",
+            "Bug"
+          ],
+          "ask": [
+            "任务",
+            "Task",
+            "Job",
+            "SubTask"
+          ]
+        },
+        "noChangeMarkers": [
+          "无变化",
+          "无",
+          "否",
+          "不涉及",
+          "没有",
+          "none",
+          "n/a",
+          "na",
+          "no",
+          "-"
+        ],
+        "minDescriptionLength": 20
+      }
     },
     "taskLoop": {
       "$comment": "轮询节拍（秒；2026-11-17 由 900 放宽到 1800=30 分钟，与修复执行器节拍对齐）：执行器同样 30 分钟一跑，更快的轮询只会在两次执行之间重复确认同一状态；P1 接单延迟上限 30 分钟仍远优于初版 2 小时。OS 定时器（launchd/systemd，install --interval）只是心跳上限，真实节拍读这里——改配置即生效，不用重装定时器；env TASK_LOOP_INTERVAL 可临时覆盖（演练/排查）。定时器触发时进程带 HARNESS_TIMER=1，节流只对它生效，手动 --once 不受限。节流戳 .ai/locks/task-loop.last-run 在轮次成功后落盘；源临时故障（超时/断网）不落戳，下一 tick 立即重试。",

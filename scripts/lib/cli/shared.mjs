@@ -43,6 +43,11 @@ export function usage() {
   node scripts/harness-cli.mjs resume <target> [<slug>]
       按三档列出待决事项，并生成/刷新 .ai/tasks/<slug>/DECISIONS.md（可留存的决策单）。
 
+  node scripts/harness-cli.mjs feishu [<target>] <工作项ID或链接>
+      [--confirm feature|change|bugfix --by <名字> [--slug <任务名>] [--tier S|M|L|XL] [--baseline <commit>]]
+      读飞书工作项并生成摘要与任务类型建议（只读，不改飞书、不建任务）。
+      带 --confirm 才建任务档案；未答的待决问题用 resume 回答，回答之前流程不往下走。
+
   node scripts/harness-cli.mjs runtime <target> --spawn_agents yes|no --shell yes|no --ask_user yes|no [--reset] [--by <名字>]
 
   node scripts/harness-cli.mjs close <target> <slug> [--by <名字>]

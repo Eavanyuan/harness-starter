@@ -23,7 +23,7 @@ ROOT = sys.argv[1].rstrip('/') + '/'
 LIST = ROOT + '.skills/deployment/references/pitfall-checklist.md'
 SKILL = ROOT + '.skills/deployment/SKILL.md'
 README = ROOT + 'README.md'
-TOTAL = 53
+TOTAL = 56
 APPENDED = range(48, TOTAL + 1)      # 「后续实战追记」小节的编号
 
 problems = []
@@ -99,8 +99,8 @@ for stale in ('47 条已知坑', '（47 条'):
 if '首批 47 条蒸馏自' not in skill:
     problems.append('SKILL.md 未区分「蒸馏 47 条」与「追记 6 条」')
 readme = open(README, encoding='utf-8').read()
-if len(re.findall(r'53 条已知坑', readme)) != 2:
-    problems.append('README 的「53 条已知坑」引用不是 2 处')
+if len(re.findall(r'%d 条已知坑' % TOTAL, readme)) != 2:
+    problems.append('README 的「%d 条已知坑」引用不是 2 处' % TOTAL)
 
 for name in order:
     print(f'  {name:<12} {sections[name]["rows"]:>2} 条')

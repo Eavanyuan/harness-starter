@@ -31,5 +31,8 @@ feishu-oauth.json
 
 # 运行时数据与本地盘点（复审 B#4/5：不随包/不污染 add -A）
 .ai/task-loop/
+# 飞书工作项接入的读取结果：下载的附件、解析出的文本、工作项正文。
+# 附件可能有几百 KB，正文是业务内容——都不入版本库（2026-11-26 用户决定）。
+.ai/intake/
 .ai/timer-task-loop.out
 .ai/review/tdasset-*.md

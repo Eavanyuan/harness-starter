@@ -1,0 +1,125 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "feishu-task-intake",
+    "task_type": "feature",
+    "related_task": null,
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": null,
+    "change_tier": null,
+    "created_at": "2026-11-26T09:37:28Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "pass",
+      "note": "需求规格 docs/01-requirements/RS-飞书任务接入.md；2026-11-26 用户确认五个开放问题"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：决策已在需求规格的前提核对与开放问题两节由用户确认，没有额外的多方案决策点"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：没有界面"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档裁剪：三个 TODO 即分解"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {
+    "rs": "docs/01-requirements/RS-飞书任务接入.md"
+  },
+  "todos": [
+    {
+      "id": "FTI1",
+      "title": "读取与规则 + 入口/配置/建档/接线：只读闸、字段表解析、三种来源附件、链接、类型规则、摘要；CLI 编排、确认后建档、门禁与体检接线",
+      "status": "completed",
+      "files": [
+        "scripts/lib/feishu-intake.mjs",
+        "test/feishu-intake.assert.mjs",
+        "scripts/feishu-intake.mjs",
+        "scripts/harness-cli.mjs",
+        "scripts/lib/cli/shared.mjs",
+        "harness.rules.json",
+        ".gitignore",
+        "scripts/doctor.mjs",
+        "package.json",
+        "test/feishu-intake.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/FTI1.log",
+        "command": "npm run -s test:feishu-intake"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "unit 43、intake 77、真实建档 12 条全过；变异 9 个全部变红（含关联项漏读、确认人不落盘、校验器判读被绕过）；CLI 入参先于网络另有手工变异证明（B11 红）；真实冒烟重跑：负责人 7 角色、关联工作项 3 条读出",
+        "feature_complete": "需求规格 US-1、US-2 的全部验收标准",
+        "quality_clean": "冒烟时发现附件静默丢失并修复，已做成回归钉"
+      }
+    },
+    {
+      "id": "FTI3",
+      "title": "需求规格：五个开放问题的决定写回、两处实现调整、已知局限；规格检查器与反向验证同步；坑清单、README、配置键文档同步",
+      "status": "completed",
+      "files": [
+        "docs/01-requirements/RS-飞书任务接入.md",
+        "test/rs-feishu-intake.test.py",
+        "test/rs-feishu-intake.mutation.sh",
+        "README.md",
+        "docs/06-reference/config-keys.md",
+        ".skills/deployment/SKILL.md",
+        ".skills/deployment/references/pitfall-checklist.md",
+        "test/pitfall-checklist.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/FTI3.log",
+        "command": "npm run -s test:rs-feishu-intake"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "不适用（文档）",
+        "tests": "规格检查通过；反向验证 19 项符合预期",
+        "feature_complete": "决定 1 到 5 都有落点",
+        "quality_clean": "检查器的语境跨行误报已修"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [
+    {
+      "what": "待决问题的回答放在建档之后：原方案是「人确认类型、需求理解和待决问题之后才创建任务档案」，实现改为确认类型即建档，未答的问题写成阻断挡住流程，用现有的 resume 回答",
+      "disposition": "acknowledged",
+      "by": "Yuan Yuan（2026-11-26 实现阶段由代理决定，不是用户授权；交付时向用户说明，可改回）",
+      "note": "理由：仓库已有待决项与 resume 的整套机制，另造一套「建档前回答」是重复建设；阻断会挡住流程，仍满足「人确认之前不动手」。已写回需求规格第 8 节"
+    },
+    {
+      "what": "本版不做任何飞书写操作：原方案是「回写飞书需单独授权」，实现直接不实现回写，读取层只放行五个读取工具",
+      "disposition": "acknowledged",
+      "by": "Yuan Yuan（2026-11-26 实现阶段由代理决定；收紧而非放宽，交付时说明）",
+      "note": "回写留待以后单独做。已写回需求规格第 8 节"
+    }
+  ],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

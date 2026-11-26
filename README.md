@@ -26,6 +26,9 @@ init-harness 建档 → 干活（agent 按 skill 硬规则写码）→ verify-ru
 
 这套东西全自动跑起来是什么样：task-loop 定时轮询飞书缺陷单和 GitLab MR，认领→归因→生成工单→执行器修复→推分支→等 CI→再归因，人只在升级点和批准点出现。
 
+需要人先确认的活走另一条路：`harness feishu <工作项ID>` 把飞书工作项读全（描述、附件、评论），给出任务类型建议和待决问题；
+你确认类型之后才建任务档案，待决问题回答之前流程不往下走。
+
 ---
 
 ## 设计哲学
@@ -117,7 +120,7 @@ bash scripts/install-task-loop.sh .           # 装定时器（macOS/Linux 自�
 node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N≥30 且 0 误触发再真跑
 ```
 
-**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 53 条已知坑清单）。
+**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 56 条已知坑清单）。
 
 **旁挂模式**：harness 不进业务仓——装独立目录，`--root` 指向业务仓（TDasset 即此形态），证据链落 harness 仓。
 
@@ -173,7 +176,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 - [docs/01-requirements/](docs/01-requirements/) —— 需求规格（每特性一份 RS）
 - [docs/03-decisions/](docs/03-decisions/) —— 技术决策记录（ADR）
 - [retro/](retro/) —— 复盘全档（踩坑第一现场）
-- [.skills/deployment/references/pitfall-checklist.md](.skills/deployment/references/pitfall-checklist.md) —— 53 条已知坑（跨项目可迁移）
+- [.skills/deployment/references/pitfall-checklist.md](.skills/deployment/references/pitfall-checklist.md) —— 56 条已知坑（跨项目可迁移）
 - [AGENTS.md](AGENTS.md) —— 给所有 CLI 的常驻规则（路由表 + 红线）
 
 ## 红线（不许做）

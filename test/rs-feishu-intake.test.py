@@ -73,7 +73,13 @@ for pos, n in main_refs:
     if n not in title_of:
         bad.append('交叉引用 §%d 指向不存在的章节' % n)
         continue
-    ctx = md[max(0, pos - 45):pos + 45]
+    # 语境限定在引用所在的这一行内。跨行取会把下一段的主题算进来：
+    # 实测误报——§8 决定表里「§6 范围外」的引用是对的，但 45 字窗口越过了行尾，
+    # 吃到下一个小标题里的「待决」，于是被判成「谈待决却引用了范围外」。
+    line_start = md.rfind('\n', 0, pos) + 1
+    line_end = md.find('\n', pos)
+    line_end = len(md) if line_end < 0 else line_end
+    ctx = md[max(line_start, pos - 45):min(line_end, pos + 45)]
     for topic, allowed in TOPIC_TO_ALLOWED_TITLE_WORDS:
         if topic in ctx and not any(w in title_of[n] for w in allowed):
             bad.append('§%d 所在句子谈「%s」，但 §%d 是「%s」' % (n, topic, n, title_of[n]))

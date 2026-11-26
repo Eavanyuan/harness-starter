@@ -101,6 +101,7 @@
 | `runtime.feishu.issuer` | `"https://project.feishu.cn"` | 同上 | 飞书项目根地址 |
 | `runtime.feishu.severity.{field,fieldName,map}` | `field_6bff71` / 故障严重级别 / 高→P1 中→P2 低→P3 | 同上 | 自定义严重级字段与 P 档映射（fieldName 供人读）；P0/P1 自动接、P2 待确认、P3 不接 |
 | `runtime.feishu.iteration.{field,fieldName,prefix}` | `field_a7de08` / 迭代周期 / `IDMP` | 同上 | 产品线过滤；field 与 prefix 任一为空整体关闭（兜底=关） |
+| `runtime.feishu.intake.{dir,fields,attachmentFields,typeMap,noChangeMarkers,minDescriptionLength}` | `.ai/intake` / 描述等 7 个中文名 / `["附件"]` / 需求→feature 缺陷→bugfix 任务→ask / `["无变化","无"]` / `20` | lib/feishu-intake（`harness feishu`） | 工作项接料：存放目录（整目录 git 忽略）、按类型解析的字段中文名、附件字段、类型映射与建议阈值 |
 | `runtime.taskLoop.pollSeconds` | `1800`（再兜底 180） | task-loop | **真实轮询节拍**；OS 定时器只是心跳上限。`TASK_LOOP_INTERVAL` 可临时覆盖；改配置下一拍生效，免重装 |
 | `runtime.headless.{cli,args,permission_mode,hooks}` | `claude` / `["-p"]` / `acceptEdits` / `true` | task-loop | 无头会话剖面；`hooks` ≠ false 时目标仓无 hook 接线拒绝启动 |
 | `runtime.budget.{maxRounds,maxActiveMs,claimTtlMs}` | `3` / `1800000` / `86400000` | task-loop、lib/task-loop-core、lib/claim | 单任务修复轮次上限 / 活动墙钟（等 CI/人审不计）/ 认领 TTL；缺省走库默认值 |

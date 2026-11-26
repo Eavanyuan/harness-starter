@@ -187,8 +187,10 @@ const CONSUMED = [
   'promotionDir',
   'runtime',
   'spawn_agents',
+  'feishu.intake',
 ];
 const dead = CONSUMED.filter((k) => !code.includes(k));
+// 用带命名空间的写法做锚：裸键名（如 intake）会被 import 路径（feishu-intake.mjs）误满足，恒真
 if (dead.length) err(`配置键没有任何代码消费（看起来是门禁，实际不生效）：${dead.join(', ')}`);
 else ok.push(`配置键均有消费者（${CONSUMED.length} 个）`);
 
