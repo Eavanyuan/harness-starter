@@ -1,0 +1,656 @@
+{
+  "captured_at": "2026-11-26T08:53:29.948Z",
+  "endpoint": "https://project.feishu.cn/mcp_server/v1",
+  "scope": {
+    "project_key": "taosdata_td",
+    "work_item_type": "Defect",
+    "sample_work_item_id": "7176122491"
+  },
+  "note": "只读采集。字段 key（field_xxxxxx）是空间级的，换空间需按 field_name 重新解析。不含凭据、下载地址、签名、附件内容与描述正文。",
+  "tools": {
+    "total": 48,
+    "pages": 1,
+    "truncated": false,
+    "by_class": {
+      "read": 33,
+      "write": 15,
+      "other": 0
+    },
+    "classification_rule": "read: 名称以 get/list/search/query/fetch/read/check/test 开头；write: add/create/update/delete/upload/transition/remove/push/set/batch/edit/publish/reset；其余 other。按命名分类，非官方标注。",
+    "names": [
+      {
+        "name": "add_comment",
+        "class": "write",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "create_fixed_view",
+        "class": "write",
+        "required": [
+          "project_key",
+          "name",
+          "work_item_type",
+          "work_item_id_list"
+        ]
+      },
+      {
+        "name": "create_resource_work_item",
+        "class": "write",
+        "required": [
+          "work_item_type_key",
+          "project_key"
+        ]
+      },
+      {
+        "name": "create_wbs_draft",
+        "class": "write",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "create_workitem",
+        "class": "write",
+        "required": [
+          "project_key",
+          "work_item_type",
+          "fields"
+        ]
+      },
+      {
+        "name": "edit_wbs_draft",
+        "class": "write",
+        "required": [
+          "project_key",
+          "work_item_id",
+          "operation"
+        ]
+      },
+      {
+        "name": "get_chart_detail",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "get_download_url",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id",
+          "file_url"
+        ]
+      },
+      {
+        "name": "get_node_detail",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "get_resource_work_item_type_conf",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_type_key"
+        ]
+      },
+      {
+        "name": "get_transitable_states",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "get_transition_required",
+        "class": "read",
+        "required": [
+          "state_key"
+        ]
+      },
+      {
+        "name": "get_view_detail",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "get_wbs_draft_operation_progress",
+        "class": "read",
+        "required": [
+          "operation_id",
+          "project_key",
+          "work_item_id",
+          "op_type"
+        ]
+      },
+      {
+        "name": "get_workitem_brief",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "get_workitem_field_meta",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_type"
+        ]
+      },
+      {
+        "name": "get_workitem_man_hour_records",
+        "class": "read",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "get_workitem_op_record",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "list_charts",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "list_deliverables",
+        "class": "read",
+        "required": [
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_element_template",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_type",
+          "element_type"
+        ]
+      },
+      {
+        "name": "list_multi_project_view_workitems",
+        "class": "read",
+        "required": [
+          "project_key",
+          "view_id"
+        ]
+      },
+      {
+        "name": "list_node_field_config",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_type"
+        ]
+      },
+      {
+        "name": "list_project_team",
+        "class": "read",
+        "required": [
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_related_workitem",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "list_schedule",
+        "class": "read",
+        "required": [
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_team_members",
+        "class": "read",
+        "required": [
+          "project_key",
+          "team_id"
+        ]
+      },
+      {
+        "name": "list_todo",
+        "class": "read",
+        "required": [
+          "action"
+        ]
+      },
+      {
+        "name": "list_wbs_draft_rows",
+        "class": "read",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_wbs_instance_rows",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "list_workitem_comments",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "list_workitem_field_config",
+        "class": "read",
+        "required": [
+          "work_item_type",
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_workitem_relations",
+        "class": "read",
+        "required": [
+          "project_key"
+        ]
+      },
+      {
+        "name": "list_workitem_role_config",
+        "class": "read",
+        "required": [
+          "project_key",
+          "work_item_type"
+        ]
+      },
+      {
+        "name": "list_workitem_types",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "publish_wbs_draft",
+        "class": "write",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "reset_wbs_draft",
+        "class": "write",
+        "required": [
+          "work_item_id",
+          "project_key"
+        ]
+      },
+      {
+        "name": "search_by_mql",
+        "class": "read",
+        "required": [
+          "project_key"
+        ]
+      },
+      {
+        "name": "search_project_info",
+        "class": "read",
+        "required": []
+      },
+      {
+        "name": "search_user_info",
+        "class": "read",
+        "required": [
+          "user_keys"
+        ]
+      },
+      {
+        "name": "search_view_by_title",
+        "class": "read",
+        "required": [
+          "project_key",
+          "view_scope",
+          "key_word"
+        ]
+      },
+      {
+        "name": "transition_node",
+        "class": "write",
+        "required": [
+          "action",
+          "project_key",
+          "work_item_id",
+          "node_id"
+        ]
+      },
+      {
+        "name": "transition_state",
+        "class": "write",
+        "required": [
+          "project_key",
+          "work_item_id",
+          "transition_id"
+        ]
+      },
+      {
+        "name": "update_field",
+        "class": "write",
+        "required": [
+          "work_item_id"
+        ]
+      },
+      {
+        "name": "update_fixed_view",
+        "class": "write",
+        "required": [
+          "project_key",
+          "view_id",
+          "work_item_type"
+        ]
+      },
+      {
+        "name": "update_node",
+        "class": "write",
+        "required": []
+      },
+      {
+        "name": "update_node_subtask",
+        "class": "write",
+        "required": [
+          "action",
+          "node_id"
+        ]
+      },
+      {
+        "name": "upload_file",
+        "class": "write",
+        "required": [
+          "resource_type",
+          "project_key"
+        ]
+      }
+    ]
+  },
+  "doc_reading": {
+    "question": "能否读取飞书云文档/多维表格正文",
+    "result": "无对应工具",
+    "matching": []
+  },
+  "work_item_read": {
+    "get_workitem_brief": {
+      "default_keys": [
+        "owned_project",
+        "work_item_id",
+        "work_item_name",
+        "work_item_type",
+        "work_item_mod",
+        "role_members",
+        "template",
+        "create_time",
+        "update_time",
+        "create_by",
+        "updated_by",
+        "work_item_status"
+      ],
+      "default_has_description": false,
+      "default_has_attachment": false,
+      "with_fields_param": {
+        "requested": [
+          "description",
+          "field_702492"
+        ],
+        "returned_keys": [
+          "owned_project",
+          "work_item_id",
+          "work_item_name",
+          "work_item_type",
+          "work_item_mod",
+          "role_members",
+          "template",
+          "create_time",
+          "update_time",
+          "create_by",
+          "updated_by",
+          "work_item_status"
+        ],
+        "description_returned": false,
+        "attachment_returned": false
+      },
+      "id_type": "string",
+      "type_shape": "object{key,name}"
+    },
+    "search_by_mql": {
+      "rows": 1,
+      "fields": [
+        {
+          "key": "work_item_id",
+          "name": "工作项id",
+          "value_type": "long_value",
+          "value_kind": "long_value",
+          "id_value_type": "number"
+        },
+        {
+          "key": "description",
+          "name": "描述",
+          "value_type": "string_value",
+          "value_kind": "string_value",
+          "text_length": 640
+        },
+        {
+          "key": "field_d3db94",
+          "name": "报告人的复现步骤",
+          "value_type": "string_value",
+          "value_kind": "string_value",
+          "text_length": 996
+        },
+        {
+          "key": "field_702492",
+          "name": "附件",
+          "value_type": "key_label_value_list",
+          "value_kind": "key_label_value_list",
+          "items": [
+            {
+              "extension": "pdf",
+              "name_length": 66,
+              "has_url": true
+            }
+          ]
+        },
+        {
+          "key": "field_66a47a",
+          "name": "用户行为变更说明",
+          "value_type": "string_value",
+          "value_kind": "string_value",
+          "text_length": 3
+        }
+      ],
+      "id_type": "number"
+    },
+    "field_config": {
+      "total_fields": 50,
+      "by_type": {
+        "_name": {
+          "count": 1,
+          "names": [
+            "名称"
+          ]
+        },
+        "_work_item_template": {
+          "count": 1,
+          "names": [
+            "项目"
+          ]
+        },
+        "select": {
+          "count": 10,
+          "names": [
+            "优先级",
+            "工作项类型",
+            "终止原因",
+            "来源",
+            "故障严重级别",
+            "漏洞安全等级",
+            "能否复现",
+            "测试用例",
+            "用户手册",
+            "缺陷发现阶段"
+          ]
+        },
+        "date": {
+          "count": 5,
+          "names": [
+            "创建时间",
+            "更新时间",
+            "完成日期",
+            "到期日",
+            "实际发版日"
+          ]
+        },
+        "user": {
+          "count": 2,
+          "names": [
+            "创建者",
+            "更新人"
+          ]
+        },
+        "multi-user": {
+          "count": 2,
+          "names": [
+            "关注人",
+            "当前负责人"
+          ]
+        },
+        "multi-text": {
+          "count": 9,
+          "names": [
+            "描述",
+            "报告人的复现步骤",
+            "复现步骤（By Dev）",
+            "根因分析（By Dev）",
+            "解决方案（by Dev）",
+            "影响范围（by Dev）",
+            "代码实现（PR）",
+            "取消或挂起的原因",
+            "用户行为变更说明"
+          ]
+        },
+        "_business": {
+          "count": 1,
+          "names": [
+            "业务线"
+          ]
+        },
+        "owned_project": {
+          "count": 1,
+          "names": [
+            "所属空间"
+          ]
+        },
+        "number": {
+          "count": 2,
+          "names": [
+            "工作项id",
+            "自增数字"
+          ]
+        },
+        "bool": {
+          "count": 2,
+          "names": [
+            "是否冻结",
+            "是否完成"
+          ]
+        },
+        "multi-select": {
+          "count": 3,
+          "names": [
+            "当前状态授权角色",
+            "缺陷问题表现",
+            "所属组件"
+          ]
+        },
+        "text": {
+          "count": 6,
+          "names": [
+            "补充终止原因",
+            "版本信息（-V 输出）",
+            "CN-ReleaseNote ",
+            "EN-ReleaseNote",
+            "Github Issue ID",
+            "最终用户"
+          ]
+        },
+        "_work_item_status": {
+          "count": 1,
+          "names": [
+            "状态"
+          ]
+        },
+        "workitem_related_select": {
+          "count": 2,
+          "names": [
+            "迭代周期",
+            "引入的版本"
+          ]
+        },
+        "workitem_related_multi_select": {
+          "count": 1,
+          "names": [
+            "修复的版本"
+          ]
+        },
+        "multi-file": {
+          "count": 1,
+          "names": [
+            "附件"
+          ]
+        }
+      },
+      "random_key_count": 28,
+      "sample_field_keys": {
+        "description": "description",
+        "reporter_repro_steps": "field_d3db94",
+        "attachment": "field_702492",
+        "behavior_change_note": "field_66a47a"
+      }
+    }
+  },
+  "attachment": {
+    "attempted": true,
+    "ok": true,
+    "extension": "pdf",
+    "get_download_url": {
+      "required": [
+        "project_key",
+        "work_item_id",
+        "file_url"
+      ],
+      "returns": [
+        "sign_expire_time",
+        "is_multipart",
+        "download_url",
+        "sign"
+      ],
+      "is_multipart": false
+    },
+    "http_status": 200,
+    "content_type": "application/pdf",
+    "bytes": 406039,
+    "magic": "%PDF-"
+  },
+  "local_pdf_parser": {
+    "pypdf": "present on the capture machine (verified separately); not a harness dependency yet"
+  }
+}
