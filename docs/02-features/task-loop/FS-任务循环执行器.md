@@ -62,6 +62,7 @@
 **触发判定（剖面 A）**
 
 - 输入：`GET /merge_requests?scope=created_by_me&state=opened` → 逐条 `discussions`，必要时补 `repository/commits/<sha>` 与 `approvals`
+- **discussions 翻页（2026-11-26 变更 review-with-ci，!1847 实测根因）**：`allDiscussions()` 以 `per_page=100` 请求并按响应头 `x-next-page` 循环取全（此前不带 `per_page`，GitLab 默认每页 20 条——该 MR 22 条 discussion，评审打回评论在第 2 页，runner 每轮看到的都是「无评审意见、CI 红」）。上限 `DISCUSSIONS_MAX_PAGES=10`；到上限仍未取完、或任一页非 2xx → **抛错**（整轮剖面 A 失败，见下「失败分支」），绝不返回部分结果：下游 sweep 以「本轮看见的触发集合」为视角，部分视角 = 把看不见的触发误判为消失而关账。响应不带 `x-next-page` 头（老版本/代理）按「已取完」处理，不崩
 - 处理：`scripts/lib/gitlab-triggers.mjs` 的 `classifyMr()`。`unresolvedByOthers()` 取"他人写的、`resolvable && !resolved`"；`approvalFromDiscussions()` 回放系统留言里的 `approved/unapproved this merge request` 得到**审批人与审批时间**
 - 输出：`{kind:'mr', id, mr, unresolved, comments, reviewState, signal}`；`comments` 为评审人建议性普通评论（2026-11-16 变更 mr-verb-trigger：审核意见里的建议修改项纳入接单修复范围，不双列 resolvable、不收自发与系统留言），随触发进 ack 待修清单
 - 建议项开关（2026-11-18 fix-suggestions，用户指令"默认开启，可关闭只修阻塞问题"）：`runtime.taskLoop.fixSuggestions`（默认 true=建议性评审评论也进修复范围，2026-11-16 以来的行为）；置 false 时**只修阻断项**——`filterSuggestionNotes` 在触发判定前剔除不带 🔴/阻断/必须修 标记的建议性评论（纯建议的结论评论不再触发），resolvable 打回线程与系统留言天然保留。改配置即生效，轮询行打印当前态。
@@ -283,6 +284,7 @@ CLI 契约：`node scripts/task-loop.mjs --once [--profile auto|a|b|both] [--dry
 | 落盘权限 | `task-loop.env` 0600 / `run-round.sh` 0700 / 目录 0700 / plist 0600 | 用 `stat` 不用 `ls -l \| cut`（macOS 带 ACL 时列会错位） |
 | wrapper 是唯一入口 | `env -i` 干净环境跑 `run-round.sh` 仍能取到凭据并进入 runner | 必须显式给假 `HOME`：node 的 `os.homedir()` 在 HOME 缺失时回落 passwd 真实家目录，会读到本机真凭据并对外发请求 |
 | 凭据文件是数据不是代码 | 文件里写裸命令 → **runner 报错 exit 1 并给行号**，`pwn*` 文件一个都没被创建；`$(...)` / 反引号原样保留不求值 | 判据是"文件没被执行"，不是"报错文案好看"；wrapper 里 `set -a; . file; set +a` 这种一行式也算 source（结构断言查非注释行的 `.` / `source`） |
+| discussions 翻页（2026-11-26 review-with-ci） | 单页：只请求一次；跨页：按 `x-next-page` 取全，第 2 页的评审打回评论能触发（!1847 形态）；端到端：旧 CI 账目（needs_human）因评论可见而重认领、出带评论的工单 | 到页数上限仍未取完 → 抛错且信息含「超过 10 页」；翻到一半 HTTP 502 → 抛错且信息含 `page=2 HTTP 502`；两者都**不得**返回部分结果 |
 | 凭据文件优先级 | 进程 env 非空 → 文件不覆盖；env 为空串 → 文件补上；`loaded` / `shadowed` 分开记 | 反过来会让"临时指到别处"失效，症状是"我明明指过去了" |
 | doctor 与定时器同一份凭据 | `HARNESS_ENV_FILE` 指过去后 doctor 报出生效键数、不再说"未检查"；文件写成非 `K=V` → doctor 判红 | 否则"定时器在跑"与"未接入"同时成立 |
 | 重装幂等 | 未提供的键保留、提供的键更新、手加的键不被抹掉、权限仍 0600 | 整体重写会把上次配好的 token 清掉 |

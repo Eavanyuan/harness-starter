@@ -247,6 +247,51 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     return res.json();
   };
   const optional = async (path) => { try { return await api(path); } catch { return null; } };
+  // discussions 翻页（2026-11-26 review-with-ci，!1847 实测根因）：此前请求不带 per_page，GitLab 默认
+  // 每页 20 条——该 MR 有 22 条，最新 2 条（含评审人打回评论）落在第二页，runner 每轮看到的都是
+  // 「无评审意见、CI 红」。GitLab 用响应头 x-next-page 标下一页；取不全时**抛错**而不是返回部分：
+  // 部分视角会让 sweep 把看不见的触发当「消失」关账（架构体检 🔴#1 同形态）。
+  // 抛错后的去向由 task-loop 的剖面 A catch 分类，两类都让本轮 gitlabViewComplete=false（账目不动）：
+  //   - HTTP 404/429/5xx、超时 → 源级软失败（跳过该源、其余源继续、下 tick 重试）；
+  //   - 超过 DISCUSSIONS_MAX_PAGES、响应体不是数组 → 致命 die(1)：这不是运行时抖动而是数据/接口
+  //     超出设计，需要人看见（调上限或清讨论）。**本函数不逐 MR 吞错**——吞掉 = 该 MR 从本轮
+  //     视角消失 = 它的账目被当「触发消失」关掉，比整轮失败更糟。
+  const DISCUSSIONS_MAX_PAGES = 10;
+  const allDiscussions = async (path) => {
+    const out = [];
+    let page = 1;
+    for (;;) {
+      const res = await fetchImpl(`${url}/api/v4${path}?per_page=100&page=${page}`, {
+        headers: { 'private-token': token },
+        signal: AbortSignal.timeout(15_000),
+      });
+      // 非 2xx 一律抛错且信息含「HTTP <code>」，交由 runner 分类（404 多为 MR 刚被删/权限的竞态 → 软失败）。
+      if (!res.ok) throw new Error(`GitLab ${path} page=${page} HTTP ${res.status}`);
+      // 2xx 但不是数组（登录页 HTML、代理错误页、版本变更）——按空页处理等于「该 MR 没有任何讨论」，
+      // 是最隐蔽的部分视角。res.json() 对非 JSON 会先抛 SyntaxError（信息里只有原文片段、不知道是哪个接口），
+      // 所以解析也包进来：统一成一条带 path / content-type 的错误，带 content-type 便于定位是哪一层吐了非 JSON。
+      const contentType = res.headers?.get?.('content-type') || '?';
+      let rows;
+      try {
+        rows = await res.json();
+      } catch (e) {
+        throw new Error(`GitLab ${path} page=${page} 响应体不是合法 JSON（content-type=${contentType}）：${String(e?.message || e).slice(0, 80)}`);
+      }
+      if (!Array.isArray(rows)) {
+        throw new Error(`GitLab ${path} page=${page} 响应体不是数组（${typeof rows}，content-type=${contentType}）`);
+      }
+      out.push(...rows);
+      // 读不到下一页头 = 没有下一页（可选链）：老 GitLab / 代理 / 测试桩可能不带该头，
+      // 此时按「已取完」处理而不是崩——崩会让整轮剖面 A 失败，为一个 MR 拖死全部。
+      const next = Number(res.headers?.get?.('x-next-page'));
+      if (!Number.isFinite(next) || next <= page) break;
+      page = next;
+      if (page > DISCUSSIONS_MAX_PAGES) {
+        throw new Error(`discussions 超过 ${DISCUSSIONS_MAX_PAGES} 页仍未取完（${out.length} 条）——视角不完整，拒绝按部分结果判定：${path}`);
+      }
+    }
+    return out;
+  };
 
   // per_page=100（GitLab 单页上限）：列表无翻页，页大小就是 sweep 的视角边界——本人 open MR
   // 超过页大小会把最老的挤出列表，被 sweep 误判"触发消失"关账（CR 二审新发现，🔴#1 同类形态）。
@@ -271,7 +316,7 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     if (skipDrafts && isDraftMr(mr)) { out.drafts.add(`mr-${mr.iid}`); continue; }
     const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
-    const rawDiscs = await api(`${base}/discussions`);
+    const rawDiscs = await allDiscussions(`${base}/discussions`);
     // fixSuggestions=false：建议性评论（非阻断）整体退出触发判定与修复范围——
     // 纯建议的结论评论不再触发（无活儿）。注意：保留 🔴 评论只影响『是否成为待修内容』，
     // 触发信号仍需三路之一（resolvable 线程/新鲜动词/带结论词的评论）——裸 🔴 评论不构成触发（CR 🟡#2）。

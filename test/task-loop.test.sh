@@ -439,8 +439,8 @@ const calls = [];
 const fake = async (url) => {
   calls.push(url);
   const json = url.endsWith("/merge_requests?scope=created_by_me&state=opened&per_page=100") ? [mrWithVerb, mrQuiet]
-    : /\/projects\/1\/merge_requests\/7\/discussions$/.test(url) ? verbDiscs
-    : /\/projects\/2\/merge_requests\/8\/discussions$/.test(url) ? []
+    : /\/projects\/1\/merge_requests\/7\/discussions(\?|$)/.test(url) ? verbDiscs
+    : /\/projects\/2\/merge_requests\/8\/discussions(\?|$)/.test(url) ? []
     : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
     : null;
   if (json === null) return { ok: false, status: 404, json: async () => ({}) };
@@ -480,7 +480,7 @@ const fake = (routes) => async (u) => {
 const routes = (noteBody) => [
   [/merge_requests\?/, [{ iid: 99, project_id: 1, target_branch: "main", title: "t", sha: "abc", author: { username: "me" } }]],
   [/\/user$/, { username: "me" }],
-  [/discussions$/, [{ id: "d1", notes: [
+  [/discussions(\?|$)/, [{ id: "d1", notes: [
     noteBody ? { id: 9, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: noteBody, created_at: "2026-11-18T04:00:00Z" } : { id: 8, system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-18T03:30:00Z" },
   ] }]],
   [/repository\/commits/, { committed_date: "2026-11-18T01:00:00Z" }],
@@ -561,7 +561,7 @@ const fake = (routes) => async (u) => {
 const routes = [
   [/merge_requests\?/, [{ iid: 88, project_id: 1, target_branch: "main", title: "fix(x) 列表缺字段", sha: "abc", author: { username: "me" } }]], // 列表不带 work_in_progress（实例实测形态）
   [/\/user$/, { username: "me" }],
-  [/discussions$/, []],
+  [/discussions(\?|$)/, []],
   [/merge_requests\/88$/, { iid: 88, target_branch: "main", work_in_progress: true, head_pipeline: { id: 9, status: "failed", web_url: "http://g" } }], // 详情：Draft 且 CI 红
   [/pipelines\/9\/jobs$/, [{ id: 5, name: "b", stage: "build", status: "failed", web_url: "http://j" }]],
   [/jobs\/5\/trace$/, null, "[ERROR] /w/a/src/A.java:[1,1] boom\n"],
@@ -760,7 +760,7 @@ try { changesRequestedAt(discs, ""); } catch { threwVerb = true; }
 const mrs = [{ iid: 9, project_id: 3, sha: "s9", author: { username: me } }];
 const fake = async (url) => {
   const json = url.endsWith("scope=created_by_me&state=opened&per_page=100") ? mrs
-    : /discussions$/.test(url) ? discs
+    : /discussions(\?|$)/.test(url) ? discs
     : /repository\/commits/.test(url) ? { committed_date: "2026-11-15T13:13:01Z" }
     : null;
   if (json === null) return { ok: false, status: 404, json: async () => ({}) };
@@ -890,6 +890,108 @@ console.log(code, okMsg ? "msg-ok" : "msg-bad", okShadow ? "shadow-ok" : "shadow
 ' "$HERE" "$TL3/w" > "$TMP/e2e4.txt" 2>&1
 grep -q "^0 msg-ok shadow-ok$" "$TMP/e2e4.txt" && r=0 || { cat "$TMP/e2e4.txt"; r=1; }
 check "dry-run/shadow：动词型显示与落账都含建议评论数" "0" "$r"
+
+echo "== 5d-quin-bis. discussions 翻页（!1847 实测根因：22 条评论落在第二页，runner 只看到前 20 条）=="
+# 纯函数层：用 fake fetchImpl 喂分页响应，验证三形态——单页 / 跨页取全 / 到上限抛错不返回部分
+node --input-type=module -e '
+import { fetchTriggers } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+const MR = { iid: 77, project_id: 1, target_branch: "main", title: "翻页验证", sha: "abc", author: { username: "me" } };
+const note = (id, body, at, who = "lead", system = false) => ({ id, system, resolvable: false, resolved: false, author: { username: who }, body, created_at: at });
+const mk = (pages, headers = {}) => async (u) => {
+  const url = new URL(u); const page = Number(url.searchParams.get("page") || 1);
+  const path = url.pathname;
+  const json = (body, h = {}) => ({ ok: true, status: 200, headers: { get: (k) => h[k] ?? null }, json: async () => body });
+  if (path.endsWith("/user")) return json({ username: "me" });
+  if (path.endsWith("/merge_requests")) return json([MR]);
+  if (/discussions$/.test(path)) {
+    if (page > pages.length) return json([]);
+    return json(pages[page - 1], page < pages.length ? { "x-next-page": String(page + 1) } : headers);
+  }
+  if (/repository\/commits/.test(path)) return json({ committed_date: "2026-11-25T17:22:00Z" });
+  if (/approvals$/.test(path)) return json({ approved_by: [] });
+  return { ok: false, status: 404, headers: { get: () => null }, json: async () => ({}) };
+};
+// ① 单页：一次请求，评论在第一页
+const one = mk([[{ id: "d1", notes: [note(1, "## Request Changes\n单页", "2026-11-26T01:00:00Z")] }]]);
+let discCalls = 0; const r1 = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: async (u, init) => { if (String(u).includes("/discussions")) discCalls++; return one(u, init); } });
+must(r1.length === 1 && r1[0].comments.length === 1 && discCalls === 1, "single-page");
+// ② 跨页：第一页 20 条旧系统留言，评审评论在第二页——必须取全并触发（!1847 形态）
+const page1 = [{ id: "d0", notes: Array.from({ length: 20 }, (_, i) => note(100 + i, "旧留言", "2026-11-20T00:00:00Z", "me", true)) }];
+const page2 = [{ id: "d9", notes: [note(216, "## Request Changes\n升级迁移实际不会执行", "2026-11-26T01:01:39Z")] }];
+const two = mk([page1, page2]);
+const r2 = await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: two });
+must(r2.length === 1 && r2[0].signal === "review_comment" && r2[0].comments.length === 1 && /升级迁移/.test(r2[0].comments[0].body), "cross-page");
+// ③ 到页数上限仍未取完：抛错，不返回部分结果（部分视角会让 sweep 误关账）
+const many = mk(Array.from({ length: 12 }, (_, i) => [{ id: "d" + i, notes: [note(300 + i, "填充", "2026-11-20T00:00:00Z", "me", true)] }]));
+let threw = null;
+try { await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: many }); } catch (e) { threw = e; }
+must(threw && /超过 10 页/.test(threw.message), "max-pages-throws");
+// ④ 翻到一半 HTTP 报错：同样抛错而不是返回已取到的部分（部分视角 = 误判「触发消失」关账）
+let threwHttp = null;
+const halfBroken = async (u) => {
+  const url = new URL(u); const page = Number(url.searchParams.get("page") || 1);
+  if (/discussions$/.test(url.pathname) && page === 2) return { ok: false, status: 502, headers: { get: () => null }, json: async () => ({}) };
+  return two(u);
+};
+try { await fetchTriggers({ url: "http://x", token: "f", username: "me", fetchImpl: halfBroken }); } catch (e) { threwHttp = e; }
+must(threwHttp && /page=2 HTTP 502/.test(threwHttp.message), "http-error-on-page2-throws");
+console.log("page-ok");
+' > "$TMP/dbpage.txt" 2>&1
+grep -q "^page-ok$" "$TMP/dbpage.txt" && r=0 || { cat "$TMP/dbpage.txt"; r=1; }
+check "discussions 翻页：单页一次请求 / 跨页取全并触发（!1847 形态）/ 到上限抛错 / 中途 HTTP 错抛错——均不返回部分结果" "0" "$r"
+
+echo "== 5d-quin-ter. 端到端（!1847 形态）：讨论跨两页的评审打回 → 旧 CI 账目（needs_human）被重认领 → 出带评论的工单 =="
+# 用户报告的真实场景：该 MR 的 CI 账目轮次到 10 被判 needs_human，而评审打回评论落在第 2 页、
+# runner 看不见。修复后评论可见 → 触发从 CI 形态变为评审形态 → 指纹变化 → ack_stale 重认领 →
+# 评审形态出工单（该路径本就没有轮次上限拦截）。预置的是 CI 形态旧账，用来验证换形态后能被重认领。
+TL5QT="$TMP/e2e5qt"; git init -q --bare "$TL5QT/r.git"
+git clone -q "$TL5QT/r.git" "$TL5QT/w" 2>/dev/null
+( cd "$TL5QT/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main \
+  && mkdir -p .ai/task-loop && printf '%s' '{"trigger":"mr-78","pending":[],"state":"needs_human","fingerprint":"ci:9001","ci":{"pipelineId":9001,"rounds":10},"budget":{}}' > .ai/task-loop/ack-78.json )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+const page1 = [{ id: "d0", notes: Array.from({ length: 20 }, (_, i) => ({ id: 100 + i, system: true, author: { username: "me" }, body: "system note", created_at: "2026-11-20T00:00:00Z" })) }];
+const page2 = [{ id: "d9", notes: [{ id: 216, system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "## Request Changes\n1. 升级迁移实际不会执行\n2. 元素模板 check-in 后被写脏", created_at: "2026-11-26T01:01:39Z" }] }];
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = q.url.split("?")[0];
+  const page = Number(new URL(q.url, "http://x").searchParams.get("page") || 1);
+  if (u === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 78, project_id: 1, target_branch: "main", title: "跨页评审", sha: "abc", author: { username: "me" } }]));
+  if (u === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(u)) {
+    if (page === 1) { s.setHeader("x-next-page", "2"); return s.end(JSON.stringify(page1)); }
+    return s.end(JSON.stringify(page2));
+  }
+  if (/repository\/commits/.test(u)) return s.end(JSON.stringify({ committed_date: "2026-11-25T17:22:00Z" }));
+  if (/approvals$/.test(u)) return s.end(JSON.stringify({ approved_by: [] }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+  env: { ...process.env, GITLAB_URL: "http://127.0.0.1:" + srv.address().port, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+});
+let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+const code = await new Promise((r) => child.on("close", r));
+srv.close();
+const ack = JSON.parse(readFileSync(repo + "/.ai/task-loop/ack-78.json", "utf8"));
+const pack = existsSync(repo + "/.ai/task-loop/pack-78.md") ? readFileSync(repo + "/.ai/task-loop/pack-78.md", "utf8") : "";
+const types = readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const ok = code === 0
+  && ack.state === "working" && ack.pending.length === 1 && ack.pending[0].source === "comment"
+  && /升级迁移/.test(ack.pending[0].body)
+  && types.includes("ack_stale") && !types.includes("ci_escalated")
+  && /评审意见|打回意见/.test(pack) && /升级迁移实际不会执行/.test(pack);
+console.log(ok ? "ok" : "bad", code, ack.state, ack.pending.length, types.includes("ack_stale"));
+process.exit(0);
+' "$HERE" "$TL5QT/w" "$TMP/ledger5qt" > "$TMP/e2e5qt.txt" 2>&1
+grep -q "^ok 0 working 1 true$" "$TMP/e2e5qt.txt" && r=0 || { cat "$TMP/e2e5qt.txt"; r=1; }
+check "!1847 形态端到端：跨页评审评论可见 → 旧 CI 账目（needs_human）被重认领 → 出带评审意见的工单" "0" "$r"
 
 echo "== 5e. 认领之后失败 → 当场释放（不留孤儿引用） =="
 # 实测过的泄漏：崩在 claim 之后，引用留在远端，release 从未被调用，第二次运行认领被拒，
@@ -1099,6 +1201,111 @@ grep -q "^ok 0 1$" "$TMP/e2e5gb.txt" && r=0 || { cat "$TMP/e2e5gb.txt"; r=1; }
 check "软失败轮不动账：ack/工单保留、无 trigger_gone（本轮看不见≠消失）" "0" "$r"
 git -C "$TL5F/r.git" for-each-ref refs/heads/claims/mr-61 --format='%(refname)' | grep -q "claims/mr-61"
 check "软失败轮认领不释放（不被别的机器抢走）" "0" "$?"
+
+echo "== 5g-quinquies. 翻页出错后的分类（2026-11-26 review-with-ci，CR 🟡#1）：第 2 页 5xx / discussions 404 → 软失败不动账；凭据 401 → 仍致命 =="
+# 翻页助手取不全即抛错；抛错之后由剖面 A 的 catch 分类。三类形态都必须让本轮「视角不完整」，
+# 即不关账、不重认领、不释放认领——否则一个 MR 的分页故障会把它自己的账目误关掉。
+# 命名不沿用 5gt：存量用例「5g-ter. --mr 过滤轮不动账」已占 $TMP/e2e5gt、ledger5gt、e2e5gt.txt——
+# 共用账本会让两条用例的事件流互相串扰（CR §9 🟡#1：M10b 下该存量用例被误判变红）。
+TL5GQ="$TMP/e2e5gq"; git init -q --bare "$TL5GQ/r.git"
+git clone -q "$TL5GQ/r.git" "$TL5GQ/w" 2>/dev/null
+( cd "$TL5GQ/w" && git config user.email t@t && git config user.name t \
+  && cp "$HERE/harness.rules.json" . && mkdir -p .zcode && printf '{"hooks":{"enabled":true}}' > .zcode/config.json \
+  && git add -A && git commit -qm base && git push -q origin HEAD:main )
+node --input-type=module -e '
+import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { readFileSync, existsSync, rmSync } from "node:fs";
+const [here, repo, ledger] = process.argv.slice(1);
+let mode = "ok"; // ok | page2_502 | disc_404 | disc_401 | disc_403 | mr_list_404 | disc_html | disc_json_object | disc_overflow
+const srv = createServer((q, s) => {
+  s.setHeader("content-type", "application/json");
+  const u = new URL(q.url, "http://x"); const p = u.pathname; const page = Number(u.searchParams.get("page") || 1);
+  if (mode === "mr_list_404" && p === "/api/v4/merge_requests") { s.statusCode = 404; s.end("{}"); return; }
+  if (p === "/api/v4/merge_requests") return s.end(JSON.stringify([{ iid: 62, project_id: 1, target_branch: "main", title: "翻页出错", sha: "abc", author: { username: "me" } }]));
+  if (p === "/api/v4/user") return s.end(JSON.stringify({ username: "me" }));
+  if (/discussions$/.test(p)) {
+    if (mode === "disc_404") { s.statusCode = 404; s.end("{}"); return; }
+    if (mode === "disc_401") { s.statusCode = 401; s.end("{}"); return; }
+    if (mode === "disc_403") { s.statusCode = 403; s.end("{}"); return; }
+    if (mode === "disc_html") { s.setHeader("content-type", "text/html"); s.end("<html>sign in</html>"); return; }
+    if (mode === "disc_json_object") return s.end(JSON.stringify({ message: "not an array" }));
+    if (mode === "disc_overflow") { s.setHeader("x-next-page", String(page + 1)); return s.end(JSON.stringify([{ id: "d", notes: [] }])); }
+    if (page === 2) {
+      if (mode === "page2_502") { s.statusCode = 502; s.end("bad gateway"); return; }
+      return s.end(JSON.stringify([]));
+    }
+    s.setHeader("x-next-page", "2"); // 恒有两页，让故障轮确实走到第 2 页
+    return s.end(JSON.stringify([{ id: "d1", notes: [{ id: 81, system: false, resolvable: true, resolved: false, author: { username: "lead" }, body: "意见", created_at: "2026-11-16T05:00:00Z" }] }]));
+  }
+  if (/repository\/commits/.test(p)) return s.end(JSON.stringify({ committed_date: "2026-11-16T04:00:00Z" }));
+  s.statusCode = 404; s.end("{}");
+});
+await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+const url = "http://127.0.0.1:" + srv.address().port;
+const run = async () => {
+  const child = spawn("node", [here + "/scripts/task-loop.mjs", "--once", "--profile", "a", "--root", repo], {
+    env: { ...process.env, GITLAB_URL: url, GITLAB_TOKEN: "f", GITLAB_USERNAME: "me", HARNESS_LEDGER_DIR: ledger },
+  });
+  let out = ""; child.stdout.on("data", (d) => { out += d; }); child.stderr.on("data", (d) => { out += d; });
+  const code = await new Promise((r) => child.on("close", r));
+  return { code, out };
+};
+const types = () => readFileSync(ledger + "/events.jsonl", "utf8").trim().split("\n").map((l) => JSON.parse(l).type);
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+const ack = repo + "/.ai/task-loop/ack-62.json", pack = repo + "/.ai/task-loop/pack-62.md";
+// 健康轮：第 2 页为空 → 正常认领，留下账目与工单
+const r1 = await run();
+must(r1.code === 0 && existsSync(ack) && existsSync(pack), "healthy-round");
+const before = readFileSync(ack, "utf8");
+const beforePack = readFileSync(pack, "utf8");
+// ① 第 2 页 502：命中临时分类 → 软失败（exit 1）→ 账目工单原样保留
+mode = "page2_502"; let t0 = types().length; const r2 = await run(); const t2 = types().slice(t0);
+must(r2.code === 1 && /page=2 HTTP 502/.test(r2.out) && /源故障 gitlab/.test(r2.out), "502-soft-fail:" + r2.code);
+must(existsSync(ack) && readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "502-keeps-ledger");
+must(!t2.includes("trigger_gone") && !t2.includes("ack_stale"), "502-no-close");
+// ② discussions 404（MR 刚被删的竞态）：与详情 404 同源 → 软失败，不得整轮 die
+mode = "disc_404"; t0 = types().length; const r3 = await run(); const t3 = types().slice(t0);
+must(r3.code === 1 && /discussions page=1 HTTP 404/.test(r3.out) && /源故障 gitlab/.test(r3.out), "404-soft-fail:" + r3.code);
+must(!/剖面 A 触发轮询失败/.test(r3.out), "404-not-die");
+must(existsSync(ack) && readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "404-keeps-ledger");
+must(!t3.includes("trigger_gone") && !t3.includes("ack_stale"), "404-no-close");
+// ③ 凭据 401（discussions 接口直接回 401；不走 /user——它只在未配 GITLAB_USERNAME 时才请求）：不在放行范围 →
+// 仍整轮致命（接入坏了必须有人看见），且同样不动账
+mode = "disc_401"; t0 = types().length; const r4 = await run(); const t4 = types().slice(t0);
+must(r4.code === 1 && /剖面 A 触发轮询失败/.test(r4.out) && !/源故障 gitlab/.test(r4.out), "401-still-fatal:" + r4.code);
+must(existsSync(ack) && readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "401-keeps-ledger");
+must(!t4.includes("trigger_gone"), "401-no-close");
+// ④ 放行不得过宽（M7 变异）：403、以及**非 discussions 路径**的 404（MR 列表）仍整轮致命
+const fatal = async (m, name) => {
+  mode = m; const t = types().length; const r = await run();
+  must(r.code === 1 && /剖面 A 触发轮询失败/.test(r.out) && !/源故障 gitlab/.test(r.out), name + ":" + r.code);
+  must(!types().slice(t).includes("trigger_gone") && readFileSync(ack, "utf8") === before, name + "-keeps-ledger");
+};
+await fatal("disc_403", "403-still-fatal");
+await fatal("mr_list_404", "other-path-404-still-fatal");
+// ⑤ 2xx 但响应体不是数组（登录页 HTML / 代理错误页）：不得按「该 MR 没有任何讨论」处理（CR 🟡#2，M9 变异）
+mode = "disc_html"; const r5 = await run();
+must(r5.code === 1 && /响应体不是合法 JSON（content-type=text\/html）/.test(r5.out), "non-json-body-throws:" + r5.code);
+must(!/剖面 A 触发轮询失败：Unexpected token/.test(r5.out), "non-array-not-raw-syntax-error");
+// ⑥ 200 + 合法 JSON 但不是数组（版本变更/包装层）：必须抛「响应体不是数组（…）」——不得按空页处理。
+//    断言用字面全角括号：早先写成「数组\b」是死分支（「组」与全角「（」之间无词边界），变异不红（CR 增量复核 🟡#1）。
+mode = "disc_json_object"; const r6 = await run();
+must(r6.code === 1 && /discussions[^\n]*响应体不是数组（object，content-type=application\/json）/.test(r6.out), "json-non-array-throws:" + r6.code);
+must(readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "json-non-array-keeps-ledger");
+// ⑦ 超过页数上限：致命，报错带接口路径（人来处理时得知道是哪个 MR），且不动账
+mode = "disc_overflow"; const r7 = await run();
+must(r7.code === 1 && /discussions 超过 10 页仍未取完[^\n]*\/projects\/1\/merge_requests\/62\/discussions/.test(r7.out) && /剖面 A 触发轮询失败/.test(r7.out), "overflow-fatal-with-path:" + r7.code);
+must(readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "overflow-keeps-ledger");
+must(readFileSync(ack, "utf8") === before && readFileSync(pack, "utf8") === beforePack, "non-array-keeps-ledger");
+srv.close();
+console.log("ok", r1.code, r2.code, r3.code, r4.code, r5.code, r6.code, r7.code);
+' "$HERE" "$TL5GQ/w" "$TMP/ledger5gq" > "$TMP/e2e5gq.txt" 2>&1
+grep -q "^ok 0 1 1 1 1 1 1$" "$TMP/e2e5gq.txt" && r=0 || { cat "$TMP/e2e5gq.txt"; r=1; }
+check "翻页出错分类：502/404 软失败；401/403/其它路径 404/超页致命且报错带路径；非 JSON 与非数组响应体抛错——全部不动账、工单字节不变" "0" "$r"
+# 认领未被释放：用远端引用这个物理事实核对（不依赖事件名）——全部故障轮跑完后引用仍在
+git -C "$TL5GQ/r.git" for-each-ref refs/heads/claims/mr-62 --format='%(refname)' | grep -q "claims/mr-62"
+check "翻页出错不释放认领（三种故障后远端 claims/mr-62 仍在）" "0" "$?"
 
 echo "== 5g-ter. --mr 过滤轮不动账：视角收窄不等于触发消失（CR 二审补用例）=="
 # TL5F/w 里已有 ack-61（5g-bis 留下）：用 --mr 999 收窄视角跑一轮，ack 必须原样保留。

@@ -421,7 +421,13 @@ if (wantGitlab) {
     // 凭据/配置类硬故障（401/403/404…）才整轮 die（接入坏了必须有人看见）。
     const txt = `${e?.message || e} ${e?.cause?.code || ''} ${e?.cause?.message || ''}`;
     const temporary = /timeout|aborted|fetch failed|ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ECONNABORTED|HTTP 429|HTTP 5\d\d/i.test(txt);
-    if (!temporary) die(1, `剖面 A 触发轮询失败：${e?.message || e}`); // 记分由 die 统一承担（CR 二审 🟡#3′：双记致阈值减半）
+    // discussions 404 归软失败（2026-11-26 review-with-ci，CR 🟡#1）：多为 MR 刚被删/转私有/权限回收的竞态，
+    // 与详情 404（跳过该 MR）同源；它在 fetchTriggers 里是抛错而非跳过——跳过会让该 MR 从本轮视角消失、
+    // 账目被当「触发消失」关掉。归软失败后本轮 gitlabViewComplete=false，账目不动，下 tick 重试。
+    // 只放行 discussions 这一条路径：401/403（凭据坏）与其它 404（接入配置坏）仍整轮 die——必须有人看见。
+    // 错误信息形态：`GitLab /projects/40/merge_requests/1847/discussions page=1 HTTP 404`
+    const discNotFound = /\/discussions(\?[^ ]*)? (page=\d+ )?HTTP 404\b/.test(txt);
+    if (!temporary && !discNotFound) die(1, `剖面 A 触发轮询失败：${e?.message || e}`); // 记分由 die 统一承担（CR 二审 🟡#3′：双记致阈值减半）
     recordEvent('task-loop', 'source_soft_fail', { source: 'gitlab', error: String(e?.message || e).slice(0, 160) });
     console.log(`[task-loop] 剖面 A 临时不可达（${e?.message || e}）——本轮跳过该源，其余源继续`);
     softFail.push({ source: 'gitlab' });
