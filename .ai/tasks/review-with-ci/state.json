@@ -6,8 +6,14 @@
     "related_task": "review-verdict-comment",
     "remote_id": null,
     "baseline": "f21898f",
-    "affected_ids": [],
-    "change_tier": null,
+    "affected_ids": [
+      "RS-task-loop US-1（打回证据「证据面必须完整」前提行）",
+      "FS-任务循环执行器 §4.4（discussions 翻页 + 失败分支分类）/§9（测试表）",
+      "scripts/lib/gitlab-triggers.mjs（allDiscussions 翻页助手；fetchTriggers 取 discussions 改走翻页）",
+      "scripts/task-loop.mjs（剖面 A catch：discussions 404 归软失败）",
+      "test/task-loop.test.sh（5d-quin-bis / 5d-quin-ter / 5g-quinquies；5 处存量夹具正则放宽）"
+    ],
+    "change_tier": 2,
     "created_at": "2026-11-26T01:23:36Z",
     "flow_tier": "S",
     "init_flow_tier": "S",
@@ -16,7 +22,7 @@
     "trust_level": "L1",
     "no_doc_reason": "S 档裁剪 wbs：单一工作包（1 个产品函数 + runner 分类 + 测试），无拆分价值；rs/cr 均已走（RS US-1 前提行 + FS §4.4/§9 + CR 记录）"
   },
-  "stage": "retro",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -113,6 +119,18 @@
       "skill_versions": {
         "harness": "1.1.0"
       }
+    },
+    {
+      "stage": "done",
+      "entered_at": "2026-11-26T03:45:00Z",
+      "exited_at": null,
+      "gate": "pass",
+      "waived_by": null,
+      "agent": "orchestrator",
+      "model": null,
+      "skill_versions": {
+        "harness": "1.1.0"
+      }
     }
   ],
   "artifacts": {
@@ -152,24 +170,48 @@
       }
     },
     {
+      "id": "RWC2",
+      "stack": "harness",
+      "status": "completed",
+      "ooda_stage": "audit",
+      "text": "npm run gate 全量绿（提交后复核；verify 日志入库后入库检查转绿）",
+      "files": [
+        ".ai/verify/RWC2.log"
+      ],
+      "required_skills": [
+        "harness"
+      ],
+      "audit": {
+        "compile": "PASS（check:hooks / check:agents / check:skills / architect 四段绿）",
+        "tests": "36 段全绿 45.6s，exit_code 0，日志头 commit=2a992bb",
+        "feature_complete": "RWC1 之外的全部套件（wiring / doctor / contract / retro / stale …）在最终代码上复跑通过",
+        "quality_clean": "日志带标准头与 task 归属；管道无 tail 截断，退出码真实"
+      },
+      "verify": {
+        "log_path": ".ai/verify/RWC2.log",
+        "command": "npm run gate"
+      }
+    },
+    {
       "id": "CLOSE-GATE-review-with-ci",
       "stack": "harness",
-      "status": "pending",
+      "status": "completed",
       "ooda_stage": "audit",
-      "text": "收尾：npm run gate 全量绿（提交后复核，verify 日志须已入库）",
+      "text": "收尾：npm run gate 全量绿（提交 2a992bb 后复核 36 段全绿；证据日志 RWC2.log）",
       "files": [],
       "required_skills": [
         "harness"
       ],
       "audit": {
-        "compile": "待填",
-        "tests": "待填",
-        "feature_complete": "待填",
-        "quality_clean": "待填"
+        "compile": "PASS（gate 36 段含 check:hooks / check:agents / check:skills / architect）",
+        "tests": "gate 全绿 36 段 45.6s（task-loop 154 条）；exit_code 0；日志头 commit=2a992bb；日志 = .ai/verify/RWC2.log",
+        "feature_complete": "CR 三轮 approve（🔴 0）；!1847 根因闭合，runner 实测 signal=review_comment、指纹变化触发重认领",
+        "quality_clean": "证据日志带标准头与任务归属；提交身份 Yuan Yuan <yyuan@taosdata.com>"
       },
       "verify": {
-        "log_path": ".ai/verify/CLOSE-GATE-review-with-ci.log",
-        "command": "npm run gate"
+        "log_path": ".ai/verify/RWC2.log",
+        "command": "npm run gate",
+        "note": "gate 取证 todo id = RWC2（本条 CLOSE-GATE 与其对应同一份日志）"
       }
     }
   ],
@@ -186,8 +228,33 @@
     }
   ],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "last_check": "2026-11-26T03:33:45Z",
+    "stage": "done",
+    "checks": [
+      {
+        "name": "todos_completed_with_evidence",
+        "pass": true
+      },
+      {
+        "name": "stage_history_chain_legal",
+        "pass": true
+      },
+      {
+        "name": "deviations_dispositioned",
+        "pass": true
+      },
+      {
+        "name": "known_issues_resolved",
+        "pass": true
+      },
+      {
+        "name": "gate_green_real_exit_code",
+        "pass": true
+      },
+      {
+        "name": "cr_record_with_s0",
+        "pass": true
+      }
+    ]
   }
 }
