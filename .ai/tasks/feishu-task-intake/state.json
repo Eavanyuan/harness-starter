@@ -15,7 +15,7 @@
     "ui_scope": "NONE",
     "trust_level": "L1"
   },
-  "stage": "impl",
+  "stage": "done",
   "stage_history": [
     {
       "stage": "rs",
@@ -40,10 +40,26 @@
     {
       "stage": "impl",
       "gate": "pass"
+    },
+    {
+      "stage": "review",
+      "gate": "pass",
+      "note": "close 收尾（套件见 CLOSE-GATE 日志）"
+    },
+    {
+      "stage": "ci",
+      "gate": "pass",
+      "note": "close：gate 全量绿（.ai/verify/CLOSE-GATE-feishu-task-intake.log）"
+    },
+    {
+      "stage": "retro",
+      "gate": "pass",
+      "note": "retro/feishu-task-intake-收尾.md"
     }
   ],
   "artifacts": {
-    "rs": "docs/01-requirements/RS-飞书任务接入.md"
+    "rs": "docs/01-requirements/RS-飞书任务接入.md",
+    "retro": "retro/feishu-task-intake-收尾.md"
   },
   "todos": [
     {
@@ -99,6 +115,23 @@
         "feature_complete": "决定 1 到 5 都有落点",
         "quality_clean": "检查器的语境跨行误报已修"
       }
+    },
+    {
+      "id": "CLOSE-GATE-feishu-task-intake",
+      "title": "收尾 gate 全量（close 自动）",
+      "status": "completed",
+      "files": [],
+      "verify": {
+        "log_path": ".ai/verify/CLOSE-GATE-feishu-task-intake.log",
+        "command": "npm run gate（harness close）"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "PASS（gate 全量）",
+        "tests": "gate 全量绿（见日志）",
+        "feature_complete": "close 一键收尾",
+        "quality_clean": "日志带归属头（verify-run --task）"
+      }
     }
   ],
   "blockers": [],
@@ -118,8 +151,13 @@
   ],
   "known_issues": [],
   "gate_result": {
-    "last_check": null,
-    "stage": null,
-    "checks": []
+    "stage": "done",
+    "last_check": "2026-11-26T11:06:43Z",
+    "checks": [
+      {
+        "name": "close: gate+retro+证据",
+        "pass": true
+      }
+    ]
   }
 }

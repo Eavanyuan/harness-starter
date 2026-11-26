@@ -1,0 +1,53 @@
+# cmd: npm run gate
+# started: 2026-11-26T11:05:50Z
+# finished: 2026-11-26T11:06:43Z
+# exit_code: 0
+# commit: 20e49cc6369d91f459e331a10f9d5d4e2fd54220
+# task: feishu-task-intake
+# ---- output tail (last 200 lines) ----
+
+> harness-starter@1.1.0 gate
+> node scripts/gate-parallel.mjs
+
+[gate] 38 段：并发 37（6 路） + 串行 1（时间敏感）
+  [32m✓[0m [ 1/37]    0s  npm run check:hooks
+  [32m✓[0m [ 2/37]    0s  npm run check:agents
+  [32m✓[0m [ 3/37]    0s  npm run check:skills
+  [32m✓[0m [ 4/37]    0s  npm run architect
+  [32m✓[0m [ 5/37]    0s  npm run doctor
+  [32m✓[0m [ 6/37]    0s  npm run test:glob
+  [32m✓[0m [ 7/37]    0s  npm run test:pitfall-checklist
+  [32m✓[0m [ 8/37]    0s  npm run test:rs-feishu-intake
+  [32m✓[0m [ 9/37]    0s  npm run test:agents
+  [32m✓[0m [10/37]    1s  npm run test:writes
+  [32m✓[0m [11/37]    2s  npm run test:init
+  [32m✓[0m [12/37]    5s  npm run test:skills
+  [32m✓[0m [13/37]    6s  npm run test:hooks
+  [32m✓[0m [14/37]    0s  npm run test:ledger
+  [32m✓[0m [15/37]    2s  npm run test:verify-run
+  [32m✓[0m [16/37]    8s  npm run verify:state
+  [32m✓[0m [17/37]    1s  npm run test:wiring
+  [32m✓[0m [18/37]    3s  npm run test:completeness
+  [32m✓[0m [19/37]    1s  npm run test:router
+  [32m✓[0m [20/37]    2s  npm run test:ai-review
+  [32m✓[0m [21/37]    1s  npm run test:feishu-oauth
+  [32m✓[0m [22/37]    3s  npm run test:broker
+  [32m✓[0m [23/37]    0s  npm run test:feishu-sync
+  [32m✓[0m [24/37]    0s  npm run test:feishu-ask
+  [32m✓[0m [25/37]    2s  npm run test:feishu-bug-source
+  [32m✓[0m [26/37]    0s  npm run test:gate-parallel
+  [32m✓[0m [27/37]    0s  npm run test:architect
+  [32m✓[0m [28/37]    1s  npm run test:gate-regressions
+  [32m✓[0m [29/37]    1s  npm run test:retro
+  [32m✓[0m [30/37]    6s  npm run test:feishu-ws
+  [32m✓[0m [31/37]    2s  npm run test:stale
+  [32m✓[0m [32/37]    0s  npm run test:task-loop-contract
+  [32m✓[0m [33/37]   13s  npm run test:evidence
+  [32m✓[0m [34/37]   16s  npm run test:feishu-intake
+  [32m✓[0m [35/37]    2s  npm run test:doctor-gates
+  [32m✓[0m [36/37]   16s  npm run test:harness-cli
+  [32m✓[0m [37/37]   33s  npm run test:task-loop
+  [32m✓[0m [串行]    5s  npm run -s test:perf-checks
+
+[gate] 全绿：38 段，52.7s
+[gate] 每段日志：/var/folders/dv/xndbp5495wj8bzn9b86wx1vc0000gn/T/harness-gate-90IMmM
