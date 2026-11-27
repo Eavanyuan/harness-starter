@@ -83,10 +83,11 @@
       "ooda_stage": "audit",
       "audit": {
         "compile": "node --check 通过",
-        "tests": "套件 155/0；三态用例修复前红（0 触发/无 inflight）修复后绿；变异（去回补）154/1 红在钉住用例",
+        "tests": "套件 155/0；三态用例修复前红（.ai/verify/CTM1-RED.log，0 触发/无 inflight）修复后绿；变异（去回补）154/1 红在钉住用例",
         "feature_complete": "RS-ci-fail-trigger US-1 验收行（同批修正前置条件）；活体验证：真实 1847 修复后 fetchTriggers 产出 ci_pipeline(90239)",
         "quality_clean": "ciTrigger 抽出共用，404/瞬断 fail-closed 语义不变；活动词评审优先序未变"
-      }
+      },
+      "red_log_path": ".ai/verify/CTM1-RED.log"
     },
     {
       "id": "CTM2",
