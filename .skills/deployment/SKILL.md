@@ -23,7 +23,7 @@ references:
 | # | 读什么 | 为什么非读不可 |
 |---|---|---|
 | 0.1 | 本文件全文 | 部署路径的全部决策点与已知坑 |
-| 0.2 | `references/pitfall-checklist.md` | 56 条已知坑（首批 47 条蒸馏自 24 个 retro + 17 个 CR，#48–56 为后续实战追记）——不读就是重踩 |
+| 0.2 | `references/pitfall-checklist.md` | 57 条已知坑（首批 47 条蒸馏自 24 个 retro + 17 个 CR，#48–57 为后续实战追记）——不读就是重踩 |
 | 0.3 | 目标项目的构建体系（pom/package.json/Makefile） | stacks 配置的 lint/test 命令必须真实可跑 |
 
 前置自检（全 ✅ 才允许 init）：
@@ -149,5 +149,5 @@ bash scripts/install-task-loop.sh .           # 装定时器（心跳 180s + 配
 ## 按需加载
 
 - 接飞书 → `references/issue-tracker-interface.md`（能力接口与字段映射）
-- 已知坑全清单 → `references/pitfall-checklist.md`（56 条，按部署阶段分组）
+- 已知坑全清单 → `references/pitfall-checklist.md`（57 条，按部署阶段分组）
 - 旁挂模式详情 → README「旁挂模式」节

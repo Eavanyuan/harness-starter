@@ -20,7 +20,7 @@
 
 **验收标准**
 
-- Given 我的 open MR 无打回证据且 `head_pipeline.status=failed`（详情接口）When 轮询 Then 触发 `ci_pipeline` 信号并 CAS 认领
+- Given 我的 open MR `head_pipeline.status=failed`（详情接口）When 轮询 Then 触发 `ci_pipeline` 信号并 CAS 认领；评审打回证据站桩但触发不成立（动词已被推送核销、意见已 resolve）时**同样判**——两路信号独立，站桩不得遮蔽 CI（2026-11-27 ci-trigger-masked，!1847 实测）
 - Given 认领成立 Then 拉 failed jobs 的 trace，多栈识别失败行（javac/surefire/pytest/jest/go/本仓库 ✗），跨 job 按指纹去重（同文件不同绝对前缀同指纹）
 - Given 目标分支最新流水 Then 作归因基线：绿 → 全部按引入；红 → 复用 T4a `setDiff` 分引入/继承/顺手修好；取不到 → 明说 `baselineKnown:false`（保守全引入，不静默）
 - Given 引入项非空 Then ack（`state:working`、`fingerprint:ci:<流水id>`、`ci` 字段）+ CI 失败工单（引入清单 + 基线同款 + job 链接 + 日志摘录）+ `ci_attributed` 落账

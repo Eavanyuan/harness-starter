@@ -312,6 +312,32 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
   // MR 合并/关闭后才真正关账（那时它离开 opened 列表，自然不在此集合）。
   out.ciGreen = new Set();
   const TERMINAL = new Set(['success', 'failed']);
+  // CI 红触发（2026-11-17 ci-fail-trigger）：实测本实例列表接口**不带** head_pipeline
+  // （8 条 open MR 全部空，详情接口才有），所以逐单拉一次详情。只看 failed——
+  // running/pending 是未出结果，success/passed 不是失败，canceled 不当失败（人主动停的）。
+  // CR 🔴#2：详情是 CI 触发的**在场判据**，不许 optional 吞错——瞬断必须 rethrow 走整源
+  // 软失败（本轮视角不完整 → sweep 不动账）；只有 404（MR 恰好刚被关/合并）按"该单不在了"
+  // 跳过，下一轮列表自然没有它。吞错会让"本轮看不见"伪装成"触发消失"→ sweep 误关账。
+  // （2026-11-27 ci-trigger-masked）：从「无评审信号」分支抽出供两路共用——站桩评审信号
+  // 曾把 CI 分支整个遮住（见下方回补注释）。
+  const ciTrigger = async (mr) => {
+    const base = `/projects/${mr.project_id}/merge_requests/${mr.iid}`;
+    let detail = null;
+    try {
+      detail = await api(base);
+    } catch (e) {
+      if (/HTTP 404/.test(String(e?.message || e))) { out.skipped404 += 1; return null; }
+      throw e;
+    }
+    if (skipDrafts && isDraftMr(detail)) { out.drafts.add(`mr-${mr.iid}`); return null; } // 列表缺字段的同款教训：详情的 work_in_progress 才权威
+    const hp = detail?.head_pipeline;
+    if (!hp || !TERMINAL.has(hp.status)) out.inflight.add(`mr-${mr.iid}`); // 无流水（推送→创建的秒级窗口）同样保持
+    if (hp && hp.status === 'success') out.ciGreen.add(`mr-${mr.iid}`);
+    if (hp && hp.status === 'failed') {
+      return { kind: 'mr', id: mr.iid, mr: { ...mr, target_branch: detail?.target_branch || mr.target_branch }, unresolved: [], comments: [], reviewState: 'ci_failed', signal: 'ci_pipeline', ci: { pipelineId: hp.id, status: hp.status, webUrl: hp.web_url } };
+    }
+    return null;
+  };
   for (const mr of mrs) {
     if (mrFilter && String(mr.iid) !== String(mrFilter)) continue;
     if (skipDrafts && isDraftMr(mr)) { out.drafts.add(`mr-${mr.iid}`); continue; }
@@ -328,27 +354,11 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
       || !!changesRequestedAt(discs, username)
       || !!reviewVerdictCommentAt(discs, username); // 结论评论形态必须进粗筛，否则 classifyMr 之前就被 continue 掉（!1916 R2 实测）
     if (!hasReviewSignal) {
-      // 第二路信号（2026-11-17 ci-fail-trigger）：CI 红。实测本实例列表接口**不带** head_pipeline
-      // （8 条 open MR 全部空，详情接口才有），所以逐单拉一次详情。只看 failed——
-      // running/pending 是未出结果，success/passed 不是失败，canceled 不当失败（人主动停的）。
-      // API 成本：每轮 = 无打回证据的 open MR 数 × 1 次详情调用（节拍 1800s 下可忽略）。
-      // CR 🔴#2：详情是 CI 触发的**在场判据**，不许 optional 吞错——瞬断必须 rethrow 走整源
-      // 软失败（本轮视角不完整 → sweep 不动账）；只有 404（MR 恰好刚被关/合并）按"该单不在了"
-      // 跳过，下一轮列表自然没有它。吞错会让"本轮看不见"伪装成"触发消失"→ sweep 误关账。
-      let detail = null;
-      try {
-        detail = await api(base);
-      } catch (e) {
-        if (/HTTP 404/.test(String(e?.message || e))) { out.skipped404 += 1; continue; }
-        throw e;
-      }
-      if (skipDrafts && isDraftMr(detail)) { out.drafts.add(`mr-${mr.iid}`); continue; } // 列表缺字段的同款教训：详情的 work_in_progress 才权威
-      const hp = detail?.head_pipeline;
-      if (!hp || !TERMINAL.has(hp.status)) out.inflight.add(`mr-${mr.iid}`); // 无流水（推送→创建的秒级窗口）同样保持
-      if (hp && hp.status === 'success') out.ciGreen.add(`mr-${mr.iid}`);
-      if (hp && hp.status === 'failed') {
-        out.push({ kind: 'mr', id: mr.iid, mr: { ...mr, target_branch: detail?.target_branch || mr.target_branch }, unresolved: [], comments: [], reviewState: 'ci_failed', signal: 'ci_pipeline', ci: { pipelineId: hp.id, status: hp.status, webUrl: hp.web_url } });
-      }
+      // 第二路信号（2026-11-17 ci-fail-trigger）：CI 红。只看 failed 终态（见 ciTrigger 注释）。
+      // API 成本：每轮 = 无打回证据的 open MR 数 × 1 次详情调用；评审信号站桩但触发已死的
+      // MR 在下方回补处也补一次（节拍 1800s 下可忽略）。
+      const t = await ciTrigger(mr);
+      if (t) out.push(t);
       continue;
     }
     const commit = await optional(`/projects/${mr.project_id}/repository/commits/${mr.sha}`);
@@ -361,7 +371,16 @@ export async function fetchTriggers({ url, token, username, fetchImpl = fetch, m
       approvers = (raw?.approved_by || []).map((x) => ({ username: x.user?.username })).filter((x) => x.username);
     }
     const r = classifyMr({ mr, discussions: discs, username, lastPushAt, approvers });
-    if (!r.triggered) continue;
+    if (!r.triggered) {
+      // 评审信号站桩但触发已死（动词早于最后 push=已被推送核销、意见已 resolve）≠ CI 路也不看——
+      // 两路信号独立：站桩信号把 CI 分支整个遮住，会造成「评审已核销 + 流水失败终态」的 MR
+      // 双路皆哑（!1847 2026-11-27 实测：R4 推送核销动词后 head pipeline failed 近两小时，
+      // triggers 恒 0，无工单无修复）。评审路不响时补走 CI 路：归因层区分 introduced/inherited，
+      // 基线同款仍会 inherited_only 不误修；活动词仍评审优先（上方已 push 并 continue）。
+      const t = await ciTrigger(mr);
+      if (t) out.push(t);
+      continue;
+    }
     // 只带"活评审"：晚于最后一次 push 的评论才是本轮回复审的意见（!1916 实测 R1 结论在推送前、
     // R2 在推送后——R1 已被 round-1 修复核销，混进工单会让执行器重做已核销项）
     const liveComments = reviewCommentsByOthers(discs, username).filter((c) => !lastPushAt || !c.createdAt || new Date(c.createdAt) > new Date(lastPushAt));

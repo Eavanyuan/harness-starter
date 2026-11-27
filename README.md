@@ -120,7 +120,7 @@ bash scripts/install-task-loop.sh .           # 装定时器（macOS/Linux 自�
 node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N≥30 且 0 误触发再真跑
 ```
 
-**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 56 条已知坑清单）。
+**路径三：装进其他项目**——读 `.skills/deployment/SKILL.md`（能力选配矩阵 + 五步部署 + 57 条已知坑清单）。
 
 **旁挂模式**：harness 不进业务仓——装独立目录，`--root` 指向业务仓（TDasset 即此形态），证据链落 harness 仓。
 
@@ -176,7 +176,7 @@ node scripts/task-loop.mjs --once --dry-run   # 影子周：只看不干，攒 N
 - [docs/01-requirements/](docs/01-requirements/) —— 需求规格（每特性一份 RS）
 - [docs/03-decisions/](docs/03-decisions/) —— 技术决策记录（ADR）
 - [retro/](retro/) —— 复盘全档（踩坑第一现场）
-- [.skills/deployment/references/pitfall-checklist.md](.skills/deployment/references/pitfall-checklist.md) —— 56 条已知坑（跨项目可迁移）
+- [.skills/deployment/references/pitfall-checklist.md](.skills/deployment/references/pitfall-checklist.md) —— 57 条已知坑（跨项目可迁移）
 - [AGENTS.md](AGENTS.md) —— 给所有 CLI 的常驻规则（路由表 + 红线）
 
 ## 红线（不许做）

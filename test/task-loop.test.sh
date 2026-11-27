@@ -453,6 +453,40 @@ process.exit(out.length === 1 && String(out[0].id) === "7" && out[0].signal === 
 ' "$HERE" > "$TMP/fetch-verb.txt" 2>&1
 check "fetchTriggers：动词型 MR 不被粗筛吃掉，无信号 MR 仍省 API 调用" "0" "$?"
 
+echo "== 5c-quater. 站桩评审信号不得遮蔽 CI 红（!1847 2026-11-27 实测：动词已核销 + head pipeline failed → triggers 恒 0，无工单无修复）=="
+node --input-type=module -e '
+import { fetchTriggers } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";
+const must = (c, n) => { if (!c) { console.log("FAIL " + n); process.exit(1); } };
+const mr = { iid: 9, project_id: 1, sha: "s9", author: { username: "me" } };
+const verbDiscs = [{ id: "d1", notes: [
+  { id: "n1", system: false, resolvable: false, resolved: false, author: { username: "lead" }, body: "普通意见", created_at: "2026-11-20T01:00:00Z" },
+  { id: "n2", system: true, author: { username: "lead" }, body: "unapproved this merge request", created_at: "2026-11-20T02:24:35Z" },
+  { id: "n3", system: true, author: { username: "lead" }, body: "requested changes", created_at: "2026-11-20T02:24:41Z" },
+]}];
+// verbAt 早于 pushAt = 动词已被推送核销（评审触发死）；pipelineStatus 模拟当前流水终态
+const mkfake = (verbAt, pushAt, pipelineStatus) => async (url) => {
+  const json = url.endsWith("/merge_requests?scope=created_by_me&state=opened&per_page=100") ? [mr]
+    : /\/projects\/1\/merge_requests\/9\/discussions(\?|$)/.test(url) ? verbDiscs.map((d) => ({ ...d, notes: d.notes.map((n) => ({ ...n, created_at: n.id === "n3" ? verbAt : n.created_at })) }))
+    : /repository\/commits/.test(url) ? { committed_date: pushAt }
+    : /\/projects\/1\/merge_requests\/9$/.test(url) ? { iid: 9, project_id: 1, work_in_progress: false, target_branch: "main", head_pipeline: { id: 90239, status: pipelineStatus, web_url: "https://g.example/p/90239" } }
+    : null;
+  if (json === null) return { ok: false, status: 404, json: async () => ({}) };
+  return { ok: true, json: async () => json };
+};
+// 用例 1（回归核）：动词已核销 + head pipeline failed → 必须仍产出 ci_pipeline 触发（归因层区分 introduced/inherited）
+const c1 = await fetchTriggers({ url: "https://g.example", token: "t", username: "me", fetchImpl: mkfake("2026-11-20T02:24:41Z", "2026-11-26T10:00:00Z", "failed") });
+must(c1.length === 1 && c1[0].signal === "ci_pipeline" && c1[0].ci.pipelineId === 90239, "dead-verb-failed→ci-trigger");
+// 用例 2：动词已核销 + 流水在跑 → 无触发但进 inflight（sweep 不得当「触发消失」关账）
+const c2 = await fetchTriggers({ url: "https://g.example", token: "t", username: "me", fetchImpl: mkfake("2026-11-20T02:24:41Z", "2026-11-26T10:00:00Z", "running") });
+must(c2.length === 0 && Array.from(c2.inflight || []).includes("mr-9"), "dead-verb-running→inflight");
+// 用例 3：活动词（晚于 push）+ CI 也红 → 评审触发优先且只此一条（不双触发，优先序不变）
+const c3 = await fetchTriggers({ url: "https://g.example", token: "t", username: "me", fetchImpl: mkfake("2026-11-26T12:00:00Z", "2026-11-26T10:00:00Z", "failed") });
+must(c3.length === 1 && c3[0].signal === "review_verb", "live-verb-still-review");
+console.log("5c-quater ok");
+process.exit(0);
+' "$HERE" > "$TMP/fetch-mask.txt" 2>&1
+check "fetchTriggers：站桩评审信号不遮蔽 CI 红；running 进 inflight；活动词仍评审优先" "0" "$?"
+
 echo "== 5s. fixSuggestions 开关（默认开；关=只修阻断项）：过滤与端到端 =="
 node --input-type=module -e '
 import { filterSuggestionNotes, BLOCKING_RE, fetchTriggers } from "'"$HERE"'/scripts/lib/gitlab-triggers.mjs";

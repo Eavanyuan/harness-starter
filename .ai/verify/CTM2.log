@@ -1,0 +1,15 @@
+# cmd: npm run -s test:pitfall-checklist
+# started: 2026-11-27T09:30:32Z
+# finished: 2026-11-27T09:30:32Z
+# exit_code: 0
+# commit: unknown
+# task: ci-trigger-masked
+# ---- output tail (last 200 lines) ----
+  init 阶段       7 条
+  凭据/接入阶段       8 条
+  轮询/接单阶段      12 条
+  CR/审核阶段       8 条
+  架构治理阶段        6 条
+  通用教训          6 条
+  后续实战追记       10 条
+问题: 无

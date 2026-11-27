@@ -1,0 +1,109 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "task": "ci-trigger-masked",
+    "task_type": "bugfix",
+    "related_task": "ci-fail-trigger",
+    "remote_id": null,
+    "baseline": null,
+    "affected_ids": [
+      "scripts/lib/gitlab-triggers.mjs（fetchTriggers 评审路回补 + ciTrigger 抽出）",
+      "test/task-loop.test.sh（5c-quater 三态回归）",
+      "docs/01-requirements/RS-ci-fail-trigger.md（US-1 验收行前置条件修正）",
+      "docs/02-features/task-loop/FS-任务循环执行器.md（第三形态段 + 变异矩阵行）"
+    ],
+    "change_tier": null,
+    "created_at": "2026-11-27T09:20:12Z",
+    "flow_tier": "S",
+    "init_flow_tier": "S",
+    "risk_tier": "MEDIUM",
+    "ui_scope": "NONE",
+    "trust_level": "L1"
+  },
+  "stage": "impl",
+  "stage_history": [
+    {
+      "stage": "rs",
+      "gate": "pass",
+      "note": "bugfix：根因与回归测试先行——站桩评审信号遮蔽 CI 触发（!1847 实测），复现三态用例先红后绿"
+    },
+    {
+      "stage": "adr",
+      "gate": "deferred",
+      "waived_by": "S 档：无多方案决策点——评审路不触发即回补 CI 路，归因层已有 introduced/inherited 区分"
+    },
+    {
+      "stage": "fs_review",
+      "gate": "deferred",
+      "waived_by": "S 档：无界面"
+    },
+    {
+      "stage": "wbs",
+      "gate": "deferred",
+      "waived_by": "S 档：两 TODO 即分解"
+    },
+    {
+      "stage": "impl",
+      "gate": "pass"
+    }
+  ],
+  "artifacts": {
+    "review": ".ai/review/CR-ci-trigger-masked.md"
+  },
+  "todos": [
+    {
+      "id": "CTM1",
+      "title": "回归测试三态（死动词+failed→ci_pipeline；死动词+running→inflight；活动词仍评审优先）+ 触发层回补修复（评审路不触发时补走 CI 路，站桩不再遮蔽）",
+      "kind": "regression",
+      "status": "completed",
+      "files": [
+        "scripts/lib/gitlab-triggers.mjs",
+        "test/task-loop.test.sh"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CTM1.log",
+        "command": "npm run -s test:task-loop"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "node --check 通过",
+        "tests": "套件 155/0；三态用例修复前红（0 触发/无 inflight）修复后绿；变异（去回补）154/1 红在钉住用例",
+        "feature_complete": "RS-ci-fail-trigger US-1 验收行（同批修正前置条件）；活体验证：真实 1847 修复后 fetchTriggers 产出 ci_pipeline(90239)",
+        "quality_clean": "ciTrigger 抽出共用，404/瞬断 fail-closed 语义不变；活动词评审优先序未变"
+      }
+    },
+    {
+      "id": "CTM2",
+      "title": "受影响文档与坑清单同批：RS 验收行修正前置条件、FS 第三形态段与变异矩阵行、坑清单 #57（互斥信号路遮蔽）与计数",
+      "kind": null,
+      "status": "completed",
+      "files": [
+        "docs/01-requirements/RS-ci-fail-trigger.md",
+        "docs/02-features/task-loop/FS-任务循环执行器.md",
+        ".skills/deployment/references/pitfall-checklist.md",
+        "test/pitfall-checklist.test.sh",
+        ".skills/deployment/SKILL.md",
+        "README.md"
+      ],
+      "verify": {
+        "log_path": ".ai/verify/CTM2.log",
+        "command": "npm run -s test:pitfall-checklist"
+      },
+      "ooda_stage": "audit",
+      "audit": {
+        "compile": "不适用（文档）",
+        "tests": "pitfall 清单 57 条计数与行序校验通过",
+        "feature_complete": "影响链四件齐（RS 行、FS 段+矩阵行、代码+测试）",
+        "quality_clean": "坑行编号自上而下递增"
+      }
+    }
+  ],
+  "blockers": [],
+  "deviations": [],
+  "known_issues": [],
+  "gate_result": {
+    "last_check": null,
+    "stage": null,
+    "checks": []
+  }
+}

@@ -23,7 +23,7 @@ ROOT = sys.argv[1].rstrip('/') + '/'
 LIST = ROOT + '.skills/deployment/references/pitfall-checklist.md'
 SKILL = ROOT + '.skills/deployment/SKILL.md'
 README = ROOT + 'README.md'
-TOTAL = 56
+TOTAL = 57
 APPENDED = range(48, TOTAL + 1)      # 「后续实战追记」小节的编号
 
 problems = []
